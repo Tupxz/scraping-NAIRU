@@ -1,2 +1,3 @@
-# scraping-NAIRU
-web scraping non deterministic
+# Web scraping para la tasa NAIRU Colombia
+- autor: Santiago Tupaz
+
