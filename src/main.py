@@ -1,31 +1,27 @@
 """Punto de entrada principal del pipeline NAIRU Colombia.
 
-Orquesta las tres etapas del pipeline:
-1. Extracción  — Descarga de datos crudos del DANE
-2. Transformación — Limpieza y estandarización
-3. Validación — Controles de calidad
-4. Carga — Almacenamiento del dataset procesado
-
 Uso:
-    python -m src.main
+    python -m src.main                # Solo desempleo (default)
+    python -m src.main --unemployment # Solo desempleo
+    python -m src.main --ipc          # Solo IPC (DANE real)
+    python -m src.main --all          # Ambos pipelines
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 import time
 
-from src.dane import (
-    clean_unemployment_data,
-    download_raw_data,
-    save_processed_data,
-)
 from src.io_utils import ensure_directories, setup_logging
-from src.quality_checks import QualityCheckError, run_all_checks
+from src.quality_checks import QualityCheckError
 
 
-def run_pipeline() -> None:
-    """Ejecuta el pipeline completo de datos."""
+def run_pipeline(
+    run_unemployment: bool = True,
+    run_ipc: bool = False,
+) -> None:
+    """Ejecuta los pipelines seleccionados."""
     logger = setup_logging()
     logger.info("=" * 60)
     logger.info("PIPELINE NAIRU COLOMBIA — Inicio")
@@ -34,30 +30,20 @@ def run_pipeline() -> None:
     start_time = time.time()
 
     try:
-        # Paso 0: Preparar directorios
         ensure_directories()
         logger.info("Directorios verificados.")
 
-        # Paso 1: Extracción
-        logger.info("── Etapa 1: EXTRACCIÓN ──")
-        raw_path = download_raw_data()
+        if run_unemployment:
+            from src.pipelines import run_unemployment as unemp_pipeline
+            unemp_pipeline.run()
 
-        # Paso 2: Transformación
-        logger.info("── Etapa 2: TRANSFORMACIÓN ──")
-        df_clean = clean_unemployment_data(raw_path)
-
-        # Paso 3: Validación
-        logger.info("── Etapa 3: VALIDACIÓN ──")
-        run_all_checks(df_clean)
-
-        # Paso 4: Carga
-        logger.info("── Etapa 4: CARGA ──")
-        output_path = save_processed_data(df_clean)
+        if run_ipc:
+            from src.pipelines import run_ipc as ipc_pipeline
+            ipc_pipeline.run()
 
         elapsed = time.time() - start_time
         logger.info("=" * 60)
         logger.info("PIPELINE COMPLETADO en %.2f segundos", elapsed)
-        logger.info("Dataset final: %s (%d filas)", output_path, len(df_clean))
         logger.info("=" * 60)
 
     except QualityCheckError as e:
@@ -68,5 +54,32 @@ def run_pipeline() -> None:
         sys.exit(1)
 
 
+def main() -> None:
+    """Punto de entrada CLI."""
+    parser = argparse.ArgumentParser(description="Pipeline NAIRU Colombia")
+    parser.add_argument(
+        "--ipc", action="store_true",
+        help="Ejecutar solo el pipeline IPC (DANE real)",
+    )
+    parser.add_argument(
+        "--unemployment", action="store_true",
+        help="Ejecutar solo el pipeline de desempleo",
+    )
+    parser.add_argument(
+        "--all", action="store_true",
+        help="Ejecutar ambos pipelines",
+    )
+    args = parser.parse_args()
+
+    if args.all:
+        run_pipeline(run_unemployment=True, run_ipc=True)
+    elif args.ipc:
+        run_pipeline(run_unemployment=False, run_ipc=True)
+    elif args.unemployment:
+        run_pipeline(run_unemployment=True, run_ipc=False)
+    else:
+        run_pipeline(run_unemployment=True, run_ipc=False)
+
+
 if __name__ == "__main__":
-    run_pipeline()
+    main()
