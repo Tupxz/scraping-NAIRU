@@ -1,7 +1,7 @@
 """Validaciones de calidad para el pipeline.
 
 Contiene funciones que verifican la integridad, completitud y
-consistencia del dataset procesado.
+consistencia del dataset procesado (desempleo e IPC).
 """
 
 from __future__ import annotations
@@ -11,6 +11,9 @@ import logging
 import pandas as pd
 
 from src.config import (
+    IPC_INDEX_MAX,
+    IPC_INDEX_MIN,
+    IPC_PROCESSED_COLUMNS,
     PROCESSED_COLUMNS,
     UNEMPLOYMENT_RATE_MAX,
     UNEMPLOYMENT_RATE_MIN,
@@ -187,3 +190,101 @@ def run_all_checks(df: pd.DataFrame) -> bool:
 
     logger.info("─── Todas las validaciones pasaron ✓ ───")
     return True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Validaciones de calidad para IPC
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def check_ipc_columns(df: pd.DataFrame) -> None:
+    """Verifica columnas esperadas del dataset IPC."""
+    expected = set(IPC_PROCESSED_COLUMNS)
+    actual = set(df.columns)
+    missing = expected - actual
+    if missing:
+        raise QualityCheckError(f"Columnas IPC faltantes: {missing}")
+    logger.info("✓ Validación de columnas IPC: OK")
+
+
+def check_ipc_index_range(df: pd.DataFrame) -> None:
+    """Verifica que el índice IPC esté en un rango razonable."""
+    idx = df["ipc_index"]
+    out_of_range = idx[
+        (idx < IPC_INDEX_MIN) | (idx > IPC_INDEX_MAX)
+    ]
+    if not out_of_range.empty:
+        raise QualityCheckError(
+            f"Valores IPC fuera de rango [{IPC_INDEX_MIN}, {IPC_INDEX_MAX}]: "
+            f"{out_of_range.values[:5]}..."
+        )
+    logger.info(
+        "✓ Validación de rango IPC [%.1f, %.1f]: OK",
+        IPC_INDEX_MIN, IPC_INDEX_MAX,
+    )
+
+
+def check_ipc_monotonic(df: pd.DataFrame, tolerance: float = 0.15) -> None:
+    """Verifica que el IPC sea generalmente creciente (inflación positiva).
+
+    Permite caídas mensuales de hasta `tolerance` (15%) para capturar
+    deflación puntual, pero alerta si hay caídas mayores.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame IPC procesado y ordenado por fecha.
+    tolerance : float
+        Fracción máxima de caída mensual permitida sin alerta.
+    """
+    df_sorted = df.sort_values("date")
+    pct_change = df_sorted["ipc_index"].pct_change()
+    large_drops = pct_change[pct_change < -tolerance]
+
+    if not large_drops.empty:
+        logger.warning(
+            "⚠ Se detectaron %d caídas del IPC mayores al %.0f%%",
+            len(large_drops), tolerance * 100,
+        )
+    else:
+        logger.info("✓ Validación de tendencia IPC: OK")
+
+
+def run_ipc_checks(df: pd.DataFrame) -> bool:
+    """Ejecuta todas las validaciones de calidad para IPC.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame IPC procesado.
+
+    Returns
+    -------
+    bool
+        True si todas las validaciones pasan.
+    """
+    logger.info("─── Validaciones de calidad IPC ───")
+    logger.info("Dataset: %d filas × %d columnas", *df.shape)
+
+    check_ipc_columns(df)
+    check_no_nulls_generic(df, ["date", "ipc_index", "year", "month"])
+    check_ipc_index_range(df)
+    check_no_duplicates(df)
+    check_date_continuity(df)
+    check_ipc_monotonic(df)
+
+    logger.info("─── Todas las validaciones IPC pasaron ✓ ───")
+    return True
+
+
+def check_no_nulls_generic(
+    df: pd.DataFrame, critical_cols: list[str]
+) -> None:
+    """Verifica nulos en una lista arbitraria de columnas críticas."""
+    null_counts = df[critical_cols].isnull().sum()
+    cols_with_nulls = null_counts[null_counts > 0]
+    if not cols_with_nulls.empty:
+        raise QualityCheckError(
+            f"Valores nulos en columnas críticas:\n{cols_with_nulls}"
+        )
+    logger.info("✓ Validación de nulos: OK")
