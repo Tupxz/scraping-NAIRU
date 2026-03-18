@@ -5,9 +5,13 @@
 # Data pipeline outputs (reproducibles via pipeline)
 data/raw/**/*.csv
 data/raw/**/*.xlsx
+data/raw/**/*.html
 data/interim/**/*.csv
 data/processed/**/*.csv
 !data/**/.gitkeep
+
+# Temporary inspection scripts
+scripts/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
