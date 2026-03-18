@@ -33,11 +33,11 @@ vacío.
 
 | Componente                                                 | Estado              |
 | ---------------------------------------------------------- | ------------------- |
-| Pipeline de desempleo (DANE – GEIH)                       | ✅ Funcional        |
-| Pipeline de IPC (DANE – Índice de Precios al Consumidor) | ✅ Funcional        |
-| Validaciones de calidad automatizadas                      | ✅ 77 tests pasando |
-| Base mensual unificada (desempleo + IPC + inflación)      | 🔜 Próximo paso    |
-| Estimación econométrica de la NAIRU                      | 🔜 Por implementar  |
+| Pipeline de desempleo (DANE – GEIH)                       | Funcional        |
+| Pipeline de IPC (DANE – Índice de Precios al Consumidor) | Funcional        |
+| Validaciones de calidad automatizadas                      | 77 tests pasando |
+| Base mensual unificada (desempleo + IPC + inflación)      | Próximo paso    |
+| Estimación econométrica de la NAIRU                      | Por implementar  |
 
 **Datos generados actualmente:**
 
