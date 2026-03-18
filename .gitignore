@@ -1,3 +1,14 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Data pipeline outputs (reproducibles via pipeline)
+data/raw/**/*.csv
+data/raw/**/*.xlsx
+data/interim/**/*.csv
+data/processed/**/*.csv
+!data/**/.gitkeep
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
