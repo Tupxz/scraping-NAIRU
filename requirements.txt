@@ -1,6 +1,8 @@
 # ── Pipeline core ──────────────────────────────────────────────────
 pandas>=2.1,<3.0
 requests>=2.31,<3.0
+openpyxl>=3.1,<4.0          # Lectura de archivos Excel (.xlsx) del DANE
+beautifulsoup4>=4.12,<5.0   # Scraping de enlaces desde la página del DANE
 
 # ── Notebooks & visualización ─────────────────────────────────────
 numpy>=1.26,<2.0
