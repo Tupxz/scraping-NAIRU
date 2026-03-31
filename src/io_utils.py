@@ -18,13 +18,15 @@ from src.config import (
     LOG_FILENAME,
     LOG_FORMAT,
     PROCESSED_DIR,
+    RAW_BANREP_DIR,
     RAW_DANE_DIR,
+    RAW_FRED_DIR,
 )
 
 
 def ensure_directories() -> None:
     """Crea los directorios necesarios si no existen."""
-    for directory in (RAW_DANE_DIR, PROCESSED_DIR, LOGS_DIR):
+    for directory in (RAW_DANE_DIR, RAW_BANREP_DIR, RAW_FRED_DIR, PROCESSED_DIR, LOGS_DIR):
         directory.mkdir(parents=True, exist_ok=True)
 
 
