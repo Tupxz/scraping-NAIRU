@@ -1,17 +1,15 @@
-"""Extracción y limpieza de datos de desempleo del DANE (GEIH).
+"""Extracción y limpieza de datos de desempleo del DANE (GEIH desestacionalizado).
 
-Pipeline de 3 capas (análogo a ``ipc.py``):
+Pipeline de 3 capas:
 
 1. **SCRAPING**  — Descarga la página temática de empleo del DANE,
-   extrae enlaces a archivos .xlsx de la GEIH y selecciona el
-   anexo más reciente.
+   extrae enlaces a archivos .xlsx del anexo GEIH desestacionalizado
+   y selecciona el más reciente.
 2. **DESCARGA**  — Descarga el Excel seleccionado + guarda HTML.
 3. **PARSING**   — Lee la hoja *Total nacional* (formato pivoteado:
-   conceptos × año·mes), extrae la fila *Tasa de Desocupación (TD)*,
-   reconstruye fechas y genera el formato largo estándar.
-
-También conserva soporte para el perfil **placeholder** CSV (BLS)
-usado en los tests unitarios.
+   conceptos × año·mes), extrae las series indicadas en
+   ``GEIHConfig.series_map`` (por defecto solo la TD), reconstruye
+   fechas y genera el formato largo estándar.
 """
 
 from __future__ import annotations
@@ -27,13 +25,11 @@ import requests
 from bs4 import BeautifulSoup
 
 from src.config import (
-    ACTIVE_PROFILE,
     GEIH_CONFIG,
     GEIHConfig,
     PROCESSED_COLUMNS,
     PROCESSED_DIR,
     RAW_DANE_DIR,
-    SourceProfile,
 )
 from src.io_utils import save_csv
 
@@ -111,7 +107,9 @@ def select_geih_link(
 def parse_period_from_geih_href(href: str) -> tuple[int, int] | None:
     """Extrae (year, month) del nombre del archivo GEIH.
 
-    Ejemplo: ``anex-GEIH-ene2026.xlsx`` → ``(2026, 1)``
+    Soporta ambos formatos:
+    - ``anex-GEIH-Desestacionalizado-ene2026.xlsx`` → ``(2026, 1)``
+    - ``anex-GEIH-ene2026.xlsx`` → ``(2026, 1)``
     """
     month_map = {
         "ene": 1, "feb": 2, "mar": 3, "abr": 4,
@@ -236,7 +234,11 @@ def _detect_td_row(
     label_pattern: str,
     start_row: int = 0,
 ) -> int:
-    """Detecta la fila que contiene la Tasa de Desocupación (TD)."""
+    """Detecta la fila que contiene la Tasa de Desocupación (TD).
+
+    También se usa de forma genérica para localizar cualquier serie
+    cuya etiqueta (columna 0) coincida con *label_pattern*.
+    """
     pat = re.compile(label_pattern, re.IGNORECASE)
     for i in range(start_row, len(df_raw)):
         first_cell = str(df_raw.iloc[i, 0]).strip()
@@ -248,6 +250,47 @@ def _detect_td_row(
         f"No se encontró fila con patrón '{label_pattern}' en la hoja. "
         f"Filas escaneadas: {start_row}–{len(df_raw) - 1}"
     )
+
+
+def _detect_series_rows(
+    df_raw: pd.DataFrame,
+    series_map: dict[str, str],
+    start_row: int = 0,
+) -> dict[str, int]:
+    """Detecta la fila de cada serie definida en *series_map*.
+
+    Returns
+    -------
+    dict[str, int]
+        Mapa ``{nombre_columna: fila_0indexed}`` para cada serie
+        encontrada en el Excel.
+
+    Raises
+    ------
+    ValueError
+        Si alguna serie del mapa no se encuentra en la hoja.
+    """
+    result: dict[str, int] = {}
+    for col_name, label_pattern in series_map.items():
+        pat = re.compile(label_pattern, re.IGNORECASE)
+        found = False
+        for i in range(start_row, len(df_raw)):
+            first_cell = str(df_raw.iloc[i, 0]).strip()
+            if pat.search(first_cell):
+                result[col_name] = i
+                logger.info(
+                    "Serie '%s' detectada en fila %d ('%s')",
+                    col_name, i, first_cell[:60],
+                )
+                found = True
+                break
+        if not found:
+            raise ValueError(
+                f"No se encontró fila para serie '{col_name}' "
+                f"(patrón: '{label_pattern}'). "
+                f"Filas escaneadas: {start_row}–{len(df_raw) - 1}"
+            )
+    return result
 
 
 def _build_date_columns(
@@ -308,30 +351,63 @@ def _build_date_columns(
     return result
 
 
+def _resolve_sheet_name(xlsx_path: Path, preferred: str) -> str:
+    """Devuelve *preferred* si existe; si no, busca hoja que contenga la cadena.
+
+    Esto permite que el parser funcione si el DANE renombra la hoja
+    (p. ej. ``"Total nacional "`` con espacio al final).
+    """
+    import openpyxl
+
+    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+    sheets = wb.sheetnames
+    wb.close()
+
+    if preferred in sheets:
+        return preferred
+
+    # Fallback: buscar hoja que contenga la cadena (case-insensitive)
+    needle = preferred.lower()
+    for sname in sheets:
+        if needle in sname.lower():
+            logger.warning(
+                "Hoja '%s' no encontrada; usando fallback: '%s'", preferred, sname,
+            )
+            return sname
+
+    raise ValueError(
+        f"No se encontró hoja '{preferred}' ni alternativa similar. "
+        f"Hojas disponibles: {sheets}"
+    )
+
+
 def load_geih_excel(
     xlsx_path: Path,
     config: GEIHConfig = GEIH_CONFIG,
 ) -> pd.DataFrame:
-    """Lee el Excel pivoteado del GEIH y extrae la TD en formato largo.
+    """Lee el Excel pivoteado del GEIH y extrae series en formato largo.
 
     Pasos:
-    1. Leer la hoja sin header (todo como strings para robustez).
-    2. Detectar filas de años, meses y TD.
-    3. Reconstruir las fechas desde las cabeceras.
-    4. Extraer los valores de TD y generar DataFrame largo.
+    1. Resolver la hoja (con fallback si cambió el nombre).
+    2. Leer la hoja sin header (todo crudo para robustez).
+    3. Detectar filas de años, meses y series (vía ``series_map``).
+    4. Reconstruir las fechas desde las cabeceras.
+    5. Extraer los valores de cada serie y generar DataFrame largo.
     """
     logger.info("Cargando Excel GEIH: %s", xlsx_path)
 
+    sheet = _resolve_sheet_name(xlsx_path, config.sheet_name)
+
     df_raw = pd.read_excel(
         xlsx_path,
-        sheet_name=config.sheet_name,
+        sheet_name=sheet,
         header=None,
         engine="openpyxl",
     )
 
     logger.info(
         "Excel leído: %d filas × %d cols, hoja='%s'",
-        len(df_raw), len(df_raw.columns), config.sheet_name,
+        len(df_raw), len(df_raw.columns), sheet,
     )
 
     # Detectar filas clave
@@ -343,7 +419,8 @@ def load_geih_excel(
     if month_row is None:
         month_row = _detect_month_row(df_raw, year_row, set(config.month_map.keys()))
 
-    td_row = _detect_td_row(df_raw, config.td_label_pattern, start_row=month_row)
+    # Detectar filas de series usando series_map
+    series_rows = _detect_series_rows(df_raw, config.series_map, start_row=month_row)
 
     # Reconstruir fechas
     date_cols = _build_date_columns(df_raw, year_row, month_row, config.month_map)
@@ -351,18 +428,22 @@ def load_geih_excel(
     if not date_cols:
         raise ValueError("No se pudieron reconstruir columnas fecha del Excel GEIH.")
 
-    # Extraer valores de TD
-    td_values = df_raw.iloc[td_row]
+    # Extraer valores de cada serie
     records: list[dict] = []
     for dc in date_cols:
-        raw_val = td_values.iloc[dc["col_idx"]]
-        val = pd.to_numeric(raw_val, errors="coerce")
-        if pd.notna(val):
-            records.append({
-                "year": dc["year"],
-                "month": dc["month"],
-                "unemployment_rate": float(val),
-            })
+        record: dict = {
+            "year": dc["year"],
+            "month": dc["month"],
+        }
+        all_nan = True
+        for col_name, row_idx in series_rows.items():
+            raw_val = df_raw.iloc[row_idx].iloc[dc["col_idx"]]
+            val = pd.to_numeric(raw_val, errors="coerce")
+            record[col_name] = float(val) if pd.notna(val) else None
+            if pd.notna(val):
+                all_nan = False
+        if not all_nan:
+            records.append(record)
 
     df = pd.DataFrame(records)
     df["date"] = pd.to_datetime(
@@ -371,11 +452,15 @@ def load_geih_excel(
     )
     df = df.sort_values("date").reset_index(drop=True)
 
+    # Determinar columnas de salida dinámicamente
+    series_cols = list(config.series_map.keys())
+    output_cols = ["date", "year", "month"] + series_cols
+
     logger.info(
-        "GEIH parseado: %d observaciones, %s → %s",
-        len(df), df["date"].min(), df["date"].max(),
+        "GEIH parseado: %d observaciones, %s → %s, series: %s",
+        len(df), df["date"].min(), df["date"].max(), series_cols,
     )
-    return df[["date", "year", "month", "unemployment_rate"]]
+    return df[output_cols]
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -460,169 +545,4 @@ def run_geih_pipeline(
     # 5. Guardar
     save_processed_data(df, output_dir=output_dir, config=config)
 
-    return df
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# SOPORTE LEGACY  (placeholder CSV para tests)
-# ═══════════════════════════════════════════════════════════════════════
-
-
-def download_raw_data(
-    profile: SourceProfile = ACTIVE_PROFILE,
-    output_dir: Path = RAW_DANE_DIR,
-) -> Path:
-    """Descarga datos crudos (placeholder CSV). Legacy."""
-    from src.sources.dane.common import download_file
-
-    logger.info("Fuente activa: %s", profile.name)
-    output_path = output_dir / profile.raw_filename
-    download_file(
-        url=profile.url,
-        output_path=output_path,
-        timeout=profile.timeout,
-        headers=profile.http_headers,
-    )
-    logger.info("Formato: %s", profile.file_format)
-    return output_path
-
-
-def clean_placeholder_data(raw_path: Path) -> pd.DataFrame:
-    """Limpia el dataset placeholder (BLS CSV)."""
-    logger.info("Parsing CSV placeholder desde: %s", raw_path)
-    df = pd.read_csv(raw_path)
-    df.columns = df.columns.str.strip().str.lower()
-
-    required_raw = {"year", "unemployed_percent"}
-    available = set(df.columns)
-    if not required_raw.issubset(available):
-        missing = required_raw - available
-        raise ValueError(
-            f"Columnas requeridas faltantes en CSV placeholder: {missing}. "
-            f"Columnas disponibles: {list(df.columns)}"
-        )
-
-    df["month"] = 1
-    df["date"] = pd.to_datetime(df["year"].astype(int).astype(str) + "-01-01")
-    df = df.rename(columns={"unemployed_percent": "unemployment_rate"})
-    return df
-
-
-def clean_dane_excel_data(
-    raw_path: Path,
-    profile: SourceProfile,
-) -> pd.DataFrame:
-    """Limpia un archivo Excel en formato SourceProfile (legacy)."""
-    from src.sources.dane.common import (
-        auto_map_columns,
-        detect_header_row,
-        detect_relevant_sheet,
-    )
-
-    logger.info("Parsing Excel DANE (legacy) desde: %s", raw_path)
-
-    # Seleccionar hoja
-    if profile.sheet_name is not None:
-        sheet = profile.sheet_name
-    else:
-        sheet = detect_relevant_sheet(raw_path, keywords=profile.header_keywords)
-
-    # Detectar encabezado
-    df_no_header = pd.read_excel(
-        raw_path, sheet_name=sheet, header=None,
-        engine="openpyxl", dtype=str,
-    )
-    if profile.header_row is not None:
-        header_idx = profile.header_row
-    else:
-        header_idx = detect_header_row(
-            df_no_header,
-            keywords=profile.header_keywords,
-            max_scan=profile.header_scan_rows,
-        )
-
-    df = pd.read_excel(
-        raw_path, sheet_name=sheet, header=header_idx, engine="openpyxl",
-    )
-    unnamed_cols = [c for c in df.columns if str(c).startswith("Unnamed")]
-    if unnamed_cols:
-        df = df.drop(columns=unnamed_cols)
-    df = df.dropna(how="all").reset_index(drop=True)
-    df.columns = (
-        df.columns.astype(str).str.strip().str.lower()
-        .str.replace(r"\s+", "_", regex=True)
-        .str.replace(r"[^\w]", "", regex=True)
-    )
-
-    # Mapear columnas
-    if profile.column_mapping is not None:
-        col_map = profile.column_mapping
-    else:
-        col_map = auto_map_columns(list(df.columns), profile.column_patterns)
-    if not col_map:
-        raise ValueError(
-            "No se pudo mapear ninguna columna. "
-            f"Columnas disponibles: {list(df.columns)}"
-        )
-    df = df.rename(columns=col_map)
-
-    if "date" not in df.columns and "year" in df.columns:
-        month_col = df["month"] if "month" in df.columns else 1
-        df["date"] = pd.to_datetime(
-            df["year"].astype(int).astype(str) + "-"
-            + pd.Series(month_col).astype(int).astype(str).str.zfill(2)
-            + "-01"
-        )
-    if "year" not in df.columns and "date" in df.columns:
-        df["year"] = pd.to_datetime(df["date"]).dt.year
-    if "month" not in df.columns and "date" in df.columns:
-        df["month"] = pd.to_datetime(df["date"]).dt.month
-    elif "month" not in df.columns:
-        df["month"] = 1
-
-    return df
-
-
-def clean_unemployment_data(
-    raw_path: Path,
-    profile: SourceProfile = ACTIVE_PROFILE,
-) -> pd.DataFrame:
-    """Limpia y estandariza datos de desempleo (placeholder / legacy).
-
-    Para la fuente DANE real, usar ``run_geih_pipeline()`` en su lugar.
-    """
-    logger.info("Cargando datos crudos desde: %s", raw_path)
-
-    if profile.file_format == "csv":
-        df = clean_placeholder_data(raw_path)
-    elif profile.file_format == "xlsx":
-        df = clean_dane_excel_data(raw_path, profile)
-    else:
-        raise ValueError(f"Formato no soportado: {profile.file_format}")
-
-    df["source"] = "DANE"
-    df["download_date"] = date.today().isoformat()
-    df["unemployment_rate"] = pd.to_numeric(df["unemployment_rate"], errors="coerce")
-    if "year" in df.columns:
-        df["year"] = pd.to_numeric(df["year"], errors="coerce").astype("Int64")
-    if "month" in df.columns:
-        df["month"] = pd.to_numeric(df["month"], errors="coerce").astype("Int64")
-
-    rows_before = len(df)
-    df = df.dropna(subset=["unemployment_rate", "date"]).copy()
-    rows_dropped = rows_before - len(df)
-    if rows_dropped > 0:
-        logger.warning("Se eliminaron %d filas con valores nulos", rows_dropped)
-
-    dupes_before = len(df)
-    df = df.drop_duplicates(subset=["date"], keep="first").copy()
-    dupes_dropped = dupes_before - len(df)
-    if dupes_dropped > 0:
-        logger.warning("Se eliminaron %d filas duplicadas por fecha", dupes_dropped)
-
-    df["year"] = df["year"].astype(int)
-    df["month"] = df["month"].astype(int)
-    df = df[PROCESSED_COLUMNS].sort_values("date").reset_index(drop=True)
-
-    logger.info("Dataset limpio: %d filas, columnas: %s", len(df), list(df.columns))
     return df
