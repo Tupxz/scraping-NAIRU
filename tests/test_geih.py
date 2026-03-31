@@ -1,12 +1,14 @@
-"""Tests para el pipeline de desempleo GEIH del DANE (fuente real).
+"""Tests para el pipeline de desempleo GEIH del DANE (desestacionalizado).
 
 Verifica:
 - Scraping de enlaces GEIH desde HTML simulado
-- Selección del enlace correcto (más reciente)
+- Selección del anexo **desestacionalizado** (no el normal)
 - Extracción de periodo desde el nombre del archivo
 - Parsing del Excel pivoteado (conceptos × año·mes → formato largo)
-- Detección automática de filas (años, meses, TD)
+- Detección automática de filas (años, meses, series)
 - Reconstrucción de columnas fecha (forward-fill de años)
+- Resolución de hoja con fallback
+- series_map configurable (TD por defecto, extensible a TGP/TO)
 - Validaciones de calidad sobre el resultado
 - Pipeline completo offline (con fixtures)
 """
@@ -23,8 +25,10 @@ from src.config import GEIHConfig, PROCESSED_COLUMNS
 from src.sources.dane.unemployment import (
     _build_date_columns,
     _detect_month_row,
+    _detect_series_rows,
     _detect_td_row,
     _detect_year_row,
+    _resolve_sheet_name,
     clean_geih_data,
     extract_geih_xlsx_links,
     load_geih_excel,
@@ -66,9 +70,10 @@ SAMPLE_GEIH_HTML = """
 
 SAMPLE_GEIH_HTML_MULTI = """
 <html><body>
-<a href="/files/operaciones/GEIH/anex-GEIH-dic2025.xlsx">Descargar</a>
-<a href="/files/operaciones/GEIH/anex-GEIH-ene2026.xlsx">Descargar</a>
-<a href="/files/operaciones/GEIH/anex-GEIH-nov2025.xlsx">Descargar</a>
+<a href="/files/operaciones/GEIH/anex-GEIH-Desestacionalizado-dic2025.xlsx">Descargar</a>
+<a href="/files/operaciones/GEIH/anex-GEIH-Desestacionalizado-ene2026.xlsx">Descargar</a>
+<a href="/files/operaciones/GEIH/anex-GEIH-Desestacionalizado-nov2025.xlsx">Descargar</a>
+<a href="/files/operaciones/GEIH/anex-GEIH-ene2026.xlsx">No debe capturarse</a>
 </body></html>
 """
 
@@ -235,13 +240,21 @@ def sample_geih_xlsx_partial(tmp_path: Path) -> Path:
 
 
 class TestGEIHScraping:
-    """Tests de extracción de enlaces GEIH desde HTML."""
+    """Tests de extracción de enlaces GEIH desestacionalizado desde HTML."""
 
-    def test_extract_geih_links_finds_correct_one(self) -> None:
-        """Solo extrae el anexo principal (no PDFs, no Desestacionalizado)."""
+    def test_extract_geih_links_finds_desestacionalizado(self) -> None:
+        """Solo extrae el anexo desestacionalizado (no PDFs, no el normal)."""
         links = extract_geih_xlsx_links(SAMPLE_GEIH_HTML)
         assert len(links) == 1
-        assert "anex-GEIH-ene2026.xlsx" in links[0]["href"]
+        assert "Desestacionalizado" in links[0]["href"]
+        assert "anex-GEIH-Desestacionalizado-ene2026.xlsx" in links[0]["href"]
+
+    def test_extract_links_ignores_non_desestacionalizado(self) -> None:
+        """El anexo normal (anex-GEIH-ene2026.xlsx) NO se selecciona."""
+        links = extract_geih_xlsx_links(SAMPLE_GEIH_HTML)
+        for lnk in links:
+            # Ningún enlace debe ser el anexo normal sin "Desestacionalizado"
+            assert "Desestacionalizado" in lnk["href"]
 
     def test_extract_links_empty_html(self) -> None:
         """HTML sin enlaces devuelve lista vacía."""
@@ -254,19 +267,36 @@ class TestGEIHScraping:
             select_geih_link([])
 
     def test_select_geih_link_picks_most_recent(self) -> None:
-        """Si hay varios enlaces, elige el más reciente."""
+        """Si hay varios desestacionalizados, elige el más reciente."""
         links = extract_geih_xlsx_links(SAMPLE_GEIH_HTML_MULTI)
+        # Solo debe haber 3 (los desestacionalizados), no 4
+        assert len(links) == 3
         selected = select_geih_link(links)
-        assert "ene2026" in selected["href"]
+        assert "Desestacionalizado-ene2026" in selected["href"]
+
+    def test_extract_multi_ignores_normal_xlsx(self) -> None:
+        """El enlace al anexo normal no se incluye en los resultados."""
+        links = extract_geih_xlsx_links(SAMPLE_GEIH_HTML_MULTI)
+        hrefs = [lnk["href"] for lnk in links]
+        # El enlace normal (sin Desestacionalizado) no debe estar
+        assert not any(
+            "anex-GEIH-ene2026.xlsx" in h and "Desestacionalizado" not in h
+            for h in hrefs
+        )
 
     def test_parse_period_from_geih_href(self) -> None:
-        """Extrae año y mes del nombre del archivo GEIH."""
+        """Extrae año y mes del nombre del archivo GEIH (ambos formatos)."""
+        # Formato desestacionalizado
+        assert parse_period_from_geih_href(
+            "/files/operaciones/GEIH/anex-GEIH-Desestacionalizado-ene2026.xlsx"
+        ) == (2026, 1)
+        assert parse_period_from_geih_href(
+            "/files/operaciones/GEIH/anex-GEIH-Desestacionalizado-dic2025.xlsx"
+        ) == (2025, 12)
+        # Formato normal (compatibilidad)
         assert parse_period_from_geih_href(
             "/files/operaciones/GEIH/anex-GEIH-ene2026.xlsx"
         ) == (2026, 1)
-        assert parse_period_from_geih_href(
-            "/files/operaciones/GEIH/anex-GEIH-dic2025.xlsx"
-        ) == (2025, 12)
         assert parse_period_from_geih_href("random.pdf") is None
 
     def test_extract_links_have_absolute_url(self) -> None:
@@ -366,6 +396,124 @@ class TestGEIHDateColumns:
         # Col 12 (Ene del segundo año)
         assert date_cols[12]["year"] == 2023
         assert date_cols[12]["month"] == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Tests de resolución de hoja (fallback)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestResolveSheetName:
+    """Tests de _resolve_sheet_name (fallback de nombre de hoja)."""
+
+    def test_exact_match(self, sample_geih_xlsx: Path) -> None:
+        """Si la hoja existe con el nombre exacto, la devuelve."""
+        assert _resolve_sheet_name(sample_geih_xlsx, "Total nacional") == "Total nacional"
+
+    def test_fallback_partial_match(self, tmp_path: Path) -> None:
+        """Si no hay match exacto, busca hoja que contenga la cadena."""
+        path = tmp_path / "test_fallback.xlsx"
+        df = pd.DataFrame({"a": [1]})
+        with pd.ExcelWriter(path, engine="openpyxl") as writer:
+            df.to_excel(writer, sheet_name="Total nacional (SA)", index=False)
+        assert _resolve_sheet_name(path, "Total nacional") == "Total nacional (SA)"
+
+    def test_raises_if_no_match(self, tmp_path: Path) -> None:
+        """Error si no hay ninguna hoja similar."""
+        path = tmp_path / "test_nomatch.xlsx"
+        df = pd.DataFrame({"a": [1]})
+        with pd.ExcelWriter(path, engine="openpyxl") as writer:
+            df.to_excel(writer, sheet_name="Hoja1", index=False)
+        with pytest.raises(ValueError, match="No se encontró hoja"):
+            _resolve_sheet_name(path, "Total nacional")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Tests de detección de series (series_map)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestDetectSeriesRows:
+    """Tests de _detect_series_rows para series_map configurable."""
+
+    def test_detect_single_series(self, sample_geih_xlsx: Path, geih_config: GEIHConfig) -> None:
+        """Detecta la TD con el series_map por defecto."""
+        df_raw = pd.read_excel(
+            sample_geih_xlsx, sheet_name=geih_config.sheet_name,
+            header=None, engine="openpyxl",
+        )
+        rows = _detect_series_rows(
+            df_raw, {"unemployment_rate": r"Tasa de Desocupaci[oó]n"}, start_row=12,
+        )
+        assert "unemployment_rate" in rows
+        assert rows["unemployment_rate"] == 16
+
+    def test_detect_multiple_series(self, sample_geih_xlsx: Path, geih_config: GEIHConfig) -> None:
+        """Detecta múltiples series (TGP, TO, TD) simultáneamente."""
+        df_raw = pd.read_excel(
+            sample_geih_xlsx, sheet_name=geih_config.sheet_name,
+            header=None, engine="openpyxl",
+        )
+        multi_map = {
+            "tgp": r"Tasa Global de Participaci[oó]n",
+            "to": r"Tasa de Ocupaci[oó]n",
+            "unemployment_rate": r"Tasa de Desocupaci[oó]n",
+        }
+        rows = _detect_series_rows(df_raw, multi_map, start_row=12)
+        assert len(rows) == 3
+        assert rows["tgp"] == 14
+        assert rows["to"] == 15
+        assert rows["unemployment_rate"] == 16
+
+    def test_raises_if_series_not_found(self) -> None:
+        """Error si una serie del mapa no existe."""
+        df = pd.DataFrame([["Fila A"], ["Fila B"]])
+        with pytest.raises(ValueError, match="No se encontró fila para serie"):
+            _detect_series_rows(df, {"missing": r"No existe"}, start_row=0)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Tests de series_map multi-serie
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestSeriesMapParsing:
+    """Tests de load_geih_excel con series_map ampliado."""
+
+    def test_multi_series_columns(self, sample_geih_xlsx: Path) -> None:
+        """Con series_map extendido, produce columnas adicionales."""
+        config = GEIHConfig(
+            sheet_name="Total nacional",
+            year_row=11,
+            month_row=12,
+            series_map={
+                "tgp": r"Tasa Global de Participaci[oó]n",
+                "to": r"Tasa de Ocupaci[oó]n",
+                "unemployment_rate": r"Tasa de Desocupaci[oó]n",
+            },
+        )
+        df = load_geih_excel(sample_geih_xlsx, config)
+        assert "tgp" in df.columns
+        assert "to" in df.columns
+        assert "unemployment_rate" in df.columns
+        assert len(df) == 36
+
+    def test_multi_series_values_correct(self, sample_geih_xlsx: Path) -> None:
+        """Los valores de cada serie se extraen de la fila correcta."""
+        config = GEIHConfig(
+            sheet_name="Total nacional",
+            year_row=11,
+            month_row=12,
+            series_map={
+                "tgp": r"Tasa Global de Participaci[oó]n",
+                "unemployment_rate": r"Tasa de Desocupaci[oó]n",
+            },
+        )
+        df = load_geih_excel(sample_geih_xlsx, config)
+        # TGP en la fixture es constante 63.2
+        assert df["tgp"].iloc[0] == pytest.approx(63.2, abs=0.01)
+        # TD primer valor = 12.0 (base=10 + seasonal=2)
+        assert df["unemployment_rate"].iloc[0] == pytest.approx(12.0, abs=0.01)
 
 
 # ═══════════════════════════════════════════════════════════════════════

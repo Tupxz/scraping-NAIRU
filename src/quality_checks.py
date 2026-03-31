@@ -11,6 +11,14 @@ import logging
 import pandas as pd
 
 from src.config import (
+    BANREP_PROCESSED_COLUMNS,
+    BRENT_PRICE_MAX,
+    BRENT_PRICE_MIN,
+    BRENT_PROCESSED_COLUMNS,
+    INFLATION_GOAL_MAX,
+    INFLATION_GOAL_MIN,
+    INFLATION_RATE_MAX,
+    INFLATION_RATE_MIN,
     IPC_INDEX_MAX,
     IPC_INDEX_MIN,
     IPC_PROCESSED_COLUMNS,
@@ -288,3 +296,145 @@ def check_no_nulls_generic(
             f"Valores nulos en columnas críticas:\n{cols_with_nulls}"
         )
     logger.info("✓ Validación de nulos: OK")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Validaciones de calidad para BANREP inflación
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def check_banrep_columns(df: pd.DataFrame) -> None:
+    """Verifica columnas esperadas del dataset BANREP inflación."""
+    expected = set(BANREP_PROCESSED_COLUMNS)
+    actual = set(df.columns)
+    missing = expected - actual
+    if missing:
+        raise QualityCheckError(f"Columnas BANREP faltantes: {missing}")
+    logger.info("✓ Validación de columnas BANREP: OK")
+
+
+def check_inflation_rate_range(df: pd.DataFrame) -> None:
+    """Verifica que Inf_Rate y Core_Inf estén en rango razonable."""
+    for col in ("Inf_Rate", "Core_Inf"):
+        if col not in df.columns:
+            continue
+        vals = df[col].dropna()
+        out_of_range = vals[
+            (vals < INFLATION_RATE_MIN) | (vals > INFLATION_RATE_MAX)
+        ]
+        if not out_of_range.empty:
+            raise QualityCheckError(
+                f"Valores de {col} fuera de rango "
+                f"[{INFLATION_RATE_MIN}, {INFLATION_RATE_MAX}]: "
+                f"{out_of_range.values[:5]}..."
+            )
+    logger.info(
+        "✓ Validación de rango inflación [%.1f, %.1f]: OK",
+        INFLATION_RATE_MIN, INFLATION_RATE_MAX,
+    )
+
+
+def check_inflation_goal_range(df: pd.DataFrame) -> None:
+    """Verifica que Inf_Goal esté en rango razonable."""
+    if "Inf_Goal" not in df.columns:
+        return
+    vals = df["Inf_Goal"].dropna()
+    out_of_range = vals[
+        (vals < INFLATION_GOAL_MIN) | (vals > INFLATION_GOAL_MAX)
+    ]
+    if not out_of_range.empty:
+        raise QualityCheckError(
+            f"Valores de Inf_Goal fuera de rango "
+            f"[{INFLATION_GOAL_MIN}, {INFLATION_GOAL_MAX}]: "
+            f"{out_of_range.values[:5]}..."
+        )
+    logger.info(
+        "✓ Validación de rango meta inflación [%.1f, %.1f]: OK",
+        INFLATION_GOAL_MIN, INFLATION_GOAL_MAX,
+    )
+
+
+def run_banrep_checks(df: pd.DataFrame) -> bool:
+    """Ejecuta todas las validaciones de calidad para BANREP inflación.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame BANREP procesado.
+
+    Returns
+    -------
+    bool
+        True si todas las validaciones pasan.
+    """
+    logger.info("─── Validaciones de calidad BANREP ───")
+    logger.info("Dataset: %d filas × %d columnas", *df.shape)
+
+    check_banrep_columns(df)
+    check_no_nulls_generic(df, ["date", "year", "month"])
+    check_inflation_rate_range(df)
+    check_inflation_goal_range(df)
+    check_no_duplicates(df)
+    check_date_continuity(df)
+
+    logger.info("─── Todas las validaciones BANREP pasaron ✓ ───")
+    return True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Validaciones de calidad para Brent (FRED/EIA)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def check_brent_columns(df: pd.DataFrame) -> None:
+    """Verifica columnas esperadas del dataset Brent."""
+    expected = set(BRENT_PROCESSED_COLUMNS)
+    actual = set(df.columns)
+    missing = expected - actual
+    if missing:
+        raise QualityCheckError(f"Columnas Brent faltantes: {missing}")
+    logger.info("✓ Validación de columnas Brent: OK")
+
+
+def check_brent_price_range(df: pd.DataFrame) -> None:
+    """Verifica que el precio del Brent esté en rango razonable."""
+    vals = df["brent_usd_per_barrel"].dropna()
+    out_of_range = vals[
+        (vals < BRENT_PRICE_MIN) | (vals > BRENT_PRICE_MAX)
+    ]
+    if not out_of_range.empty:
+        raise QualityCheckError(
+            f"Valores de brent_usd_per_barrel fuera de rango "
+            f"[{BRENT_PRICE_MIN}, {BRENT_PRICE_MAX}]: "
+            f"{out_of_range.values[:5]}..."
+        )
+    logger.info(
+        "✓ Validación de rango Brent [%.2f, %.1f]: OK",
+        BRENT_PRICE_MIN, BRENT_PRICE_MAX,
+    )
+
+
+def run_brent_checks(df: pd.DataFrame) -> bool:
+    """Ejecuta todas las validaciones de calidad para Brent.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame Brent procesado.
+
+    Returns
+    -------
+    bool
+        True si todas las validaciones pasan.
+    """
+    logger.info("─── Validaciones de calidad Brent ───")
+    logger.info("Dataset: %d filas × %d columnas", *df.shape)
+
+    check_brent_columns(df)
+    check_no_nulls_generic(df, ["date", "brent_usd_per_barrel", "year", "month"])
+    check_brent_price_range(df)
+    check_no_duplicates(df)
+    check_date_continuity(df)
+
+    logger.info("─── Todas las validaciones Brent pasaron ✓ ───")
+    return True

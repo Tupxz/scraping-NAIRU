@@ -4,7 +4,9 @@ Uso:
     python -m src.main                # Solo desempleo (default)
     python -m src.main --unemployment # Solo desempleo
     python -m src.main --ipc          # Solo IPC (DANE real)
-    python -m src.main --all          # Ambos pipelines
+    python -m src.main --banrep       # Solo inflación (BANREP/SUAMECA)
+    python -m src.main --brent        # Solo Brent (FRED/EIA)
+    python -m src.main --all          # Todos los pipelines
 """
 
 from __future__ import annotations
@@ -20,6 +22,8 @@ from src.quality_checks import QualityCheckError
 def run_pipeline(
     run_unemployment: bool = True,
     run_ipc: bool = False,
+    run_banrep: bool = False,
+    run_brent: bool = False,
 ) -> None:
     """Ejecuta los pipelines seleccionados."""
     logger = setup_logging()
@@ -40,6 +44,14 @@ def run_pipeline(
         if run_ipc:
             from src.pipelines import run_ipc as ipc_pipeline
             ipc_pipeline.run()
+
+        if run_banrep:
+            from src.pipelines import run_banrep_inflation as banrep_pipeline
+            banrep_pipeline.run()
+
+        if run_brent:
+            from src.pipelines import run_brent as brent_pipeline
+            brent_pipeline.run()
 
         elapsed = time.time() - start_time
         logger.info("=" * 60)
@@ -66,17 +78,32 @@ def main() -> None:
         help="Ejecutar solo el pipeline de desempleo",
     )
     parser.add_argument(
+        "--banrep", action="store_true",
+        help="Ejecutar solo el pipeline de inflación (BANREP/SUAMECA)",
+    )
+    parser.add_argument(
+        "--brent", action="store_true",
+        help="Ejecutar solo el pipeline de Brent (FRED/EIA)",
+    )
+    parser.add_argument(
         "--all", action="store_true",
-        help="Ejecutar ambos pipelines",
+        help="Ejecutar todos los pipelines",
     )
     args = parser.parse_args()
 
     if args.all:
-        run_pipeline(run_unemployment=True, run_ipc=True)
+        run_pipeline(
+            run_unemployment=True, run_ipc=True,
+            run_banrep=True, run_brent=True,
+        )
     elif args.ipc:
         run_pipeline(run_unemployment=False, run_ipc=True)
     elif args.unemployment:
         run_pipeline(run_unemployment=True, run_ipc=False)
+    elif args.banrep:
+        run_pipeline(run_unemployment=False, run_ipc=False, run_banrep=True)
+    elif args.brent:
+        run_pipeline(run_unemployment=False, run_ipc=False, run_brent=True)
     else:
         run_pipeline(run_unemployment=True, run_ipc=False)
 
