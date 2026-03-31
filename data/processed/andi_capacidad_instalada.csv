@@ -1,0 +1,82 @@
+date,year,month,capacity_utilization,source,download_date
+2017-01-01,2017,1,53.0,https://www.andi.com.co/Uploads/Informe EOIC Enero 2017.pdf,2026-03-31
+2017-03-01,2017,3,45.7,https://www.andi.com.co/Uploads/Informe EOIC Marzo 2017.pdf,2026-03-31
+2017-04-01,2017,4,61.3,https://www.andi.com.co/Uploads/Informe EOIC Abril 2017.pdf,2026-03-31
+2017-05-01,2017,5,74.0,https://www.andi.com.co/Uploads/Informe EOIC Mayo 2017.pdf,2026-03-31
+2017-06-01,2017,6,36.9,https://www.andi.com.co/Uploads/Informe EOIC Junio 2017.pdf,2026-03-31
+2017-07-01,2017,7,76.1,https://www.andi.com.co/Uploads/Informe EOIC Julio 2017.pdf,2026-03-31
+2017-10-01,2017,10,52.5,http://www.andi.com.co/Uploads/Informe%20EOIC%20Octubre%202017.pdf,2026-03-31
+2017-12-01,2017,12,77.4,https://www.andi.com.co/Uploads/Informe EOIC Diciembre 2017.pdf,2026-03-31
+2018-03-01,2018,3,88.4,http://www.andi.com.co/Uploads/Informe%20EOIC%20Marzo%202018.pdf,2026-03-31
+2018-04-01,2018,4,76.1,http://www.andi.com.co/Uploads/Informe%20EOIC%20Abril%202018.pdf,2026-03-31
+2018-05-01,2018,5,81.1,http://www.andi.com.co/Uploads/Informe%20EOIC%20Mayo%202018_636680159234629089.pdf,2026-03-31
+2018-06-01,2018,6,44.4,https://www.andi.com.co/Uploads/Informe EOIC Junio 2018.pdf,2026-03-31
+2018-07-01,2018,7,72.4,http://www.andi.com.co/Uploads/Informe%20EOIC%20Julio%202018_636729681782382849.pdf,2026-03-31
+2018-08-01,2018,8,79.3,http://www.andi.com.co/Uploads/Informe%20EOIC%20Agosto%202018_636764064079331020.pdf,2026-03-31
+2018-09-01,2018,9,86.5,http://www.andi.com.co/Uploads/Informe%20EOIC%20Septiembre%202018_636790990337284381.pdf,2026-03-31
+2018-12-01,2018,12,79.8,http://www.andi.com.co/Uploads/Informe%20EOIC%20Diciembre%202018.pdf,2026-03-31
+2019-01-01,2019,1,46.4,http://www.andi.com.co/Uploads/Informe%20EOIC%20Enero%202019_636893588375199532.pdf,2026-03-31
+2019-02-01,2019,2,75.9,http://www.andi.com.co/Uploads/Informe%20EOIC%20Febrero%202019_636924717486173949.pdf,2026-03-31
+2019-03-01,2019,3,79.7,http://www.andi.com.co/Uploads/Informe%20EOIC%20Marzo%202019.pdf,2026-03-31
+2019-04-01,2019,4,43.9,http://www.andi.com.co/Uploads/Informe%20EOIC%20Abril%202019.pdf,2026-03-31
+2019-06-01,2019,6,78.4,http://www.andi.com.co/Uploads/Informe%20EOIC%20Junio%202019_637659361448294749.pdf,2026-03-31
+2019-07-01,2019,7,81.2,http://www.andi.com.co/Uploads/Informe%20EOIC%20Julio%202019.pdf,2026-03-31
+2019-08-01,2019,8,82.5,http://www.andi.com.co/Uploads/Informe%20EOIC%20Agosto%202019.pdf,2026-03-31
+2019-09-01,2019,9,81.3,http://www.andi.com.co/Uploads/Informe%20EOIC%20Septiembre%202019.pdf,2026-03-31
+2019-12-01,2019,12,80.5,http://www.andi.com.co/Uploads/Informe%20EOIC%20Diciembre%202019.pdf,2026-03-31
+2020-01-01,2020,1,80.1,http://www.andi.com.co/Uploads/Informe%20EOIC%20Enero%202020.pdf,2026-03-31
+2020-02-01,2020,2,78.6,http://www.andi.com.co/Uploads/Infograf%C3%ADa%20EOIC%20-%20Febrero%202020.pdf,2026-03-31
+2020-04-01,2020,4,56.4,http://www.andi.com.co/Uploads/Infograf%C3%ADa%20EOIC%20-%20Abril.pdf,2026-03-31
+2020-05-01,2020,5,67.7,http://www.andi.com.co/Uploads/Infograf%C3%ADa%20EOIC%20-%20Mayo.pdf,2026-03-31
+2020-06-01,2020,6,78.4,http://www.andi.com.co/Uploads/Informe%20EOIC%20Junio%202020_637375104154762971.pdf,2026-03-31
+2020-07-01,2020,7,77.7,http://www.andi.com.co/Uploads/Informe%20EOIC%20Julio%202020_637375104056325495.pdf,2026-03-31
+2020-08-01,2020,8,78.6,http://www.andi.com.co/Uploads/Informe%20EOIC%20Agosto%202020.pdf,2026-03-31
+2020-09-01,2020,9,56.2,http://www.andi.com.co/Uploads/Informe%20EOIC%20Septiembre%202020.pdf,2026-03-31
+2020-12-01,2020,12,80.3,http://www.andi.com.co/Uploads/Informe%20EOIC%20Diciembre%202020.pdf,2026-03-31
+2021-01-01,2021,1,79.5,http://www.andi.com.co/Uploads/Informe%20EOIC%20Enero%202021.pdf,2026-03-31
+2021-02-01,2021,2,80.9,http://www.andi.com.co/Uploads/Informe%20EOIC%20Febrero%202021.pdf,2026-03-31
+2021-03-01,2021,3,80.9,http://www.andi.com.co/Uploads/Informe%20EOIC%20Marzo%202021.pdf,2026-03-31
+2021-04-01,2021,4,78.7,http://www.andi.com.co/Uploads/Informe%20EOIC%20Abril%202021.pdf,2026-03-31
+2021-05-01,2021,5,63.2,http://www.andi.com.co/Uploads/Informe%20EOIC%20Mayo%202021.pdf,2026-03-31
+2021-06-01,2021,6,41.7,http://www.andi.com.co/Uploads/Informe%20EOIC%20Junio%202021.pdf,2026-03-31
+2021-08-01,2021,8,80.7,http://www.andi.com.co/Uploads/Informe%20EOIC%20Agosto%202021.pdf,2026-03-31
+2021-09-01,2021,9,54.0,http://www.andi.com.co/Uploads/Informe%20EOIC%20Septiembre%202021.pdf,2026-03-31
+2021-10-01,2021,10,79.6,http://www.andi.com.co/Uploads/Informe%20EOIC%20Octubre%202021.pdf,2026-03-31
+2021-12-01,2021,12,81.0,http://www.andi.com.co/Uploads/Informe%20EOIC%20Diciembre%202021.pdf,2026-03-31
+2022-01-01,2022,1,69.0,http://www.andi.com.co/Uploads/_EOIC%20F%20ENERO-2022.%20BMM%20gcb.pdf,2026-03-31
+2022-02-01,2022,2,79.3,http://www.andi.com.co/Uploads/Informe%20EOIC%20Febrero%202022.pdf,2026-03-31
+2022-03-01,2022,3,30.4,http://www.andi.com.co/Uploads/Informe%20EOIC%20Marzo%202022.pdf,2026-03-31
+2022-04-01,2022,4,79.3,https://www.andi.com.co/Uploads/Informe%20EOIC%20Abril%202022.pdf,2026-03-31
+2022-05-01,2022,5,68.0,https://www.andi.com.co/Uploads/Informe%20EOIC%20Mayo%202022.pdf,2026-03-31
+2022-06-01,2022,6,76.7,https://www.andi.com.co/Uploads/Informe%20EOIC%20Junio%202022_637998016249126191.pdf,2026-03-31
+2022-07-01,2022,7,81.1,https://www.andi.com.co/Uploads/Informe%20EOIC%20Julio%202022.pdf,2026-03-31
+2022-08-01,2022,8,81.3,https://www.andi.com.co/Uploads/Informe%20EOIC%20Agosto%202022.pdf,2026-03-31
+2022-09-01,2022,9,42.3,https://www.andi.com.co/Uploads/Informe%20EOIC%20Septiembre%202022.pdf,2026-03-31
+2022-12-01,2022,12,84.2,https://www.andi.com.co/Uploads/Informe%20EOIC%20Diciembre%202022_638138033766536338.pdf,2026-03-31
+2023-01-01,2023,1,77.1,https://www.andi.com.co/Uploads/Informe%20EOIC%20Enero%202023.pdf,2026-03-31
+2023-02-01,2023,2,77.3,https://www.andi.com.co/Uploads/Informe%20EOIC%20Febrero%202023.pdf,2026-03-31
+2023-03-01,2023,3,79.6,https://www.andi.com.co/Uploads/Informe%20EOIC%20Marzo%202023_638213111034881080.pdf,2026-03-31
+2023-04-01,2023,4,76.7,https://www.andi.com.co/Uploads/Informe%20EOIC%20Abril%202023.pdf,2026-03-31
+2023-05-01,2023,5,76.7,https://www.andi.com.co/Uploads/Informe%20EOIC%20Mayo%202023.pdf,2026-03-31
+2023-06-01,2023,6,78.1,https://www.andi.com.co/Uploads/Informe%20EOIC%20Junio%202023_638295270928031197.pdf,2026-03-31
+2023-07-01,2023,7,77.8,https://www.andi.com.co/Uploads/Informe%20EOIC%20Julio%202023_638309759350624670.pdf,2026-03-31
+2023-08-01,2023,8,79.0,https://www.andi.com.co/Uploads/Informe%20EOIC%20Agosto%202023.pdf,2026-03-31
+2023-09-01,2023,9,80.9,https://www.andi.com.co/Uploads/Informe%20EOIC%20Septiembre%202023.pdf,2026-03-31
+2023-12-01,2023,12,87.9,https://www.andi.com.co/Uploads/Informe%20EOIC%20Diciembre%202023.pdf,2026-03-31
+2024-01-01,2024,1,78.2,https://www.andi.com.co/Uploads/Informe%20EOIC%20Enero%202024.pdf,2026-03-31
+2024-02-01,2024,2,77.5,https://www.andi.com.co/Uploads/Informe%20EOIC%20Febrero%202024.pdf,2026-03-31
+2024-04-01,2024,4,87.2,https://www.andi.com.co/Uploads/Informe%20EOIC%20Abril%202024.pdf,2026-03-31
+2024-05-01,2024,5,76.8,https://www.andi.com.co/Uploads/Informe%20EOIC%20Mayo%202024.pdf,2026-03-31
+2024-07-01,2024,7,78.6,https://www.andi.com.co/Uploads/Informe%20EOIC%20Julio%202024.pdf,2026-03-31
+2024-08-01,2024,8,76.8,https://www.andi.com.co/Uploads/Informe%20EOIC%20Agosto%202024.pdf,2026-03-31
+2024-09-01,2024,9,78.9,https://www.andi.com.co/Uploads/Informe%20EOIC%20Septiembre%202024.pdf,2026-03-31
+2024-10-01,2024,10,75.8,https://www.andi.com.co/Uploads/Informe%20EOIC%20Octubre%202024.pdf,2026-03-31
+2024-12-01,2024,12,76.7,https://www.andi.com.co/Uploads/Informe%20EOIC%20Diciembre%202024.pdf,2026-03-31
+2025-01-01,2025,1,45.6,https://www.andi.com.co/Uploads/Informe%20EOIC%20Enero%202025%20MARZO%2028%20VF.pdf,2026-03-31
+2025-02-01,2025,2,76.9,https://www.andi.com.co/Uploads/Informe%20EOIC%20Febrero%202025.pdf,2026-03-31
+2025-04-01,2025,4,79.2,https://www.andi.com.co/Uploads/Informe%20EOIC%20Abril%202025_638869591383024863.pdf,2026-03-31
+2025-05-01,2025,5,77.7,https://www.andi.com.co/Uploads/Informe%20EOIC%20-%20ANDI%20-%20Mayo_638929178751992479.pdf,2026-03-31
+2025-07-01,2025,7,79.1,https://www.andi.com.co/Uploads/Informe%20EOIC%20Julio%202025.pdf,2026-03-31
+2025-08-01,2025,8,80.4,https://www.andi.com.co/Uploads/Informe%20EOIC%20Agosto%202025[1].pdf,2026-03-31
+2025-09-01,2025,9,76.9,https://www.andi.com.co/Uploads/Informe%20EOIC%20Septiembre%202025.pdf,2026-03-31
+2025-12-01,2025,12,77.5,https://www.andi.com.co/Uploads/Informe%20EOIC%20Diciembre%202025.pdf,2026-03-31

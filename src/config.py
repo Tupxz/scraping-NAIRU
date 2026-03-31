@@ -19,6 +19,8 @@ LOGS_DIR: Path = PROJECT_ROOT / "logs"
 RAW_DANE_DIR: Path = RAW_DIR / "dane"
 RAW_BANREP_DIR: Path = RAW_DIR / "banrep"
 RAW_FRED_DIR: Path = RAW_DIR / "fred"
+RAW_ANDI_DIR: Path = RAW_DIR / "andi"
+OUTPUTS_DIR: Path = PROJECT_ROOT / "outputs"
 
 
 # ── Configuración GEIH – Desempleo (DANE real) ───────────────────────
@@ -282,6 +284,102 @@ class BrentConfig:
 BRENT_CONFIG = BrentConfig()
 
 
+# ── Configuración ANDI – Capacidad Instalada (EOIC) ─────────────────
+
+@dataclass(frozen=True)
+class AndiConfig:
+    """Configuración para la Encuesta de Opinión Industrial Conjunta (EOIC).
+
+    La ANDI publica mensualmente los resultados de la EOIC como PDF
+    en su página de Desarrollo Económico y Competitividad.  El pipeline
+    hace scraping de la página, descarga los PDFs y extrae el porcentaje
+    de utilización de la capacidad instalada usando pdfplumber + fuzzy
+    matching de frases clave.
+
+    El indicador es un proxy de la brecha del producto, complementario
+    al desempleo para estimar presiones inflacionarias.
+    """
+
+    # ── URLs de scraping ──────────────────────────────────────────
+    base_url: str = "https://www.andi.com.co"
+    eoic_page_url: str = (
+        "https://www.andi.com.co/Home/Pagina/"
+        "3-desarrollo-economico-y-competitividad"
+    )
+
+    # ── Regexes de identificación de enlaces ──────────────────────
+    # Patrón obligatorio (sigla EOIC).
+    eoic_required_pattern: str = r"\beoic\b"
+    # Patrón amplio (nombre completo de la encuesta).
+    eoic_broad_pattern: str = (
+        r"encuesta\s+de\s+opini[oó]n\s+industrial\s+conjunta"
+    )
+    # Exclusiones (metodología, presentaciones, etc.).
+    eoic_exclude_pattern: str = (
+        r"metodolog[ií]a|presentaci[oó]n|resultados\s+generales|"
+        r"cuestionario|formulario|ficha\s+t[eé]cnica"
+    )
+
+    # ── Extracción de datos del PDF ───────────────────────────────
+    # Frases clave para localizar la utilización de capacidad instalada.
+    capacity_phrases: list[str] = field(default_factory=lambda: [
+        "utilizacion de la capacidad instalada",
+        "utilización de la capacidad instalada",
+        "uso de la capacidad instalada",
+        "capacidad instalada utilizada",
+        "porcentaje de utilizacion de capacidad",
+        "porcentaje de utilización de capacidad",
+        "capacidad instalada",
+        "utilizacion capacidad",
+        "utilización capacidad",
+        "uso capacidad instalada",
+        "utilizacion de capacidad",
+        "utilización de capacidad",
+        "aprovechamiento de la capacidad",
+        "uso de capacidad",
+    ])
+
+    # Regex para capturar porcentajes (e.g. "78.5%", "78,5 %").
+    percent_pattern: str = r"(\d{1,3}(?:[.,]\d{1,2})?)\s*%"
+
+    # Umbral de similitud fuzzy para estrategias de extracción.
+    text_similarity_threshold: float = 0.82
+    table_similarity_threshold: float = 0.75
+
+    # ── Archivos ──────────────────────────────────────────────────
+    cache_filename: str = "processed_cache.json"
+    processed_filename: str = "andi_capacidad_instalada.csv"
+    report_filename: str = "andi_report.txt"
+
+    # ── HTTP ──────────────────────────────────────────────────────
+    timeout: int = 60
+    max_retries: int = 3
+    http_headers: dict[str, str] = field(
+        default_factory=lambda: {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,"
+                "application/xml;q=0.9,*/*;q=0.8"
+            ),
+        }
+    )
+
+    # Mapeo de meses en español → número.
+    month_map: dict[str, int] = field(default_factory=lambda: {
+        "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
+        "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
+        "septiembre": 9, "octubre": 10, "noviembre": 11,
+        "diciembre": 12,
+    })
+
+
+ANDI_CONFIG = AndiConfig()
+
+
 # ── Columnas procesadas por dataset ───────────────────────────────────
 
 PROCESSED_COLUMNS: list[str] = [
@@ -335,9 +433,23 @@ BRENT_PROCESSED_COLUMNS: list[str] = [
     "download_date",
 ]
 
+ANDI_PROCESSED_COLUMNS: list[str] = [
+    "date",
+    "year",
+    "month",
+    "capacity_utilization",
+    "source",
+    "download_date",
+]
+
 # Brent: rangos razonables (USD/barril)
 BRENT_PRICE_MIN: float = 0.01   # Precio > 0 (incluye colapso 2020)
 BRENT_PRICE_MAX: float = 200.0  # Máximo defensivo (pico histórico ~147)
+
+# ANDI: rangos razonables (porcentaje de utilización de capacidad instalada)
+CAPACITY_UTILIZATION_MIN: float = 30.0   # Mínimo plausible (crisis profunda)
+CAPACITY_UTILIZATION_MAX: float = 100.0  # Máximo teórico
+CAPACITY_UTILIZATION_MAX_CHANGE: float = 20.0  # Cambio mensual máximo (pp)
 
 # ── Logging ───────────────────────────────────────────────────────────
 LOG_FORMAT: str = "%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s"

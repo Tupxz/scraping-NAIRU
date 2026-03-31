@@ -1,0 +1,10 @@
+# Core scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0          # faster BS4 parser
+
+# PDF extraction
+pdfplumber>=0.10.3
+
+# Optional: JavaScript-rendered pages (install separately if needed)
+# playwright>=1.43.0

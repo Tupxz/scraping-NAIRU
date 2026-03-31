@@ -11,10 +11,14 @@ import logging
 import pandas as pd
 
 from src.config import (
+    ANDI_PROCESSED_COLUMNS,
     BANREP_PROCESSED_COLUMNS,
     BRENT_PRICE_MAX,
     BRENT_PRICE_MIN,
     BRENT_PROCESSED_COLUMNS,
+    CAPACITY_UTILIZATION_MAX,
+    CAPACITY_UTILIZATION_MAX_CHANGE,
+    CAPACITY_UTILIZATION_MIN,
     INFLATION_GOAL_MAX,
     INFLATION_GOAL_MIN,
     INFLATION_RATE_MAX,
@@ -437,4 +441,91 @@ def run_brent_checks(df: pd.DataFrame) -> bool:
     check_date_continuity(df)
 
     logger.info("─── Todas las validaciones Brent pasaron ✓ ───")
+    return True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Validaciones de calidad para ANDI EOIC (Capacidad Instalada)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def check_andi_columns(df: pd.DataFrame) -> None:
+    """Verifica columnas esperadas del dataset ANDI."""
+    expected = set(ANDI_PROCESSED_COLUMNS)
+    actual = set(df.columns)
+    missing = expected - actual
+    if missing:
+        raise QualityCheckError(f"Columnas ANDI faltantes: {missing}")
+    logger.info("✓ Validación de columnas ANDI: OK")
+
+
+def check_capacity_utilization_range(df: pd.DataFrame) -> None:
+    """Verifica que la utilización de capacidad esté en rango razonable."""
+    vals = df["capacity_utilization"].dropna()
+    out_of_range = vals[
+        (vals < CAPACITY_UTILIZATION_MIN) | (vals > CAPACITY_UTILIZATION_MAX)
+    ]
+    if not out_of_range.empty:
+        raise QualityCheckError(
+            f"Valores de capacity_utilization fuera de rango "
+            f"[{CAPACITY_UTILIZATION_MIN}, {CAPACITY_UTILIZATION_MAX}]: "
+            f"{out_of_range.values[:5]}..."
+        )
+    logger.info(
+        "✓ Validación de rango capacidad [%.1f, %.1f]: OK",
+        CAPACITY_UTILIZATION_MIN, CAPACITY_UTILIZATION_MAX,
+    )
+
+
+def check_capacity_monthly_change(df: pd.DataFrame) -> None:
+    """Verifica que no haya cambios mensuales mayores a un umbral.
+
+    Alerta (warning) si el cambio mensual supera
+    ``CAPACITY_UTILIZATION_MAX_CHANGE`` pp.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame ANDI procesado y ordenado por fecha.
+    """
+    df_sorted = df.sort_values("date").reset_index(drop=True)
+    changes = df_sorted["capacity_utilization"].diff().abs()
+    large_changes = changes[changes > CAPACITY_UTILIZATION_MAX_CHANGE]
+
+    if not large_changes.empty:
+        logger.warning(
+            "⚠ Se detectaron %d cambios mensuales de capacidad > %.0f pp",
+            len(large_changes), CAPACITY_UTILIZATION_MAX_CHANGE,
+        )
+    else:
+        logger.info(
+            "✓ Validación de cambio mensual (max %.0f pp): OK",
+            CAPACITY_UTILIZATION_MAX_CHANGE,
+        )
+
+
+def run_andi_checks(df: pd.DataFrame) -> bool:
+    """Ejecuta todas las validaciones de calidad para ANDI EOIC.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame ANDI procesado.
+
+    Returns
+    -------
+    bool
+        True si todas las validaciones pasan.
+    """
+    logger.info("─── Validaciones de calidad ANDI ───")
+    logger.info("Dataset: %d filas × %d columnas", *df.shape)
+
+    check_andi_columns(df)
+    check_no_nulls_generic(df, ["date", "capacity_utilization", "year", "month"])
+    check_capacity_utilization_range(df)
+    check_no_duplicates(df)
+    check_date_continuity(df)
+    check_capacity_monthly_change(df)
+
+    logger.info("─── Todas las validaciones ANDI pasaron ✓ ───")
     return True

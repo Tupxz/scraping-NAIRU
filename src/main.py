@@ -6,6 +6,8 @@ Uso:
     python -m src.main --ipc          # Solo IPC (DANE real)
     python -m src.main --banrep       # Solo inflación (BANREP/SUAMECA)
     python -m src.main --brent        # Solo Brent (FRED/EIA)
+    python -m src.main --andi         # Solo ANDI EOIC (incremental)
+    python -m src.main --andi-backfill # ANDI EOIC (backfill completo)
     python -m src.main --all          # Todos los pipelines
 """
 
@@ -24,6 +26,8 @@ def run_pipeline(
     run_ipc: bool = False,
     run_banrep: bool = False,
     run_brent: bool = False,
+    run_andi: bool = False,
+    andi_backfill: bool = False,
 ) -> None:
     """Ejecuta los pipelines seleccionados."""
     logger = setup_logging()
@@ -52,6 +56,10 @@ def run_pipeline(
         if run_brent:
             from src.pipelines import run_brent as brent_pipeline
             brent_pipeline.run()
+
+        if run_andi:
+            from src.pipelines import run_andi as andi_pipeline
+            andi_pipeline.run(backfill=andi_backfill)
 
         elapsed = time.time() - start_time
         logger.info("=" * 60)
@@ -86,26 +94,49 @@ def main() -> None:
         help="Ejecutar solo el pipeline de Brent (FRED/EIA)",
     )
     parser.add_argument(
+        "--andi", action="store_true",
+        help="Ejecutar solo el pipeline ANDI EOIC (incremental)",
+    )
+    parser.add_argument(
+        "--andi-backfill", action="store_true",
+        help="Ejecutar pipeline ANDI EOIC en modo backfill (todos los PDFs)",
+    )
+    parser.add_argument(
         "--all", action="store_true",
         help="Ejecutar todos los pipelines",
     )
     args = parser.parse_args()
 
+    # --all activa todos los pipelines.
     if args.all:
         run_pipeline(
             run_unemployment=True, run_ipc=True,
             run_banrep=True, run_brent=True,
+            run_andi=True,
         )
-    elif args.ipc:
-        run_pipeline(run_unemployment=False, run_ipc=True)
-    elif args.unemployment:
-        run_pipeline(run_unemployment=True, run_ipc=False)
-    elif args.banrep:
-        run_pipeline(run_unemployment=False, run_ipc=False, run_banrep=True)
-    elif args.brent:
-        run_pipeline(run_unemployment=False, run_ipc=False, run_brent=True)
-    else:
-        run_pipeline(run_unemployment=True, run_ipc=False)
+        return
+
+    # Si se pasa --andi-backfill, implica --andi con backfill.
+    use_andi = args.andi or args.andi_backfill
+
+    # Si no se pasa ningún flag, ejecutar desempleo por defecto.
+    any_selected = (
+        args.unemployment or args.ipc or args.banrep
+        or args.brent or use_andi
+    )
+    if not any_selected:
+        run_pipeline(run_unemployment=True)
+        return
+
+    # Se pueden combinar flags libremente.
+    run_pipeline(
+        run_unemployment=args.unemployment,
+        run_ipc=args.ipc,
+        run_banrep=args.banrep,
+        run_brent=args.brent,
+        run_andi=use_andi,
+        andi_backfill=args.andi_backfill,
+    )
 
 
 if __name__ == "__main__":

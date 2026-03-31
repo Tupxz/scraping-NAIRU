@@ -2,13 +2,23 @@
 *.DS_Store
 */.DS_Store
 
-# Data pipeline outputs (reproducibles via pipeline)
-#data/raw/**/*.csv
-#data/raw/**/*.xlsx
-#data/raw/**/*.html
-#data/interim/**/*.csv
-#data/processed/**/*.csv
+# Data pipeline — archivos crudos (pesados, reproducibles via pipeline)
+data/raw/**/*.csv
+data/raw/**/*.xlsx
+data/raw/**/*.html
+data/raw/**/*.json
+data/raw/**/*.pdf
 !data/**/.gitkeep
+
+# ANDI agent (código legacy, integrado en src/sources/andi/)
+andi_agent/data/
+andi_agent/outputs/
+andi_agent/logs/
+andi_agent/.venv/
+andi_agent/__pycache__/
+
+# Pipeline outputs / reportes
+outputs/
 
 # Temporary inspection scripts
 scripts/
@@ -201,7 +211,7 @@ cython_debug/
 #  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
 #  and can be added to the global gitignore or merged into this file. However, if you prefer, 
 #  you could uncomment the following to ignore the entire vscode folder
-# .vscode/
+.vscode/
 
 # Ruff stuff:
 .ruff_cache/
