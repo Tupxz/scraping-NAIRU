@@ -10,6 +10,7 @@ from src.pipelines import (
     run_banrep_tes,
     run_brent,
     run_ipc,
+    run_merge,
     run_unemployment,
 )
 
@@ -17,10 +18,11 @@ logger = logging.getLogger("nairu_pipeline")
 
 
 def run() -> None:
-    """Ejecuta desempleo + IPC + inflación BANREP + TES + Brent + ANDI secuencialmente."""
+    """Ejecuta todos los pipelines + merge secuencialmente."""
     run_unemployment.run()
     run_ipc.run()
     run_banrep_inflation.run()
     run_banrep_tes.run()
     run_brent.run()
     run_andi.run()
+    run_merge.run()

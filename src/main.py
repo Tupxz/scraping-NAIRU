@@ -9,7 +9,8 @@ Uso:
     python -m src.main --brent        # Solo Brent (FRED/EIA)
     python -m src.main --andi         # Solo ANDI EOIC (incremental)
     python -m src.main --andi-backfill # ANDI EOIC (backfill completo)
-    python -m src.main --all          # Todos los pipelines
+    python -m src.main --merge        # Solo merge (unir bases existentes)
+    python -m src.main --all          # Todos los pipelines + merge
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ def run_pipeline(
     run_brent: bool = False,
     run_andi: bool = False,
     andi_backfill: bool = False,
+    run_merge: bool = False,
 ) -> None:
     """Ejecuta los pipelines seleccionados."""
     logger = setup_logging()
@@ -66,6 +68,10 @@ def run_pipeline(
         if run_andi:
             from src.pipelines import run_andi as andi_pipeline
             andi_pipeline.run(backfill=andi_backfill)
+
+        if run_merge:
+            from src.pipelines import run_merge as merge_pipeline
+            merge_pipeline.run()
 
         elapsed = time.time() - start_time
         logger.info("=" * 60)
@@ -112,17 +118,22 @@ def main() -> None:
         help="Ejecutar pipeline ANDI EOIC en modo backfill (todos los PDFs)",
     )
     parser.add_argument(
+        "--merge", action="store_true",
+        help="Unir todas las bases procesadas en nairu_dataset.csv",
+    )
+    parser.add_argument(
         "--all", action="store_true",
-        help="Ejecutar todos los pipelines",
+        help="Ejecutar todos los pipelines + merge",
     )
     args = parser.parse_args()
 
-    # --all activa todos los pipelines.
+    # --all activa todos los pipelines + merge.
     if args.all:
         run_pipeline(
             run_unemployment=True, run_ipc=True,
             run_banrep=True, run_tes=True,
             run_brent=True, run_andi=True,
+            run_merge=True,
         )
         return
 
@@ -132,7 +143,7 @@ def main() -> None:
     # Si no se pasa ningún flag, ejecutar desempleo por defecto.
     any_selected = (
         args.unemployment or args.ipc or args.banrep
-        or args.tes or args.brent or use_andi
+        or args.tes or args.brent or use_andi or args.merge
     )
     if not any_selected:
         run_pipeline(run_unemployment=True)
@@ -147,6 +158,7 @@ def main() -> None:
         run_brent=args.brent,
         run_andi=use_andi,
         andi_backfill=args.andi_backfill,
+        run_merge=args.merge,
     )
 
 
