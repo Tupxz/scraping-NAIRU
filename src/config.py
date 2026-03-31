@@ -241,6 +241,76 @@ class BanrepInflationConfig:
 BANREP_INFLATION_CONFIG = BanrepInflationConfig()
 
 
+# ── Configuración BANREP – TES Cero Cupón (SUAMECA) ─────────────────
+
+@dataclass(frozen=True)
+class BanrepTESConfig:
+    """Configuración para las series de TES del Banco de la República.
+
+    La plataforma SUAMECA expone las tasas de interés Cero Cupón de
+    Títulos de Tesorería (TES) tanto en pesos como en UVR.  El pipeline
+    descarga datos **diarios** (tipoDato=1) y los agrega a frecuencia
+    mensual tomando el **último valor disponible** de cada mes (proxy
+    de cierre de mes).
+
+    Series:
+    - **TES_UVR_1Y**: Tasa Cero Cupón TES UVR — 1 año (idSerie 15275)
+    - **TES_PESOS_1Y**: Tasa Cero Cupón TES pesos — 1 año (idSerie 15272)
+    """
+
+    # ── URLs (misma plataforma SUAMECA) ──────────────────────────
+    base_url: str = "https://suameca.banrep.gov.co"
+    warmup_path: str = (
+        "/estadisticas-economicas/informacionSerie"
+        "/100001/inflacion_y_meta"
+    )
+    endpoint_path: str = (
+        "/estadisticas-economicas-back/rest"
+        "/estadisticaEconomicaRestService"
+        "/consultaInformacionSerieXTipoDato"
+    )
+
+    # ── Mapa de series ────────────────────────────────────────────
+    # Cada entrada: nombre_columna → idSerie en SUAMECA.
+    series_map: dict[str, int] = field(default_factory=lambda: {
+        "TES_UVR_1Y": 15275,
+        "TES_PESOS_1Y": 15272,
+    })
+
+    # Tipo de dato: 1 = diario (se agrega a mensual en el pipeline).
+    tipo_dato: int = 1
+
+    # Cantidad de observaciones diarias a solicitar.
+    cant_datos: int = 8000
+
+    # ── Archivos ──────────────────────────────────────────────────
+    raw_json_filename: str = "banrep_tes_raw.json"
+    processed_filename: str = "tes_banrep_colombia.csv"
+
+    # ── HTTP ──────────────────────────────────────────────────────
+    timeout: int = 120
+    http_headers: dict[str, str] = field(
+        default_factory=lambda: {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+        }
+    )
+
+    @property
+    def warmup_url(self) -> str:
+        return self.base_url + self.warmup_path
+
+    @property
+    def endpoint_url(self) -> str:
+        return self.base_url + self.endpoint_path
+
+
+BANREP_TES_CONFIG = BanrepTESConfig()
+
+
 # ── Configuración Brent (FRED / EIA) ────────────────────────────────
 
 @dataclass(frozen=True)
@@ -423,6 +493,20 @@ BANREP_PROCESSED_COLUMNS: list[str] = [
     "source",
     "download_date",
 ]
+
+BANREP_TES_PROCESSED_COLUMNS: list[str] = [
+    "date",
+    "year",
+    "month",
+    "TES_UVR_1Y",
+    "TES_PESOS_1Y",
+    "source",
+    "download_date",
+]
+
+# BANREP TES: rangos razonables (tasa de interés, porcentaje)
+TES_RATE_MIN: float = -5.0     # Tasa real negativa extrema (UVR)
+TES_RATE_MAX: float = 40.0     # Tasa máxima defensiva (crisis años 90)
 
 BRENT_PROCESSED_COLUMNS: list[str] = [
     "date",

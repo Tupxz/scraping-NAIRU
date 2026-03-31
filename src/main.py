@@ -5,6 +5,7 @@ Uso:
     python -m src.main --unemployment # Solo desempleo
     python -m src.main --ipc          # Solo IPC (DANE real)
     python -m src.main --banrep       # Solo inflación (BANREP/SUAMECA)
+    python -m src.main --tes          # Solo TES Cero Cupón (BANREP/SUAMECA)
     python -m src.main --brent        # Solo Brent (FRED/EIA)
     python -m src.main --andi         # Solo ANDI EOIC (incremental)
     python -m src.main --andi-backfill # ANDI EOIC (backfill completo)
@@ -25,6 +26,7 @@ def run_pipeline(
     run_unemployment: bool = True,
     run_ipc: bool = False,
     run_banrep: bool = False,
+    run_tes: bool = False,
     run_brent: bool = False,
     run_andi: bool = False,
     andi_backfill: bool = False,
@@ -52,6 +54,10 @@ def run_pipeline(
         if run_banrep:
             from src.pipelines import run_banrep_inflation as banrep_pipeline
             banrep_pipeline.run()
+
+        if run_tes:
+            from src.pipelines import run_banrep_tes as tes_pipeline
+            tes_pipeline.run()
 
         if run_brent:
             from src.pipelines import run_brent as brent_pipeline
@@ -90,6 +96,10 @@ def main() -> None:
         help="Ejecutar solo el pipeline de inflación (BANREP/SUAMECA)",
     )
     parser.add_argument(
+        "--tes", action="store_true",
+        help="Ejecutar solo el pipeline de TES Cero Cupón (BANREP/SUAMECA)",
+    )
+    parser.add_argument(
         "--brent", action="store_true",
         help="Ejecutar solo el pipeline de Brent (FRED/EIA)",
     )
@@ -111,8 +121,8 @@ def main() -> None:
     if args.all:
         run_pipeline(
             run_unemployment=True, run_ipc=True,
-            run_banrep=True, run_brent=True,
-            run_andi=True,
+            run_banrep=True, run_tes=True,
+            run_brent=True, run_andi=True,
         )
         return
 
@@ -122,7 +132,7 @@ def main() -> None:
     # Si no se pasa ningún flag, ejecutar desempleo por defecto.
     any_selected = (
         args.unemployment or args.ipc or args.banrep
-        or args.brent or use_andi
+        or args.tes or args.brent or use_andi
     )
     if not any_selected:
         run_pipeline(run_unemployment=True)
@@ -133,6 +143,7 @@ def main() -> None:
         run_unemployment=args.unemployment,
         run_ipc=args.ipc,
         run_banrep=args.banrep,
+        run_tes=args.tes,
         run_brent=args.brent,
         run_andi=use_andi,
         andi_backfill=args.andi_backfill,

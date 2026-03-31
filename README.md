@@ -39,7 +39,8 @@ vacío.
 | Pipeline de inflación (BANREP – SUAMECA)                 | Funcional         |
 | Pipeline de Brent (FRED / EIA)                             | Funcional         |
 | Pipeline ANDI EOIC (Capacidad Instalada)                   | Funcional         |
-| Validaciones de calidad automatizadas                      | 203 tests pasando |
+| Pipeline TES Cero Cupón (BANREP – SUAMECA)               | Funcional         |
+| Validaciones de calidad automatizadas                      | 243 tests pasando |
 | Base mensual unificada (desempleo + IPC + inflación)      | Próximo paso     |
 | Estimación econométrica de la NAIRU                      | Por implementar   |
 
@@ -50,6 +51,7 @@ vacío.
 - **Inflación BANREP:** 858 observaciones mensuales (julio 1955 – diciembre 2026) con meta de inflación, inflación total e inflación sin alimentos ni regulados
 - **Precio del Brent:** 302 observaciones mensuales (enero 2001 – febrero 2026) en USD/barril
 - **Capacidad instalada (ANDI EOIC):** Porcentaje de utilización de la capacidad instalada industrial (mensual)
+- **Tasas TES Cero Cupón:** Tasas de interés a 1 año (pesos y UVR) agregadas a frecuencia mensual (último valor del mes)
 
 ---
 
@@ -114,6 +116,21 @@ PDFs de la EOIC, los descarga y extrae el porcentaje de utilización de la
 capacidad instalada usando 3 estrategias de extracción (fuzzy text, tablas,
 regex).  Soporta modos incremental (último PDF) y backfill (todos).
 
+### 6. Tasas TES Cero Cupón — Banco de la República (SUAMECA)
+
+| Campo          | Detalle                                                                                                              |
+| -------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Fuente         | Plataforma SUAMECA del Banco de la República                                                                        |
+| Indicadores    | TES Cero Cupón pesos — 1 año (TES\_PESOS\_1Y), TES Cero Cupón UVR — 1 año (TES\_UVR\_1Y)                          |
+| Periodicidad   | Diaria (agregada a mensual: último valor del mes)                                                                   |
+| Formato origen | API REST JSON (epoch\_ms + valor), tipoDato=1 (diario)                                                              |
+| Página        | [suameca.banrep.gov.co](https://suameca.banrep.gov.co/estadisticas-economicas/informacionSerie/100001/inflacion_y_meta) |
+
+El pipeline TES descarga datos diarios de la curva Cero Cupón de TES
+(pesos y UVR, plazo 1 año) desde SUAMECA y los agrega a frecuencia
+mensual tomando el **último valor disponible** de cada mes como proxy
+de cierre de mes.
+
 Ambos pipelines del DANE realizan **scraping automatizado** de la página,
 detectan el anexo Excel más reciente, lo descargan, parsean la estructura
 pivoteada y producen un CSV en formato largo estandarizado.  El pipeline
@@ -136,6 +153,7 @@ scraping-NAIRU/
 │   │   ├── run_unemployment.py   # Orquestación: desempleo
 │   │   ├── run_ipc.py            # Orquestación: IPC
 │   │   ├── run_banrep_inflation.py # Orquestación: inflación BANREP
+│   │   ├── run_banrep_tes.py     # Orquestación: TES Cero Cupón BANREP
 │   │   ├── run_brent.py          # Orquestación: Brent (FRED/EIA)
 │   │   ├── run_andi.py           # Orquestación: ANDI EOIC (capacidad instalada)
 │   │   └── run_all.py            # Ejecuta todos los pipelines
@@ -144,7 +162,8 @@ scraping-NAIRU/
 │       │   ├── unemployment.py   # Scraping + parsing GEIH desestacionalizado
 │       │   └── ipc.py            # Scraping + parsing IPC
 │       ├── banrep/
-│       │   └── inflation.py      # API REST SUAMECA: inflación + meta
+│       │   ├── inflation.py      # API REST SUAMECA: inflación + meta
+│       │   └── tes.py            # API REST SUAMECA: TES Cero Cupón (diario → mensual)
 │       ├── fred/
 │       │   └── brent.py          # CSV FRED: precio Brent
 │       └── andi/
@@ -153,6 +172,7 @@ scraping-NAIRU/
 │   ├── test_geih.py              # 36 tests — scraping, parsing y calidad GEIH
 │   ├── test_ipc.py               # 23 tests — scraping, parsing y calidad IPC
 │   ├── test_banrep_inflation.py  # 29 tests — API BANREP, parsing y calidad
+│   ├── test_banrep_tes.py       # 40 tests — TES diario→mensual, parsing y calidad
 │   ├── test_brent.py             # 38 tests — CSV FRED, agregación y calidad
 │   ├── test_andi.py              # 63 tests — scraping, PDF parsing y calidad ANDI
 │   └── test_pipeline.py          # 14 tests — estructura, calidad e I/O
@@ -173,7 +193,7 @@ scraping-NAIRU/
 
 - **Separación de capas:** scraping → parsing → validación → guardado.
 - **Configuración declarativa:** cada fuente se describe con un dataclass
-  (`GEIHConfig`, `IPCConfig`, `BanrepInflationConfig`, `BrentConfig`, `AndiConfig`) que
+  (`GEIHConfig`, `IPCConfig`, `BanrepInflationConfig`, `BanrepTESConfig`, `BrentConfig`, `AndiConfig`) que
   centraliza URLs, patrones y parámetros de parsing.
 - **Detección robusta:** los parsers del DANE no asumen posiciones fijas de
   filas/columnas; usan heurísticas (regex, conteo de años, búsqueda de
@@ -232,6 +252,7 @@ python -m src.main --all
 python -m src.main --unemployment          # Desempleo (DANE GEIH)
 python -m src.main --ipc                   # IPC (DANE)
 python -m src.main --banrep                # Inflación (BANREP/SUAMECA)
+python -m src.main --tes                   # TES Cero Cupón (BANREP/SUAMECA)
 python -m src.main --brent                 # Brent (FRED/EIA)
 python -m src.main --andi                  # ANDI EOIC — último mes disponible
 python -m src.main --andi-backfill         # ANDI EOIC — todos los PDFs históricos
@@ -265,6 +286,7 @@ Después de ejecutar `python -m src.main --all`, el pipeline genera:
 | `data/processed/inflation_banrep_colombia.csv` | Inflación y meta del Banco de la Rep.   | `date, year, month, Inf_Goal, Inf_Rate, Core_Inf, source, download_date` |
 | `data/processed/brent_colombia.csv`            | Precio mensual del Brent (USD/barril)    | `date, year, month, brent_usd_per_barrel, source, download_date`         |
 | `data/processed/andi_capacidad_instalada.csv`  | Capacidad instalada industrial (EOIC)    | `date, year, month, capacity_utilization, source, download_date`         |
+| `data/processed/tes_banrep_colombia.csv`       | Tasas TES Cero Cupón (pesos y UVR, 1Y) | `date, year, month, TES_UVR_1Y, TES_PESOS_1Y, source, download_date`    |
 
 Archivos intermedios (en `data/raw/`, ignorados por Git):
 
@@ -272,7 +294,8 @@ Archivos intermedios (en `data/raw/`, ignorados por Git):
 - `dane/geih_page.html` — Snapshot del HTML para auditoría
 - `dane/ipc_indices_raw.xlsx` — Anexo IPC original
 - `dane/ipc_page.html` — Snapshot del HTML
-- `banrep/banrep_inflation_raw.json` — Respuestas crudas del API SUAMECA
+- `banrep/banrep_inflation_raw.json` — Respuestas crudas del API SUAMECA (inflación)
+- `banrep/banrep_tes_raw.json` — Respuestas crudas del API SUAMECA (TES diario)
 - `fred/brent_raw.csv` — CSV crudo descargado de FRED
 - `andi/*.pdf` — PDFs descargados de la EOIC
 - `andi/processed_cache.json` — Cache de PDFs procesados
@@ -306,9 +329,10 @@ Versiones exactas en [`requirements.txt`](requirements.txt).
 - [X] Pipeline de inflación conectado al API SUAMECA de BANREP (Inf_Goal, Inf_Rate, Core_Inf)
 - [X] Pipeline de Brent conectado a FRED/EIA (POILBREUSDM)
 - [X] Pipeline ANDI EOIC — Capacidad instalada industrial (scraping PDF + pdfplumber)
-- [X] Validaciones de calidad automatizadas (203 tests)
+- [X] Pipeline TES Cero Cupón (BANREP/SUAMECA) — tasas pesos y UVR a 1 año (diario → mensual)
+- [X] Validaciones de calidad automatizadas (243 tests)
 - [X] Arquitectura modular (`sources/dane/` + `sources/banrep/` + `sources/fred/` + `sources/andi/` + `pipelines/`)
-- [X] `series_map` configurable para extraer múltiples series (TGP, TO, etc.)
+- [X] `series_map` configurable para extraer múltiples series (TGP, TO, TES, etc.)
 - [ ] Calcular serie de inflación interanual a partir del IPC
 - [ ] Construir base mensual unificada (desempleo + IPC + inflación)
 - [ ] Análisis exploratorio conjunto (notebook)
@@ -323,7 +347,7 @@ Versiones exactas en [`requirements.txt`](requirements.txt).
 - **Reproducibilidad:** los datos crudos se descargan desde la fuente original
   en cada ejecución; los archivos procesados son determinísticos dado el mismo
   insumo.
-- **Tests offline:** los 203 tests usan fixtures sintéticas que simulan la
+- **Tests offline:** los 243 tests usan fixtures sintéticas que simulan la
   estructura real de los datos del DANE, BANREP, FRED y ANDI, sin requerir conexión a internet.
 - **Validaciones de calidad:** cada pipeline verifica columnas, nulos,
   duplicados, rangos y continuidad temporal antes de guardar.

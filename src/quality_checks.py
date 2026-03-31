@@ -13,6 +13,7 @@ import pandas as pd
 from src.config import (
     ANDI_PROCESSED_COLUMNS,
     BANREP_PROCESSED_COLUMNS,
+    BANREP_TES_PROCESSED_COLUMNS,
     BRENT_PRICE_MAX,
     BRENT_PRICE_MIN,
     BRENT_PROCESSED_COLUMNS,
@@ -27,6 +28,8 @@ from src.config import (
     IPC_INDEX_MIN,
     IPC_PROCESSED_COLUMNS,
     PROCESSED_COLUMNS,
+    TES_RATE_MAX,
+    TES_RATE_MIN,
     UNEMPLOYMENT_RATE_MAX,
     UNEMPLOYMENT_RATE_MIN,
 )
@@ -528,4 +531,66 @@ def run_andi_checks(df: pd.DataFrame) -> bool:
     check_capacity_monthly_change(df)
 
     logger.info("─── Todas las validaciones ANDI pasaron ✓ ───")
+    return True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Validaciones de calidad para BANREP TES (Cero Cupón)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def check_tes_columns(df: pd.DataFrame) -> None:
+    """Verifica columnas esperadas del dataset BANREP TES."""
+    expected = set(BANREP_TES_PROCESSED_COLUMNS)
+    actual = set(df.columns)
+    missing = expected - actual
+    if missing:
+        raise QualityCheckError(f"Columnas TES faltantes: {missing}")
+    logger.info("✓ Validación de columnas TES: OK")
+
+
+def check_tes_rate_range(df: pd.DataFrame) -> None:
+    """Verifica que las tasas TES estén en rango razonable."""
+    for col in ("TES_UVR_1Y", "TES_PESOS_1Y"):
+        if col not in df.columns:
+            continue
+        vals = df[col].dropna()
+        out_of_range = vals[
+            (vals < TES_RATE_MIN) | (vals > TES_RATE_MAX)
+        ]
+        if not out_of_range.empty:
+            raise QualityCheckError(
+                f"Valores de {col} fuera de rango "
+                f"[{TES_RATE_MIN}, {TES_RATE_MAX}]: "
+                f"{out_of_range.values[:5]}..."
+            )
+    logger.info(
+        "✓ Validación de rango TES [%.1f, %.1f]: OK",
+        TES_RATE_MIN, TES_RATE_MAX,
+    )
+
+
+def run_banrep_tes_checks(df: pd.DataFrame) -> bool:
+    """Ejecuta todas las validaciones de calidad para BANREP TES.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame TES procesado.
+
+    Returns
+    -------
+    bool
+        True si todas las validaciones pasan.
+    """
+    logger.info("─── Validaciones de calidad BANREP TES ───")
+    logger.info("Dataset: %d filas × %d columnas", *df.shape)
+
+    check_tes_columns(df)
+    check_no_nulls_generic(df, ["date", "year", "month"])
+    check_tes_rate_range(df)
+    check_no_duplicates(df)
+    check_date_continuity(df)
+
+    logger.info("─── Todas las validaciones TES pasaron ✓ ───")
     return True
