@@ -6,6 +6,11 @@ beautifulsoup4>=4.12,<5.0   # Scraping de enlaces desde la página del DANE
 lxml>=5.0,<6.0              # Parser HTML para BeautifulSoup (ANDI)
 pdfplumber>=0.11,<1.0       # Extracción de texto y tablas de PDFs (ANDI EOIC)
 
+# ── Bot & automatización ──────────────────────────────────────────
+python-telegram-bot>=21.0,<22.0  # Bot de Telegram (asyncio)
+openai>=1.30,<2.0                # Cliente OpenAI (GPT-4o-mini)
+python-dotenv>=1.0,<2.0          # Carga de variables de entorno
+
 # ── Notebooks & visualización ─────────────────────────────────────
 numpy>=1.26,<2.0
 matplotlib>=3.8,<4.0
@@ -13,3 +18,4 @@ jupyter>=1.0
 
 # ── Testing & desarrollo ─────────────────────────────────────────
 pytest>=8.0,<9.0
+pytest-asyncio>=0.23,<1.0   # Tests async para el bot

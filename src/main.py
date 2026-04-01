@@ -1,16 +1,17 @@
 """Punto de entrada principal del pipeline NAIRU Colombia.
 
 Uso:
-    python -m src.main                # Solo desempleo (default)
-    python -m src.main --unemployment # Solo desempleo
-    python -m src.main --ipc          # Solo IPC (DANE real)
-    python -m src.main --banrep       # Solo inflación (BANREP/SUAMECA)
-    python -m src.main --tes          # Solo TES Cero Cupón (BANREP/SUAMECA)
-    python -m src.main --brent        # Solo Brent (FRED/EIA)
-    python -m src.main --andi         # Solo ANDI EOIC (incremental)
-    python -m src.main --andi-backfill # ANDI EOIC (backfill completo)
-    python -m src.main --merge        # Solo merge (unir bases existentes)
-    python -m src.main --all          # Todos los pipelines + merge
+    python -m src.main                  # Solo desempleo (default)
+    python -m src.main --unemployment   # Solo desempleo
+    python -m src.main --ipc            # Solo IPC (DANE real)
+    python -m src.main --banrep         # Solo inflación (BANREP/SUAMECA)
+    python -m src.main --tes            # Solo TES Cero Cupón (BANREP/SUAMECA)
+    python -m src.main --brent          # Solo Brent (FRED/EIA)
+    python -m src.main --andi           # Solo ANDI EOIC (incremental)
+    python -m src.main --andi-backfill  # ANDI EOIC (backfill completo)
+    python -m src.main --andi-reprocess # ANDI EOIC (reprocesar PDFs locales)
+    python -m src.main --merge          # Solo merge (unir bases existentes)
+    python -m src.main --all            # Todos los pipelines + merge
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ def run_pipeline(
     run_brent: bool = False,
     run_andi: bool = False,
     andi_backfill: bool = False,
+    andi_reprocess: bool = False,
     run_merge: bool = False,
 ) -> None:
     """Ejecuta los pipelines seleccionados."""
@@ -68,6 +70,10 @@ def run_pipeline(
         if run_andi:
             from src.pipelines import run_andi as andi_pipeline
             andi_pipeline.run(backfill=andi_backfill)
+
+        if andi_reprocess:
+            from src.sources.andi.eoic import reprocess_local_pdfs
+            reprocess_local_pdfs()
 
         if run_merge:
             from src.pipelines import run_merge as merge_pipeline
@@ -118,6 +124,10 @@ def main() -> None:
         help="Ejecutar pipeline ANDI EOIC en modo backfill (todos los PDFs)",
     )
     parser.add_argument(
+        "--andi-reprocess", action="store_true",
+        help="Reprocesar PDFs locales de ANDI que no están en el CSV",
+    )
+    parser.add_argument(
         "--merge", action="store_true",
         help="Unir todas las bases procesadas en nairu_dataset.csv",
     )
@@ -133,6 +143,7 @@ def main() -> None:
             run_unemployment=True, run_ipc=True,
             run_banrep=True, run_tes=True,
             run_brent=True, run_andi=True,
+            andi_reprocess=True,
             run_merge=True,
         )
         return
@@ -143,7 +154,8 @@ def main() -> None:
     # Si no se pasa ningún flag, ejecutar desempleo por defecto.
     any_selected = (
         args.unemployment or args.ipc or args.banrep
-        or args.tes or args.brent or use_andi or args.merge
+        or args.tes or args.brent or use_andi
+        or args.andi_reprocess or args.merge
     )
     if not any_selected:
         run_pipeline(run_unemployment=True)
@@ -158,6 +170,7 @@ def main() -> None:
         run_brent=args.brent,
         run_andi=use_andi,
         andi_backfill=args.andi_backfill,
+        andi_reprocess=args.andi_reprocess,
         run_merge=args.merge,
     )
 
