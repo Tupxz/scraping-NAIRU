@@ -20,6 +20,10 @@ from src.config import (
     CAPACITY_UTILIZATION_MAX,
     CAPACITY_UTILIZATION_MAX_CHANGE,
     CAPACITY_UTILIZATION_MIN,
+    CAPITAL_STOCK_MAX,
+    CAPITAL_STOCK_MIN,
+    HUMAN_CAPITAL_MAX,
+    HUMAN_CAPITAL_MIN,
     INFLATION_GOAL_MAX,
     INFLATION_GOAL_MIN,
     INFLATION_RATE_MAX,
@@ -27,9 +31,14 @@ from src.config import (
     IPC_INDEX_MAX,
     IPC_INDEX_MIN,
     IPC_PROCESSED_COLUMNS,
+    PET_MAX,
+    PET_MIN,
     PROCESSED_COLUMNS,
+    PWT_PROCESSED_COLUMNS,
     TES_RATE_MAX,
     TES_RATE_MIN,
+    TGP_MAX,
+    TGP_MIN,
     UNEMPLOYMENT_RATE_MAX,
     UNEMPLOYMENT_RATE_MIN,
 )
@@ -44,6 +53,10 @@ class QualityCheckError(Exception):
 def check_columns(df: pd.DataFrame) -> None:
     """Verifica que el DataFrame tenga las columnas esperadas.
 
+    Las columnas ``tgp_rate`` y ``pet_thousands`` son opcionales: pueden
+    no estar presentes si el Excel del DANE no las publicó.  Todas las
+    demás columnas de ``PROCESSED_COLUMNS`` son obligatorias.
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -52,12 +65,16 @@ def check_columns(df: pd.DataFrame) -> None:
     Raises
     ------
     QualityCheckError
-        Si faltan columnas o hay columnas inesperadas.
+        Si faltan columnas obligatorias o hay columnas inesperadas.
     """
+    OPTIONAL_COLUMNS: set[str] = {"tgp_rate", "pet_thousands"}
+
     expected = set(PROCESSED_COLUMNS)
     actual = set(df.columns)
 
-    missing = expected - actual
+    # Columnas obligatorias: las de PROCESSED_COLUMNS que no son opcionales
+    required = expected - OPTIONAL_COLUMNS
+    missing = required - actual
     extra = actual - expected
 
     if missing:
@@ -176,8 +193,65 @@ def check_date_continuity(df: pd.DataFrame) -> None:
         logger.info("✓ Validación de continuidad temporal: OK")
 
 
+def check_tgp_range(df: pd.DataFrame) -> None:
+    """Verifica que tgp_rate esté en un rango razonable.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame laboral GEIH procesado.
+
+    Raises
+    ------
+    QualityCheckError
+        Si hay valores fuera del rango ``[TGP_MIN, TGP_MAX]``.
+    """
+    vals = df["tgp_rate"].dropna()
+    out_of_range = vals[(vals < TGP_MIN) | (vals > TGP_MAX)]
+    if not out_of_range.empty:
+        raise QualityCheckError(
+            f"Valores de tgp_rate fuera de rango "
+            f"[{TGP_MIN}, {TGP_MAX}]: "
+            f"{out_of_range.values[:5]}..."
+        )
+    logger.info(
+        "✓ Validación de rango TGP [%.1f, %.1f]: OK",
+        TGP_MIN, TGP_MAX,
+    )
+
+
+def check_pet_range(df: pd.DataFrame) -> None:
+    """Verifica que pet_thousands esté en un rango razonable.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame laboral GEIH procesado.
+
+    Raises
+    ------
+    QualityCheckError
+        Si hay valores fuera del rango ``[PET_MIN, PET_MAX]``.
+    """
+    vals = df["pet_thousands"].dropna()
+    out_of_range = vals[(vals < PET_MIN) | (vals > PET_MAX)]
+    if not out_of_range.empty:
+        raise QualityCheckError(
+            f"Valores de pet_thousands fuera de rango "
+            f"[{PET_MIN}, {PET_MAX}]: "
+            f"{out_of_range.values[:5]}..."
+        )
+    logger.info(
+        "✓ Validación de rango PET [%.1f, %.1f]: OK",
+        PET_MIN, PET_MAX,
+    )
+
+
 def run_all_checks(df: pd.DataFrame) -> bool:
-    """Ejecuta todas las validaciones de calidad.
+    """Ejecuta todas las validaciones de calidad para el dataset laboral GEIH.
+
+    Además de las validaciones básicas (columnas, nulos, rango TD,
+    duplicados y continuidad), valida TGP y PET si están presentes.
 
     Parameters
     ----------
@@ -200,11 +274,37 @@ def run_all_checks(df: pd.DataFrame) -> bool:
     check_columns(df)
     check_no_nulls(df)
     check_unemployment_rate_range(df)
+
+    # Validaciones opcionales: solo si las columnas están presentes
+    if "tgp_rate" in df.columns:
+        check_tgp_range(df)
+    if "pet_thousands" in df.columns:
+        check_pet_range(df)
+
     check_no_duplicates(df)
     check_date_continuity(df)
 
     logger.info("─── Todas las validaciones pasaron ✓ ───")
     return True
+
+
+def run_labor_checks(df: pd.DataFrame) -> bool:
+    """Alias de ``run_all_checks`` para el dataset laboral GEIH.
+
+    Permite llamar ``run_labor_checks(df)`` desde pipelines que quieran
+    un nombre semántico más descriptivo que ``run_all_checks``.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame laboral GEIH procesado.
+
+    Returns
+    -------
+    bool
+        True si todas las validaciones pasan.
+    """
+    return run_all_checks(df)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -593,4 +693,142 @@ def run_banrep_tes_checks(df: pd.DataFrame) -> bool:
     check_date_continuity(df)
 
     logger.info("─── Todas las validaciones TES pasaron ✓ ───")
+    return True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Validaciones de calidad para PWT 10.01 (Stock de Capital / Capital Humano)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def check_pwt_columns(df: pd.DataFrame) -> None:
+    """Verifica columnas esperadas del dataset PWT."""
+    expected = set(PWT_PROCESSED_COLUMNS)
+    actual = set(df.columns)
+    missing = expected - actual
+    if missing:
+        raise QualityCheckError(f"Columnas PWT faltantes: {missing}")
+    logger.info("✓ Validación de columnas PWT: OK")
+
+
+def check_capital_stock_range(df: pd.DataFrame) -> None:
+    """Verifica que capital_stock_ck esté en un rango razonable.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame PWT procesado.
+
+    Raises
+    ------
+    QualityCheckError
+        Si hay valores fuera del rango ``[CAPITAL_STOCK_MIN, CAPITAL_STOCK_MAX]``.
+    """
+    vals = df["capital_stock_ck"].dropna()
+    out_of_range = vals[
+        (vals < CAPITAL_STOCK_MIN) | (vals > CAPITAL_STOCK_MAX)
+    ]
+    if not out_of_range.empty:
+        raise QualityCheckError(
+            f"Valores de capital_stock_ck fuera de rango "
+            f"[{CAPITAL_STOCK_MIN}, {CAPITAL_STOCK_MAX}]: "
+            f"{out_of_range.values[:5]}..."
+        )
+    logger.info(
+        "✓ Validación de rango capital_stock_ck [%.1f, %.1f]: OK",
+        CAPITAL_STOCK_MIN, CAPITAL_STOCK_MAX,
+    )
+
+
+def check_human_capital_range(df: pd.DataFrame) -> None:
+    """Verifica que human_capital esté en un rango razonable.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame PWT procesado.
+
+    Raises
+    ------
+    QualityCheckError
+        Si hay valores fuera del rango ``[HUMAN_CAPITAL_MIN, HUMAN_CAPITAL_MAX]``.
+    """
+    vals = df["human_capital"].dropna()
+    out_of_range = vals[
+        (vals < HUMAN_CAPITAL_MIN) | (vals > HUMAN_CAPITAL_MAX)
+    ]
+    if not out_of_range.empty:
+        raise QualityCheckError(
+            f"Valores de human_capital fuera de rango "
+            f"[{HUMAN_CAPITAL_MIN}, {HUMAN_CAPITAL_MAX}]: "
+            f"{out_of_range.values[:5]}..."
+        )
+    logger.info(
+        "✓ Validación de rango human_capital [%.1f, %.1f]: OK",
+        HUMAN_CAPITAL_MIN, HUMAN_CAPITAL_MAX,
+    )
+
+
+def check_pwt_min_rows(df: pd.DataFrame, min_rows: int = 50) -> None:
+    """Verifica que el dataset PWT tenga al menos ``min_rows`` filas.
+
+    PWT cubre Colombia desde 1950, por lo que se esperan ≥ 50 observaciones.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame PWT procesado.
+    min_rows : int
+        Número mínimo de filas esperadas (default: 50).
+
+    Raises
+    ------
+    QualityCheckError
+        Si el DataFrame tiene menos filas que ``min_rows``.
+    """
+    if len(df) < min_rows:
+        raise QualityCheckError(
+            f"El dataset PWT tiene solo {len(df)} filas; "
+            f"se esperaban al menos {min_rows}."
+        )
+    logger.info("✓ Validación de mínimo de filas (%d): OK", min_rows)
+
+
+def run_pwt_checks(df: pd.DataFrame) -> bool:
+    """Ejecuta todas las validaciones de calidad para PWT 10.01.
+
+    Verifica:
+    - Columnas presentes: ``date``, ``year``, ``capital_stock_ck``,
+      ``human_capital`` (y el resto del esquema estándar).
+    - ``capital_stock_ck`` dentro de ``[CAPITAL_STOCK_MIN, CAPITAL_STOCK_MAX]``.
+    - ``human_capital`` dentro de ``[HUMAN_CAPITAL_MIN, HUMAN_CAPITAL_MAX]``.
+    - Sin duplicados en ``date``.
+    - Al menos 50 filas (cobertura desde 1950).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame PWT procesado.
+
+    Returns
+    -------
+    bool
+        True si todas las validaciones pasan.
+
+    Raises
+    ------
+    QualityCheckError
+        Si alguna validación falla.
+    """
+    logger.info("─── Validaciones de calidad PWT 10.01 ───")
+    logger.info("Dataset: %d filas × %d columnas", *df.shape)
+
+    check_pwt_columns(df)
+    check_no_nulls_generic(df, ["date", "year", "capital_stock_ck", "human_capital"])
+    check_capital_stock_range(df)
+    check_human_capital_range(df)
+    check_no_duplicates(df)
+    check_pwt_min_rows(df)
+
+    logger.info("─── Todas las validaciones PWT pasaron ✓ ───")
     return True

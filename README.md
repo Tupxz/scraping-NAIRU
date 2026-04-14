@@ -34,24 +34,27 @@ vacío.
 
 | Componente                                                 | Estado            |
 | ---------------------------------------------------------- | ----------------- |
-| Pipeline de desempleo (DANE – GEIH desestacionalizado)    | Funcional         |
-| Pipeline de IPC (DANE – Índice de Precios al Consumidor) | Funcional         |
-| Pipeline de inflación (BANREP – SUAMECA)                 | Funcional         |
-| Pipeline de Brent (FRED / EIA)                             | Funcional         |
-| Pipeline ANDI EOIC (Capacidad Instalada)                   | Funcional         |
-| Pipeline TES Cero Cupón (BANREP – SUAMECA)               | Funcional         |
-| Validaciones de calidad automatizadas                      | 243 tests pasando |
-| Base mensual unificada (desempleo + IPC + inflación)      | Próximo paso     |
-| Estimación econométrica de la NAIRU                      | Por implementar   |
+| Pipeline de desempleo/TGP/PET (DANE – GEIH desestacionalizado) | Funcional         |
+| Pipeline de IPC (DANE – Índice de Precios al Consumidor)       | Funcional         |
+| Pipeline de inflación (BANREP – SUAMECA)                       | Funcional         |
+| Pipeline de Brent (FRED / EIA)                                  | Funcional         |
+| Pipeline ANDI EOIC (Capacidad Instalada)                        | Funcional         |
+| Pipeline TES Cero Cupón (BANREP – SUAMECA)                    | Funcional         |
+| Pipeline PWT 11.0 (Capital Stock + Capital Humano)              | Funcional         |
+| Base mensual unificada (nairu_dataset.csv — 17 columnas)        | Funcional         |
+| Validaciones de calidad automatizadas                           | 283 tests pasando |
+| Estimación econométrica de la NAIRU                           | Por implementar   |
 
 **Datos generados actualmente:**
 
-- **Tasa de desocupación (desestacionalizada):** 299 observaciones mensuales (enero 2001 – enero 2026)
+- **Desempleo, TGP y PET (GEIH desestacionalizado):** 300 observaciones mensuales (enero 2001 – diciembre 2025) con tasa de desocupación, tasa global de participación y población en edad de trabajar en miles de personas
 - **Índice de Precios al Consumidor:** 278 observaciones mensuales (enero 2003 – febrero 2026)
 - **Inflación BANREP:** 858 observaciones mensuales (julio 1955 – diciembre 2026) con meta de inflación, inflación total e inflación sin alimentos ni regulados
 - **Precio del Brent:** 302 observaciones mensuales (enero 2001 – febrero 2026) en USD/barril
 - **Capacidad instalada (ANDI EOIC):** Porcentaje de utilización de la capacidad instalada industrial (mensual)
 - **Tasas TES Cero Cupón:** Tasas de interés a 1 año (pesos y UVR) agregadas a frecuencia mensual (último valor del mes)
+- **Capital Stock y Capital Humano (PWT 11.0):** 70 observaciones anuales (1954–2023) con capital stock en PPP (ck), capital stock nominal (cn) y capital humano (hc)
+- **Base unificada (nairu_dataset.csv):** 860 filas × 17 columnas (1954–2026), series mensuales + anuales PWT alineadas por fecha
 
 ---
 
@@ -131,6 +134,22 @@ El pipeline TES descarga datos diarios de la curva Cero Cupón de TES
 mensual tomando el **último valor disponible** de cada mes como proxy
 de cierre de mes.
 
+### 7. Capital Stock y Capital Humano — PWT 11.0
+
+| Campo          | Detalle                                                                                                              |
+| -------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Fuente         | Penn World Tables versión 11.0 (Feenstra, Inklaar & Timmer)                                                        |
+| Indicadores    | Capital stock a precios PPP de 2017 (ck), capital stock a precios nacionales (cn), índice de capital humano (hc)   |
+| Periodicidad   | Anual (referenciado a 1 de enero de cada año)                                                                       |
+| Cobertura      | 1954–2023 (Colombia, ISO code: COL)                                                                                 |
+| Formato origen | CSV wide exportado desde la herramienta online (ISO code, Variable code, año 1950…2023)                             |
+| Página        | [PWT Data Tool](https://pwt-data-tool.streamlit.app/) / [Dataverse PWT 11.0](https://dataverse.nl/dataset.xhtml?persistentId=doi:10.34894/QK5VDO) |
+
+El pipeline PWT busca primero un archivo local en `data/raw/pwt/` (exportado
+manualmente desde la herramienta online); si no lo encuentra, intenta descarga
+directa desde Dataverse.  Detecta automáticamente el formato wide (herramienta
+online) vs. largo (Dataverse) y produce el esquema estándar del proyecto.
+
 Ambos pipelines del DANE realizan **scraping automatizado** de la página,
 detectan el anexo Excel más reciente, lo descargan, parsean la estructura
 pivoteada y producen un CSV en formato largo estandarizado.  El pipeline
@@ -149,25 +168,29 @@ scraping-NAIRU/
 │   ├── io_utils.py               # Utilidades de I/O (logging, CSV)
 │   ├── quality_checks.py         # Validaciones de calidad (columnas, nulos, rangos)
 │   ├── main.py                   # Punto de entrada CLI
+│   ├── merge.py                  # Unificación de todas las fuentes → nairu_dataset.csv
 │   ├── pipelines/
-│   │   ├── run_unemployment.py   # Orquestación: desempleo
+│   │   ├── run_unemployment.py   # Orquestación: desempleo + TGP + PET
 │   │   ├── run_ipc.py            # Orquestación: IPC
 │   │   ├── run_banrep_inflation.py # Orquestación: inflación BANREP
 │   │   ├── run_banrep_tes.py     # Orquestación: TES Cero Cupón BANREP
 │   │   ├── run_brent.py          # Orquestación: Brent (FRED/EIA)
 │   │   ├── run_andi.py           # Orquestación: ANDI EOIC (capacidad instalada)
+│   │   ├── run_pwt.py            # Orquestación: PWT 11.0 (capital stock + capital humano)
 │   │   └── run_all.py            # Ejecuta todos los pipelines
 │   └── sources/
 │       ├── dane/
-│       │   ├── unemployment.py   # Scraping + parsing GEIH desestacionalizado
+│       │   ├── unemployment.py   # Scraping + parsing GEIH (TD, TGP, PET)
 │       │   └── ipc.py            # Scraping + parsing IPC
 │       ├── banrep/
 │       │   ├── inflation.py      # API REST SUAMECA: inflación + meta
 │       │   └── tes.py            # API REST SUAMECA: TES Cero Cupón (diario → mensual)
 │       ├── fred/
 │       │   └── brent.py          # CSV FRED: precio Brent
-│       └── andi/
-│           └── eoic.py           # Scraping PDFs + extracción capacidad instalada
+│       ├── andi/
+│       │   └── eoic.py           # Scraping PDFs + extracción capacidad instalada
+│       └── pwt/
+│           └── pwt.py            # Descarga/parsing PWT 11.0 (wide y largo)
 ├── tests/
 │   ├── test_geih.py              # 36 tests — scraping, parsing y calidad GEIH
 │   ├── test_ipc.py               # 23 tests — scraping, parsing y calidad IPC
@@ -175,13 +198,16 @@ scraping-NAIRU/
 │   ├── test_banrep_tes.py       # 40 tests — TES diario→mensual, parsing y calidad
 │   ├── test_brent.py             # 38 tests — CSV FRED, agregación y calidad
 │   ├── test_andi.py              # 63 tests — scraping, PDF parsing y calidad ANDI
+│   ├── test_pwt.py               # 26 tests — wide/largo format, parsing y calidad PWT
+│   ├── test_merge.py             # 21 tests — integración merge, columnas y NaN anuales
 │   └── test_pipeline.py          # 14 tests — estructura, calidad e I/O
 ├── data/
 │   ├── raw/
 │   │   ├── dane/                 # Archivos crudos descargados (Excel, HTML)
 │   │   ├── banrep/               # Respuestas crudas del API SUAMECA (JSON)
 │   │   ├── fred/                 # CSV crudo de FRED (Brent)
-│   │   └── andi/                 # PDFs descargados de la ANDI (EOIC)
+│   │   ├── andi/                 # PDFs descargados de la ANDI (EOIC)
+│   │   └── pwt/                  # CSV exportado desde la herramienta PWT online
 │   └── processed/                # Datasets limpios listos para análisis
 ├── docs/bib/                     # Bibliografía de referencia
 ├── logs/                         # Logs del pipeline
@@ -249,13 +275,15 @@ python -m src.main --all
 **Pipelines individuales (se pueden combinar):**
 
 ```bash
-python -m src.main --unemployment          # Desempleo (DANE GEIH)
+python -m src.main --unemployment          # Desempleo + TGP + PET (DANE GEIH)
 python -m src.main --ipc                   # IPC (DANE)
 python -m src.main --banrep                # Inflación (BANREP/SUAMECA)
 python -m src.main --tes                   # TES Cero Cupón (BANREP/SUAMECA)
 python -m src.main --brent                 # Brent (FRED/EIA)
 python -m src.main --andi                  # ANDI EOIC — último mes disponible
 python -m src.main --andi-backfill         # ANDI EOIC — todos los PDFs históricos
+python -m src.main --pwt                   # Capital Stock + Capital Humano (PWT 11.0)
+python -m src.main --merge                 # Unifica todas las fuentes → nairu_dataset.csv
 ```
 
 **Combinar varios pipelines en una sola ejecución:**
@@ -281,12 +309,14 @@ Después de ejecutar `python -m src.main --all`, el pipeline genera:
 
 | Archivo                                          | Contenido                                | Columnas                                                                   |
 | ------------------------------------------------ | ---------------------------------------- | -------------------------------------------------------------------------- |
-| `data/processed/unemployment_colombia.csv`     | Tasa de desocupación mensual (desest.)  | `date, year, month, unemployment_rate, source, download_date`            |
+| `data/processed/dane_labor_colombia.csv`       | TD, TGP y PET mensuales (GEIH desest.)   | `date, year, month, unemployment_rate, tgp_rate, pet_thousands, source, download_date` |
 | `data/processed/ipc_colombia.csv`              | Índice de precios al consumidor mensual | `date, year, month, ipc_index, source, download_date`                    |
 | `data/processed/inflation_banrep_colombia.csv` | Inflación y meta del Banco de la Rep.   | `date, year, month, Inf_Goal, Inf_Rate, Core_Inf, source, download_date` |
 | `data/processed/brent_colombia.csv`            | Precio mensual del Brent (USD/barril)    | `date, year, month, brent_usd_per_barrel, source, download_date`         |
 | `data/processed/andi_capacidad_instalada.csv`  | Capacidad instalada industrial (EOIC)    | `date, year, month, capacity_utilization, source, download_date`         |
 | `data/processed/tes_banrep_colombia.csv`       | Tasas TES Cero Cupón (pesos y UVR, 1Y) | `date, year, month, TES_UVR_1Y, TES_PESOS_1Y, source, download_date`    |
+| `data/processed/pwt_colombia.csv`              | Capital stock y capital humano (anual)   | `date, year, month, capital_stock_ck, capital_stock_cn, human_capital, source, download_date` |
+| `data/processed/nairu_dataset.csv`             | Base unificada (860 filas × 17 cols)     | `date, year, month, unemployment_rate, tgp_rate, pet_thousands, ipc_index, Inf_Goal, Inf_Rate, Core_Inf, brent_usd_per_barrel, capacity_utilization, TES_UVR_1Y, TES_PESOS_1Y, capital_stock_ck, capital_stock_cn, human_capital` |
 
 Archivos intermedios (en `data/raw/`, ignorados por Git):
 
@@ -330,11 +360,13 @@ Versiones exactas en [`requirements.txt`](requirements.txt).
 - [X] Pipeline de Brent conectado a FRED/EIA (POILBREUSDM)
 - [X] Pipeline ANDI EOIC — Capacidad instalada industrial (scraping PDF + pdfplumber)
 - [X] Pipeline TES Cero Cupón (BANREP/SUAMECA) — tasas pesos y UVR a 1 año (diario → mensual)
-- [X] Validaciones de calidad automatizadas (243 tests)
-- [X] Arquitectura modular (`sources/dane/` + `sources/banrep/` + `sources/fred/` + `sources/andi/` + `pipelines/`)
+- [X] Pipeline PWT 11.0 — Capital stock (ck, cn) y capital humano (hc) para Colombia (1954–2023)
+- [X] Agregar TGP y PET al pipeline GEIH (Tasa Global de Participación + Población en Edad de Trabajar)
+- [X] Validaciones de calidad automatizadas (283 tests)
+- [X] Arquitectura modular (`sources/dane/` + `sources/banrep/` + `sources/fred/` + `sources/andi/` + `sources/pwt/` + `pipelines/`)
 - [X] `series_map` configurable para extraer múltiples series (TGP, TO, TES, etc.)
+- [X] Base mensual unificada (nairu_dataset.csv — 860 filas × 17 columnas)
 - [ ] Calcular serie de inflación interanual a partir del IPC
-- [ ] Construir base mensual unificada (desempleo + IPC + inflación)
 - [ ] Análisis exploratorio conjunto (notebook)
 - [ ] Implementar estimación de la NAIRU (filtro de Kalman / curva de Phillips)
 - [ ] Incorporar estimaciones institucionales (Banco de la República, CARF)
@@ -347,8 +379,8 @@ Versiones exactas en [`requirements.txt`](requirements.txt).
 - **Reproducibilidad:** los datos crudos se descargan desde la fuente original
   en cada ejecución; los archivos procesados son determinísticos dado el mismo
   insumo.
-- **Tests offline:** los 243 tests usan fixtures sintéticas que simulan la
-  estructura real de los datos del DANE, BANREP, FRED y ANDI, sin requerir conexión a internet.
+- **Tests offline:** los 283 tests usan fixtures sintéticas que simulan la
+  estructura real de los datos del DANE, BANREP, FRED, ANDI y PWT, sin requerir conexión a internet.
 - **Validaciones de calidad:** cada pipeline verifica columnas, nulos,
   duplicados, rangos y continuidad temporal antes de guardar.
 - **Datos ignorados por Git:** los archivos `.xlsx`, `.csv` y `.html`

@@ -21,7 +21,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.config import GEIHConfig, PROCESSED_COLUMNS
+from src.config import GEIHConfig, GEIH_CONFIG, PROCESSED_COLUMNS
 from src.sources.dane.unemployment import (
     _build_date_columns,
     _detect_month_row,
@@ -38,6 +38,7 @@ from src.sources.dane.unemployment import (
 from src.quality_checks import (
     QualityCheckError,
     run_all_checks,
+    run_labor_checks,
 )
 
 
@@ -169,21 +170,27 @@ def _create_geih_xlsx(path: Path, num_years: int = 3, start_year: int = 2022) ->
 
 @pytest.fixture()
 def geih_config() -> GEIHConfig:
-    """Config GEIH para tests (apunta a fixture local)."""
+    """Config GEIH para tests (apunta a fixture local, solo serie TD)."""
     return GEIHConfig(
         sheet_name="Total nacional",
         year_row=11,
         month_row=12,
+        series_map={
+            "unemployment_rate": r"Tasa de Desocupaci[oó]n",
+        },
     )
 
 
 @pytest.fixture()
 def geih_config_autodetect() -> GEIHConfig:
-    """Config GEIH con auto-detección de filas."""
+    """Config GEIH con auto-detección de filas y solo serie TD."""
     return GEIHConfig(
         sheet_name="Total nacional",
         year_row=None,
         month_row=None,
+        series_map={
+            "unemployment_rate": r"Tasa de Desocupaci[oó]n",
+        },
     )
 
 
@@ -567,9 +574,15 @@ class TestGEIHExcelParsing:
     def test_clean_geih_data_produces_final_columns(
         self, sample_geih_xlsx: Path, geih_config: GEIHConfig
     ) -> None:
-        """clean_geih_data produce el esquema completo con source y download_date."""
+        """clean_geih_data produce columnas estándar con source y download_date.
+
+        Las columnas opcionales (tgp_rate, pet_thousands) solo aparecen si el
+        Excel las contiene; el mínimo garantizado son las columnas obligatorias.
+        """
         df = clean_geih_data(sample_geih_xlsx, geih_config)
-        assert list(df.columns) == PROCESSED_COLUMNS
+        # Columnas obligatorias siempre presentes
+        for col in ("date", "year", "month", "unemployment_rate", "source", "download_date"):
+            assert col in df.columns
 
     def test_clean_geih_data_has_source(
         self, sample_geih_xlsx: Path, geih_config: GEIHConfig
@@ -622,3 +635,214 @@ class TestGEIHQuality:
         df = clean_geih_data(sample_geih_xlsx, geih_config)
         assert (df["unemployment_rate"] >= 0).all()
         assert (df["unemployment_rate"] <= 40).all()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Tests de Fase 2: TGP, PET y series_map ampliado
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture()
+def geih_config_with_tgp() -> GEIHConfig:
+    """Config GEIH con series_map ampliado: TD + TGP."""
+    return GEIHConfig(
+        sheet_name="Total nacional",
+        year_row=11,
+        month_row=12,
+        series_map={
+            "unemployment_rate": r"Tasa de Desocupaci[oó]n",
+            "tgp_rate": r"Tasa Global de Participaci[oó]n",
+        },
+    )
+
+
+@pytest.fixture()
+def sample_geih_xlsx_with_pet(tmp_path: Path) -> Path:
+    """Excel GEIH sintético con las tres filas de componentes PET.
+
+    El DANE no publica una fila "Población en Edad de Trabajar" directa;
+    en su lugar se publican los tres componentes:
+      - Población ocupada
+      - Población desocupada
+      - Población fuera de la fuerza de trabajo
+
+    PET = suma de los tres (en miles de personas).
+    """
+    months_abbr = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
+                   "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    num_years = 3
+    start_year = 2022
+    total_data_cols = num_years * 12
+    total_cols = 1 + total_data_cols
+
+    rows: list[list] = []
+    for i in range(11):
+        row = [None] * total_cols
+        if i == 5:
+            row[0] = "Gran Encuesta Integrada de Hogares - GEIH"
+        rows.append(row)
+
+    year_row_data = [None] * total_cols
+    year_row_data[0] = "Concepto"
+    for y_idx in range(num_years):
+        year_row_data[1 + y_idx * 12] = start_year + y_idx
+    rows.append(year_row_data)
+
+    month_row_data = [None] * total_cols
+    for y_idx in range(num_years):
+        for m_idx in range(12):
+            month_row_data[1 + y_idx * 12 + m_idx] = months_abbr[m_idx]
+    rows.append(month_row_data)
+
+    # Filas de componentes PET (en miles de personas)
+    emp_row: list = ["Población ocupada"]
+    unemp_row: list = ["Población desocupada"]
+    inact_row: list = ["Población fuera de la fuerza de trabajo"]
+    for _ in range(total_data_cols):
+        emp_row.append(21_000.0)
+        unemp_row.append(3_000.0)
+        inact_row.append(14_500.0)
+    rows.append(emp_row)
+    rows.append(unemp_row)
+    rows.append(inact_row)
+
+    # Fila TGP
+    tgp_row: list = ["Tasa Global de Participación (TGP)"]
+    for _ in range(total_data_cols):
+        tgp_row.append(63.2)
+    rows.append(tgp_row)
+
+    # Fila TD
+    td_row: list = ["Tasa de Desocupación (TD)"]
+    for y_idx in range(num_years):
+        for m_idx in range(12):
+            td_row.append(round(10.0 + y_idx * 0.5 + m_idx * 0.1, 2))
+    rows.append(td_row)
+
+    path = tmp_path / "geih_with_pet.xlsx"
+    pd.DataFrame(rows).to_excel(
+        path, index=False, header=False, engine="openpyxl",
+        sheet_name="Total nacional",
+    )
+    return path
+
+
+class TestSeriesMapFase2:
+    """Tests Fase 2: series_map ampliado, TGP, PET y validaciones de calidad."""
+
+    # ── test_geih_series_map_includes_tgp ────────────────────────────
+
+    def test_geih_series_map_includes_tgp(self) -> None:
+        """GEIH_CONFIG.series_map contiene la clave 'tgp_rate'."""
+        assert "tgp_rate" in GEIH_CONFIG.series_map
+
+    # ── test_geih_series_map_includes_pet ────────────────────────────
+
+    def test_geih_series_map_includes_pet(self) -> None:
+        """GEIH_CONFIG.series_map contiene los tres componentes auxiliares para calcular PET."""
+        sm = GEIH_CONFIG.series_map
+        assert "_raw_pop_employed" in sm
+        assert "_raw_pop_unemployed" in sm
+        assert "_raw_pop_inactive" in sm
+
+    # ── test_parse_geih_tgp_column ───────────────────────────────────
+
+    def test_parse_geih_tgp_column(
+        self, sample_geih_xlsx: Path, geih_config_with_tgp: GEIHConfig
+    ) -> None:
+        """Al parsear con series_map que incluye TGP, aparece columna tgp_rate."""
+        df = load_geih_excel(sample_geih_xlsx, geih_config_with_tgp)
+        assert "tgp_rate" in df.columns
+        assert df["tgp_rate"].notna().all()
+        # El fixture genera TGP=63.2 constante
+        assert df["tgp_rate"].iloc[0] == pytest.approx(63.2, abs=0.01)
+
+    # ── test_parse_geih_pet_column ───────────────────────────────────
+
+    def test_parse_geih_pet_column(
+        self, sample_geih_xlsx_with_pet: Path
+    ) -> None:
+        """Al parsear Excel con los 3 componentes PET, clean_geih_data produce pet_thousands."""
+        # GEIH_CONFIG ya usa las claves _raw_pop_* → clean_geih_data suma los 3 y genera
+        # la columna derivada pet_thousands (= 21 000 + 3 000 + 14 500 = 38 500 k)
+        df = clean_geih_data(sample_geih_xlsx_with_pet, GEIH_CONFIG)
+        assert "pet_thousands" in df.columns
+        assert df["pet_thousands"].notna().all()
+        assert df["pet_thousands"].iloc[0] == pytest.approx(38_500.0, abs=1.0)
+        # Las columnas _raw_ NO deben estar en el output final
+        for raw_col in ("_raw_pop_employed", "_raw_pop_unemployed", "_raw_pop_inactive"):
+            assert raw_col not in df.columns
+
+    def test_parse_geih_pet_absent_no_error(
+        self, sample_geih_xlsx: Path
+    ) -> None:
+        """Si los componentes _raw_* no existen en el Excel, no se lanza error.
+
+        sample_geih_xlsx NO tiene las filas de población ocupada/desocupada/inactiva,
+        así que los tres _raw_* son opcionales y simplemente se omiten.
+        clean_geih_data no produce pet_thousands pero tampoco falla.
+        """
+        # GEIH_CONFIG ya tiene los _raw_* como opcionales; sample_geih_xlsx
+        # solo tiene la fila TD → pet_thousands no aparece en el output.
+        df = clean_geih_data(sample_geih_xlsx, GEIH_CONFIG)
+        assert "unemployment_rate" in df.columns
+        assert "pet_thousands" not in df.columns
+
+    # ── test_labor_checks_tgp_range ──────────────────────────────────
+
+    def test_labor_checks_tgp_range(self) -> None:
+        """Valor de tgp_rate fuera de rango lanza QualityCheckError."""
+        n = 10
+        df = pd.DataFrame({
+            "date": pd.to_datetime([f"2022-{m:02d}-01" for m in range(1, n + 1)]),
+            "year": [2022] * n,
+            "month": list(range(1, n + 1)),
+            "unemployment_rate": [10.0] * n,
+            "tgp_rate": [63.0] * n,
+            "source": ["DANE"] * n,
+            "download_date": ["2026-04-14"] * n,
+        })
+        # Valor válido: no lanza
+        assert run_labor_checks(df) is True
+
+        # Valor fuera de rango alto
+        df_bad = df.copy()
+        df_bad.loc[0, "tgp_rate"] = 95.0
+        with pytest.raises(QualityCheckError, match="tgp_rate fuera de rango"):
+            run_labor_checks(df_bad)
+
+        # Valor fuera de rango bajo
+        df_bad2 = df.copy()
+        df_bad2.loc[0, "tgp_rate"] = 10.0
+        with pytest.raises(QualityCheckError, match="tgp_rate fuera de rango"):
+            run_labor_checks(df_bad2)
+
+    # ── test_labor_checks_pet_range ──────────────────────────────────
+
+    def test_labor_checks_pet_range(self) -> None:
+        """Valor de pet_thousands fuera de rango lanza QualityCheckError."""
+        n = 10
+        df = pd.DataFrame({
+            "date": pd.to_datetime([f"2022-{m:02d}-01" for m in range(1, n + 1)]),
+            "year": [2022] * n,
+            "month": list(range(1, n + 1)),
+            "unemployment_rate": [10.0] * n,
+            "tgp_rate": [63.0] * n,
+            "pet_thousands": [38_500.0] * n,
+            "source": ["DANE"] * n,
+            "download_date": ["2026-04-14"] * n,
+        })
+        # Valor válido: no lanza
+        assert run_labor_checks(df) is True
+
+        # Valor fuera de rango alto
+        df_bad = df.copy()
+        df_bad.loc[0, "pet_thousands"] = 100_000.0
+        with pytest.raises(QualityCheckError, match="pet_thousands fuera de rango"):
+            run_labor_checks(df_bad)
+
+        # Valor fuera de rango bajo
+        df_bad2 = df.copy()
+        df_bad2.loc[0, "pet_thousands"] = 5_000.0
+        with pytest.raises(QualityCheckError, match="pet_thousands fuera de rango"):
+            run_labor_checks(df_bad2)

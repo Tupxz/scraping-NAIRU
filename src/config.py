@@ -1,7 +1,7 @@
 """Configuración central del pipeline NAIRU Colombia.
 
 Define rutas, URLs y parámetros utilizados por todos los módulos.
-Fuentes: desempleo GEIH (DANE), IPC (DANE), inflación (BANREP), Brent (FRED).
+Fuentes: desempleo/TGP/PET GEIH (DANE), IPC (DANE), inflación (BANREP), Brent (FRED), PWT 11.0 (capital stock + capital humano).
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ RAW_DANE_DIR: Path = RAW_DIR / "dane"
 RAW_BANREP_DIR: Path = RAW_DIR / "banrep"
 RAW_FRED_DIR: Path = RAW_DIR / "fred"
 RAW_ANDI_DIR: Path = RAW_DIR / "andi"
+RAW_PWT_DIR: Path = RAW_DIR / "pwt"
 OUTPUTS_DIR: Path = PROJECT_ROOT / "outputs"
 
 
@@ -77,8 +78,18 @@ class GEIHConfig:
     # regex que identifica la fila correspondiente en el Excel.
     # Por defecto solo se extrae la TD; para agregar TGP, TO, etc.
     # basta ampliar este dict sin cambiar el parser.
+    #
+    # Nota PET: el DANE no publica "Población en Edad de Trabajar"
+    # como fila directa.  Se calcula en clean_geih_data como:
+    #   PET = pop_employed + pop_unemployed + pop_inactive
+    # Las tres series auxiliares se extraen con el prefijo "_raw_" y
+    # se descartan del output final tras el cálculo.
     series_map: dict[str, str] = field(default_factory=lambda: {
-        "unemployment_rate": r"Tasa de Desocupaci[oó]n",
+        "unemployment_rate":  r"Tasa de Desocupaci[oó]n",
+        "tgp_rate":           r"Tasa Global de Participaci[oó]n",
+        "_raw_pop_employed":  r"^Poblaci[oó]n ocupada",
+        "_raw_pop_unemployed":r"^Poblaci[oó]n desocupada",
+        "_raw_pop_inactive":  r"^Poblaci[oó]n fuera de la fuerza",
     })
 
     # Mapeo de abreviatura de mes → número.
@@ -91,7 +102,7 @@ class GEIHConfig:
     # ── Archivos ──────────────────────────────────────────────────
     raw_html_filename: str = "geih_page.html"
     raw_xlsx_filename: str = "geih_raw.xlsx"
-    processed_filename: str = "unemployment_colombia.csv"
+    processed_filename: str = "dane_labor_colombia.csv"
 
     # ── HTTP ──────────────────────────────────────────────────────
     timeout: int = 120
@@ -457,6 +468,8 @@ PROCESSED_COLUMNS: list[str] = [
     "year",
     "month",
     "unemployment_rate",
+    "tgp_rate",
+    "pet_thousands",
     "source",
     "download_date",
 ]
@@ -473,6 +486,12 @@ IPC_PROCESSED_COLUMNS: list[str] = [
 # ── Parámetros de calidad ─────────────────────────────────────────────
 UNEMPLOYMENT_RATE_MIN: float = 0.0
 UNEMPLOYMENT_RATE_MAX: float = 40.0
+
+# GEIH – TGP y PET: rangos razonables
+TGP_MIN: float = 40.0    # porcentaje (Colombia histórica ~55–70%)
+TGP_MAX: float = 80.0
+PET_MIN: float = 20_000.0   # miles de personas (Colombia ~40M PET)
+PET_MAX: float = 60_000.0
 
 IPC_INDEX_MIN: float = 10.0    # Mínimo razonable (base 2018≈100, año 2003≈50)
 IPC_INDEX_MAX: float = 300.0   # Máximo razonable para horizonte largo
@@ -539,3 +558,68 @@ CAPACITY_UTILIZATION_MAX_CHANGE: float = 20.0  # Cambio mensual máximo (pp)
 LOG_FORMAT: str = "%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s"
 LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 LOG_FILENAME: str = "pipeline.log"
+
+
+# ── Configuración PWT 10.01 – Stock de Capital y Capital Humano ──────
+
+@dataclass(frozen=True)
+class PWTConfig:
+    """Configuración para la fuente Penn World Tables 10.01.
+
+    Las Penn World Tables (PWT) publican datos de cuentas nacionales
+    comparables internacionalmente.  El archivo CSV completo se descarga
+    desde el Dataverse de la Universidad de Groningen y se filtra para
+    Colombia (``countrycode == "COL"``).
+
+    Series extraídas:
+    - **ck**: Stock de capital a PPP corrientes (miles de millones USD).
+    - **cn**: Stock de capital a precios nacionales constantes 2017
+      (miles de millones USD).
+    - **hc**: Índice de Capital Humano (basado en escolaridad y retornos
+      a la educación).
+
+    Cobertura temporal: 1950–2019 (anual).
+    """
+
+    # ── Fuente ────────────────────────────────────────────────────
+    # PWT 11.0 (Oct 2025): Excel fileId=554105, Stata fileId=554030
+    # Nota: el Dataverse requiere autenticación; usar herramienta online
+    # https://pwt-data-tool.streamlit.app/ para exportar a data/raw/pwt/
+    source_url: str = "https://dataverse.nl/api/access/datafile/554105"
+    country_code: str = "COL"
+
+    # ── Archivos ──────────────────────────────────────────────────
+    raw_csv_filename: str = "pwt_raw.csv"
+    processed_filename: str = "pwt_colombia.csv"
+
+    # ── HTTP ──────────────────────────────────────────────────────
+    timeout: int = 60
+    http_headers: dict[str, str] = field(
+        default_factory=lambda: {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+        }
+    )
+
+
+PWT_CONFIG = PWTConfig()
+
+PWT_PROCESSED_COLUMNS: list[str] = [
+    "date",
+    "year",
+    "month",
+    "capital_stock_ck",
+    "capital_stock_cn",
+    "human_capital",
+    "source",
+    "download_date",
+]
+
+# PWT: rangos razonables
+CAPITAL_STOCK_MIN: float = 0.0      # Stock de capital no puede ser negativo
+CAPITAL_STOCK_MAX: float = 5000.0   # Máximo defensivo para Colombia (USD bn)
+HUMAN_CAPITAL_MIN: float = 1.0      # Mínimo teórico del índice PWT
+HUMAN_CAPITAL_MAX: float = 5.0      # Máximo teórico del índice PWT

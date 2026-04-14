@@ -1,13 +1,18 @@
 """Unión de todas las bases procesadas en un dataset mensual único.
 
-Realiza outer-merge secuencial por ``date`` de los 6 datasets
-procesados y genera un CSV consolidado sin columnas ``source``
-ni ``download_date``.
+Realiza outer-merge secuencial por ``date`` de los datasets procesados
+y genera un CSV consolidado sin columnas ``source`` ni ``download_date``.
 
 Columnas de salida:
-    date, year, month, unemployment_rate, ipc_index,
-    Inf_Goal, Inf_Rate, Core_Inf, brent_usd_per_barrel,
-    capacity_utilization, TES_UVR_1Y, TES_PESOS_1Y
+    date, year, month,
+    unemployment_rate, tgp_rate, pet_thousands,   ← GEIH (mensual)
+    ipc_index,                                     ← IPC DANE (mensual)
+    Inf_Goal, Inf_Rate, Core_Inf,                  ← Inflación BANREP (mensual)
+    brent_usd_per_barrel,                          ← Brent FRED/EIA (mensual)
+    capacity_utilization,                          ← ANDI EOIC (mensual)
+    TES_UVR_1Y, TES_PESOS_1Y,                     ← TES BANREP (mensual)
+    capital_stock_ck, capital_stock_cn,            ← PWT 11.0 (anual → NaN meses)
+    human_capital                                  ← PWT 11.0 (anual → NaN meses)
 """
 
 from __future__ import annotations
@@ -24,9 +29,10 @@ logger = logging.getLogger("nairu_pipeline.merge")
 
 # Mapeo: nombre lógico → (filename, columnas de datos a conservar)
 _SOURCES: dict[str, tuple[str, list[str]]] = {
+    # ── Mensuales ─────────────────────────────────────────────────
     "unemployment": (
-        "unemployment_colombia.csv",
-        ["unemployment_rate"],
+        "dane_labor_colombia.csv",          # TD + TGP + PET (Fase 2)
+        ["unemployment_rate", "tgp_rate", "pet_thousands"],
     ),
     "ipc": (
         "ipc_colombia.csv",
@@ -48,23 +54,36 @@ _SOURCES: dict[str, tuple[str, list[str]]] = {
         "tes_banrep_colombia.csv",
         ["TES_UVR_1Y", "TES_PESOS_1Y"],
     ),
+    # ── Anuales (PWT 11.0 — aparecerán con NaN en meses sin dato) ─
+    "pwt": (
+        "pwt_colombia.csv",
+        ["capital_stock_ck", "capital_stock_cn", "human_capital"],
+    ),
 }
 
 MERGED_FILENAME = "nairu_dataset.csv"
 
 MERGED_COLUMNS: list[str] = [
+    # Identificadores temporales
     "date",
     "year",
     "month",
-    "unemployment_rate",
-    "ipc_index",
-    "Inf_Goal",
-    "Inf_Rate",
-    "Core_Inf",
-    "brent_usd_per_barrel",
-    "capacity_utilization",
-    "TES_UVR_1Y",
-    "TES_PESOS_1Y",
+    # ── Mensuales ─────────────────────────────────────────
+    "unemployment_rate",        # GEIH - TD
+    "tgp_rate",                 # GEIH - TGP
+    "pet_thousands",            # GEIH - PET (calculada)
+    "ipc_index",                # IPC DANE
+    "Inf_Goal",                 # Inflación meta BANREP
+    "Inf_Rate",                 # Inflación observada BANREP
+    "Core_Inf",                 # Inflación núcleo BANREP
+    "brent_usd_per_barrel",     # Brent FRED/EIA
+    "capacity_utilization",     # ANDI EOIC
+    "TES_UVR_1Y",               # TES UVR 1Y BANREP
+    "TES_PESOS_1Y",             # TES Pesos 1Y BANREP
+    # ── Anuales (NaN en meses sin observación) ────────────
+    "capital_stock_ck",         # PWT 11.0 - Stock capital PPP corrientes
+    "capital_stock_cn",         # PWT 11.0 - Stock capital precios nac. ctes.
+    "human_capital",            # PWT 11.0 - Índice Capital Humano
 ]
 
 

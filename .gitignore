@@ -2,6 +2,9 @@
 *.DS_Store
 */.DS_Store
 
+# Editor
+.vscode/
+
 # Data pipeline — archivos crudos (pesados, reproducibles via pipeline)
 data/raw/**/*.csv
 data/raw/**/*.xlsx
@@ -24,9 +27,10 @@ outputs/
 scripts/
 
 # Byte-compiled / optimized / DLL files
-__pycache__/
+*__pycache__/
 *.py[codz]
 *$py.class
+*.pytest_cache/
 
 # C extensions
 *.so

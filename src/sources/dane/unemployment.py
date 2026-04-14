@@ -256,20 +256,36 @@ def _detect_series_rows(
     df_raw: pd.DataFrame,
     series_map: dict[str, str],
     start_row: int = 0,
+    optional_series: set[str] | None = None,
 ) -> dict[str, int]:
     """Detecta la fila de cada serie definida en *series_map*.
+
+    Parameters
+    ----------
+    df_raw : pd.DataFrame
+        DataFrame crudo de la hoja Excel.
+    series_map : dict[str, str]
+        Mapa ``{nombre_columna: patrón_regex}`` de series a buscar.
+    start_row : int
+        Fila desde la que empezar la búsqueda (0-indexed).
+    optional_series : set[str] | None
+        Nombres de series que pueden no estar en el Excel.  Si se
+        especifica y la serie no se encuentra, se emite un warning
+        en lugar de lanzar ``ValueError``.
 
     Returns
     -------
     dict[str, int]
         Mapa ``{nombre_columna: fila_0indexed}`` para cada serie
-        encontrada en el Excel.
+        encontrada en el Excel.  Las series opcionales ausentes no
+        aparecen en el resultado.
 
     Raises
     ------
     ValueError
-        Si alguna serie del mapa no se encuentra en la hoja.
+        Si una serie **no opcional** del mapa no se encuentra.
     """
+    optional = optional_series or set()
     result: dict[str, int] = {}
     for col_name, label_pattern in series_map.items():
         pat = re.compile(label_pattern, re.IGNORECASE)
@@ -285,11 +301,18 @@ def _detect_series_rows(
                 found = True
                 break
         if not found:
-            raise ValueError(
-                f"No se encontró fila para serie '{col_name}' "
-                f"(patrón: '{label_pattern}'). "
-                f"Filas escaneadas: {start_row}–{len(df_raw) - 1}"
-            )
+            if col_name in optional:
+                logger.warning(
+                    "Serie opcional '%s' no encontrada en el Excel "
+                    "(patrón: '%s'); columna omitida.",
+                    col_name, label_pattern,
+                )
+            else:
+                raise ValueError(
+                    f"No se encontró fila para serie '{col_name}' "
+                    f"(patrón: '{label_pattern}'). "
+                    f"Filas escaneadas: {start_row}–{len(df_raw) - 1}"
+                )
     return result
 
 
@@ -419,8 +442,21 @@ def load_geih_excel(
     if month_row is None:
         month_row = _detect_month_row(df_raw, year_row, set(config.month_map.keys()))
 
-    # Detectar filas de series usando series_map
-    series_rows = _detect_series_rows(df_raw, config.series_map, start_row=month_row)
+    # Detectar filas de series usando series_map.
+    # Los tres componentes auxiliares para calcular PET son opcionales:
+    # pueden no estar en todos los Excels del DANE (versiones antiguas o
+    # parciales). tgp_rate también es opcional por la misma razón.
+    series_rows = _detect_series_rows(
+        df_raw,
+        config.series_map,
+        start_row=month_row,
+        optional_series={
+            "tgp_rate",
+            "_raw_pop_employed",
+            "_raw_pop_unemployed",
+            "_raw_pop_inactive",
+        },
+    )
 
     # Reconstruir fechas
     date_cols = _build_date_columns(df_raw, year_row, month_row, config.month_map)
@@ -452,8 +488,12 @@ def load_geih_excel(
     )
     df = df.sort_values("date").reset_index(drop=True)
 
-    # Determinar columnas de salida dinámicamente
-    series_cols = list(config.series_map.keys())
+    # Determinar columnas de salida dinámicamente.
+    # Solo incluir series que realmente se encontraron en el Excel
+    # (las opcionales ausentes no están en series_rows).
+    found_series_cols = list(series_rows.keys())
+    # Mantener el orden original del series_map
+    series_cols = [k for k in config.series_map.keys() if k in found_series_cols]
     output_cols = ["date", "year", "month"] + series_cols
 
     logger.info(
@@ -472,13 +512,48 @@ def clean_geih_data(
     xlsx_path: Path,
     config: GEIHConfig = GEIH_CONFIG,
 ) -> pd.DataFrame:
-    """Pipeline: carga Excel → formato largo → esquema final."""
+    """Pipeline: carga Excel → formato largo → cálculo PET → esquema final.
+
+    PET se calcula como la suma de los tres componentes de la fuerza laboral
+    publicados por el DANE (en miles de personas):
+
+        PET = Población ocupada + Población desocupada
+              + Población fuera de la fuerza de trabajo
+
+    Los tres componentes se extraen con el prefijo ``_raw_`` en el
+    ``series_map`` y se descartan del output final tras el cálculo.
+    Si alguno de los tres componentes no está disponible, la columna
+    ``pet_thousands`` no se genera (compatibilidad hacia atrás).
+    """
     df = load_geih_excel(xlsx_path, config)
 
     df["source"] = "DANE"
     df["download_date"] = date.today().isoformat()
     df["year"] = df["year"].astype(int)
     df["month"] = df["month"].astype(int)
+
+    # ── Calcular PET a partir de los tres componentes auxiliares ──
+    raw_cols = ("_raw_pop_employed", "_raw_pop_unemployed", "_raw_pop_inactive")
+    if all(c in df.columns for c in raw_cols):
+        df["pet_thousands"] = (
+            df["_raw_pop_employed"]
+            + df["_raw_pop_unemployed"]
+            + df["_raw_pop_inactive"]
+        ).round(1)
+        df = df.drop(columns=list(raw_cols))
+        logger.info(
+            "PET calculada: min=%.0f k, max=%.0f k",
+            df["pet_thousands"].min(), df["pet_thousands"].max(),
+        )
+    else:
+        # Eliminar columnas _raw_ parciales si quedaron
+        leftover_raw = [c for c in df.columns if c.startswith("_raw_")]
+        if leftover_raw:
+            logger.warning(
+                "Componentes PET incompletos; columnas descartadas: %s",
+                leftover_raw,
+            )
+            df = df.drop(columns=leftover_raw)
 
     # Eliminar duplicados
     dupes_before = len(df)
@@ -487,11 +562,14 @@ def clean_geih_data(
     if dupes_dropped > 0:
         logger.warning("Se eliminaron %d filas duplicadas por fecha", dupes_dropped)
 
-    df = df[PROCESSED_COLUMNS].sort_values("date").reset_index(drop=True)
+    # Columnas de salida: usar PROCESSED_COLUMNS filtrado por las columnas
+    # realmente disponibles (series opcionales pueden estar ausentes).
+    output_cols = [c for c in PROCESSED_COLUMNS if c in df.columns]
+    df = df[output_cols].sort_values("date").reset_index(drop=True)
 
     logger.info(
-        "Desempleo limpio: %d filas, rango: %s → %s",
-        len(df), df["date"].min(), df["date"].max(),
+        "Laborales GEIH limpio: %d filas, rango: %s → %s, columnas: %s",
+        len(df), df["date"].min(), df["date"].max(), list(df.columns),
     )
     return df
 

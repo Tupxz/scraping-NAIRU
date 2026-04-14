@@ -2,7 +2,8 @@
 
 Uso:
     python -m src.main                  # Solo desempleo (default)
-    python -m src.main --unemployment   # Solo desempleo
+    python -m src.main --unemployment   # Solo desempleo (TD + TGP + PET)
+    python -m src.main --pwt            # Solo PWT 10.01 (capital stock + capital humano)
     python -m src.main --ipc            # Solo IPC (DANE real)
     python -m src.main --banrep         # Solo inflación (BANREP/SUAMECA)
     python -m src.main --tes            # Solo TES Cero Cupón (BANREP/SUAMECA)
@@ -26,6 +27,7 @@ from src.quality_checks import QualityCheckError
 
 def run_pipeline(
     run_unemployment: bool = True,
+    run_pwt: bool = False,
     run_ipc: bool = False,
     run_banrep: bool = False,
     run_tes: bool = False,
@@ -50,6 +52,10 @@ def run_pipeline(
         if run_unemployment:
             from src.pipelines import run_unemployment as unemp_pipeline
             unemp_pipeline.run()
+
+        if run_pwt:
+            from src.pipelines import run_pwt as pwt_pipeline
+            pwt_pipeline.run()
 
         if run_ipc:
             from src.pipelines import run_ipc as ipc_pipeline
@@ -96,6 +102,10 @@ def main() -> None:
     """Punto de entrada CLI."""
     parser = argparse.ArgumentParser(description="Pipeline NAIRU Colombia")
     parser.add_argument(
+        "--pwt", action="store_true",
+        help="Ejecutar solo el pipeline PWT 10.01 (capital stock + capital humano)",
+    )
+    parser.add_argument(
         "--ipc", action="store_true",
         help="Ejecutar solo el pipeline IPC (DANE real)",
     )
@@ -140,10 +150,10 @@ def main() -> None:
     # --all activa todos los pipelines + merge.
     if args.all:
         run_pipeline(
-            run_unemployment=True, run_ipc=True,
-            run_banrep=True, run_tes=True,
-            run_brent=True, run_andi=True,
-            andi_reprocess=True,
+            run_unemployment=True, run_pwt=True,
+            run_ipc=True, run_banrep=True,
+            run_tes=True, run_brent=True,
+            run_andi=True, andi_reprocess=True,
             run_merge=True,
         )
         return
@@ -153,7 +163,7 @@ def main() -> None:
 
     # Si no se pasa ningún flag, ejecutar desempleo por defecto.
     any_selected = (
-        args.unemployment or args.ipc or args.banrep
+        args.unemployment or args.pwt or args.ipc or args.banrep
         or args.tes or args.brent or use_andi
         or args.andi_reprocess or args.merge
     )
@@ -164,6 +174,7 @@ def main() -> None:
     # Se pueden combinar flags libremente.
     run_pipeline(
         run_unemployment=args.unemployment,
+        run_pwt=args.pwt,
         run_ipc=args.ipc,
         run_banrep=args.banrep,
         run_tes=args.tes,
