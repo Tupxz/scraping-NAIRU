@@ -34,6 +34,10 @@ _SOURCES: dict[str, tuple[str, list[str]]] = {
         "dane_labor_colombia.csv",          # TD + TGP + PET (Fase 2)
         ["unemployment_rate", "tgp_rate", "pet_thousands"],
     ),
+    "informality": (
+        "dane_informality_colombia.csv",    # Tasa informalidad 13 ciudades (trim. móvil)
+        ["informality_rate_13c"],
+    ),
     "ipc": (
         "ipc_colombia.csv",
         ["ipc_index"],
@@ -72,6 +76,7 @@ MERGED_COLUMNS: list[str] = [
     "unemployment_rate",        # GEIH - TD
     "tgp_rate",                 # GEIH - TGP
     "pet_thousands",            # GEIH - PET (calculada)
+    "informality_rate_13c",     # GEIH-EISS - Informalidad 13 ciudades (trim. móvil)
     "ipc_index",                # IPC DANE
     "Inf_Goal",                 # Inflación meta BANREP
     "Inf_Rate",                 # Inflación observada BANREP

@@ -120,6 +120,83 @@ class GEIHConfig:
 GEIH_CONFIG = GEIHConfig()
 
 
+# ── Configuración GEIH-EISS — Informalidad laboral (DANE real) ───────
+
+@dataclass(frozen=True)
+class GEIHInformalityConfig:
+    """Configuración para la fuente de informalidad laboral GEIH-EISS.
+
+    El DANE publica trimestralmente el anexo de **Empleo Informal y
+    Seguridad Social (EISS)** en su página de mercado laboral.  El
+    Excel contiene la hoja 'Prop informalidad' con la proporción de
+    informalidad (% de ocupados informales) para Total Nacional,
+    13 ciudades y A.M., 23 ciudades, y ciudades individuales.
+
+    Series en trimestre móvil (no desestacionalizada):
+      - "Ene - mar 2021" → asignado a 2021-03-01 (último mes)
+      - "Nov 21 - ene 22"→ asignado a 2022-01-01 (último mes)
+
+    Extraemos la fila **13 Ciudades y A.M.** (``city_label_pattern``),
+    la más usada en análisis macro colombiano.
+    """
+
+    # ── Scraping ──────────────────────────────────────────────────
+    page_url: str = (
+        "https://www.dane.gov.co/index.php/estadisticas-por-tema/"
+        "mercado-laboral/empleo-informal-y-seguridad-social"
+    )
+    base_url: str = "https://www.dane.gov.co"
+
+    # Patrón para filtrar el enlace al Excel GEIHEISS
+    link_pattern: str = r"/files/operaciones/GEIH/anex-GEIHEISS-.+\.xlsx$"
+
+    # ── Parsing del Excel ─────────────────────────────────────────
+    sheet_name: str = "Prop informalidad"
+
+    # Fila 10 (0-idx) = años: 2021, NaN, NaN, ..., 2022, NaN, ...
+    year_row: int = 10
+
+    # Fila 11 (0-idx) = trimestres: "Ene - mar", "Feb - abr", ...
+    trimestre_row: int = 11
+
+    # Patrón regex para la fila de 13 ciudades (fila 13 en el Excel)
+    city_label_pattern: str = r"13\s+Ciudades?\s+y\s+A\.?M\.?"
+
+    # Etiqueta de fuente para el CSV de salida
+    source_label: str = "DANE GEIH-EISS"
+
+    # ── Archivos ──────────────────────────────────────────────────
+    raw_xlsx_filename: str = "geiheiss_raw.xlsx"
+    processed_filename: str = "dane_informality_colombia.csv"
+
+    # ── HTTP ──────────────────────────────────────────────────────
+    timeout: int = 120
+    http_headers: dict[str, str] = field(
+        default_factory=lambda: {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+        }
+    )
+
+
+GEIH_INFORMALITY_CONFIG = GEIHInformalityConfig()
+
+
+# ── Columnas procesadas — informalidad ───────────────────────────────
+
+INFORMALITY_PROCESSED_COLUMNS: list[str] = [
+    "date", "year", "month",
+    "informality_rate_13c",
+    "source", "download_date",
+]
+
+INFORMALITY_RATE_MIN: float = 0.0
+INFORMALITY_RATE_MAX: float = 100.0
+
+
 # ── Configuración IPC (DANE real) ────────────────────────────────────
 
 @dataclass(frozen=True)

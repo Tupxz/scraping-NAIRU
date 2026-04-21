@@ -28,6 +28,7 @@ from src.quality_checks import QualityCheckError
 def run_pipeline(
     run_unemployment: bool = True,
     run_pwt: bool = False,
+    run_informality: bool = False,
     run_ipc: bool = False,
     run_banrep: bool = False,
     run_tes: bool = False,
@@ -56,6 +57,10 @@ def run_pipeline(
         if run_pwt:
             from src.pipelines import run_pwt as pwt_pipeline
             pwt_pipeline.run()
+
+        if run_informality:
+            from src.pipelines import run_informality as informality_pipeline
+            informality_pipeline.run()
 
         if run_ipc:
             from src.pipelines import run_ipc as ipc_pipeline
@@ -101,6 +106,10 @@ def run_pipeline(
 def main() -> None:
     """Punto de entrada CLI."""
     parser = argparse.ArgumentParser(description="Pipeline NAIRU Colombia")
+    parser.add_argument(
+        "--informality", action="store_true",
+        help="Ejecutar pipeline de informalidad laboral (DANE GEIH-EISS, 13 ciudades)",
+    )
     parser.add_argument(
         "--pwt", action="store_true",
         help="Ejecutar solo el pipeline PWT 10.01 (capital stock + capital humano)",
@@ -151,6 +160,7 @@ def main() -> None:
     if args.all:
         run_pipeline(
             run_unemployment=True, run_pwt=True,
+            run_informality=True,
             run_ipc=True, run_banrep=True,
             run_tes=True, run_brent=True,
             run_andi=True, andi_reprocess=True,
@@ -163,7 +173,8 @@ def main() -> None:
 
     # Si no se pasa ningún flag, ejecutar desempleo por defecto.
     any_selected = (
-        args.unemployment or args.pwt or args.ipc or args.banrep
+        args.unemployment or args.pwt or args.informality
+        or args.ipc or args.banrep
         or args.tes or args.brent or use_andi
         or args.andi_reprocess or args.merge
     )
@@ -175,6 +186,7 @@ def main() -> None:
     run_pipeline(
         run_unemployment=args.unemployment,
         run_pwt=args.pwt,
+        run_informality=args.informality,
         run_ipc=args.ipc,
         run_banrep=args.banrep,
         run_tes=args.tes,
