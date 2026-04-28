@@ -700,3 +700,126 @@ CAPITAL_STOCK_MIN: float = 0.0      # Stock de capital no puede ser negativo
 CAPITAL_STOCK_MAX: float = 5000.0   # Máximo defensivo para Colombia (USD bn)
 HUMAN_CAPITAL_MIN: float = 1.0      # Mínimo teórico del índice PWT
 HUMAN_CAPITAL_MAX: float = 5.0      # Máximo teórico del índice PWT
+
+
+# ── Configuración VIOG – Brecha del producto ponderada ───────────────
+
+@dataclass(frozen=True)
+class VIOGConfig:
+    """Configuración para el pipeline VIOG (brecha del producto ponderada).
+
+    El método VIOG (Variance-weighted Inverse Output Gap) construye una
+    brecha del producto a partir de la combinación lineal ponderada de
+    cinco filtros de tendencia (Baxter-King, Christiano-Fitzgerald,
+    Butterworth, Hodrick-Prescott y Kalman / UCM) más una serie de
+    referencia exógena (e.g. PIB potencial CBO).
+
+    Los pesos se calculan a partir de la "volatilidad acumulada" (VIOG)
+    de cada brecha, con dos esquemas:
+
+    - ``weight_rev_v``     ∝ rev_v (penaliza filtros volátiles)
+    - ``weight_inv_rev_v`` ∝ 1 / rev_v (premia filtros estables)
+
+    El pipeline es **genérico**: opera sobre cualquier serie trimestral
+    renombrando la serie observada a ``Y`` y la referencia a ``Y_ref``.
+
+    Cobertura típica (USA): 1949-Q1 – 2022-Q4 (FRED real GDP + CBO
+    potential GDP).
+    """
+
+    # ── Archivos ──────────────────────────────────────────────────
+    input_filename: str = "PIB_USA.xlsx"
+    processed_filename: str = "viog_usa.csv"
+    source_label: str = "FRED/CBO"
+
+    # ── Parámetros de los filtros ─────────────────────────────────
+    # Baxter-King: ciclos de 6 a 32 trimestres, recorte K=12 obs/extremo
+    bk_low: int = 6
+    bk_high: int = 32
+    bk_K: int = 12
+
+    # Christiano-Fitzgerald: ciclos de 6 a 32 trimestres
+    cf_low: int = 6
+    cf_high: int = 32
+
+    # Hodrick-Prescott: λ=1600 estándar para datos trimestrales
+    hp_lambda: int = 1600
+
+    # Butterworth low-pass: orden 8, frecuencia de corte 1/16
+    bw_cutoff: float = 1 / 16
+    bw_order: int = 8
+
+    # Kalman / UCM: cycle period bounds en trimestres (igual al notebook original).
+    kalman_cycle_period_bounds: tuple[float, float] = (0.3, 40.0)
+
+
+VIOG_CONFIG = VIOGConfig()
+
+VIOG_PROCESSED_COLUMNS: list[str] = [
+    "date",
+    "year",
+    "quarter",
+    "gap_viog",
+    "gap_inv_viog",
+    "gap_ref",
+    "gap_hp",
+    "gap_cf",
+    "gap_bk",
+    "gap_bw",
+    "gap_kalman",
+    "source",
+]
+
+
+# ── Configuración VIOG ───────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class VIOGConfig:
+    """Configuración para el pipeline VIOG (output gap USA ponderado por filtros).
+
+    Aplica 5 filtros de tendencia (BK, CF, Butterworth, HP, Kalman) más el
+    PIB potencial de función de producción (CBO), calcula ponderadores basados
+    en el error acumulado (VIOG y 1/VIOG) y devuelve la brecha del producto
+    compuesta.
+    """
+
+    input_filename: str = "PIB_USA.xlsx"
+    processed_filename: str = "viog_usa.csv"
+    source_label: str = "FRED/CBO"
+
+    # Baxter-King
+    bk_low: int = 6
+    bk_high: int = 32
+    bk_K: int = 12
+
+    # Christiano-Fitzgerald
+    cf_low: int = 6
+    cf_high: int = 32
+
+    # Hodrick-Prescott
+    hp_lambda: int = 1600
+
+    # Butterworth
+    bw_cutoff: float = 1.0 / 16.0
+    bw_order: int = 8
+
+    # Kalman UCM — igual al notebook original
+    kalman_cycle_period_bounds: tuple[float, float] = (0.3, 40.0)
+
+
+VIOG_CONFIG = VIOGConfig()
+
+VIOG_PROCESSED_COLUMNS: list[str] = [
+    "date",
+    "year",
+    "quarter",
+    "gap_viog",
+    "gap_inv_viog",
+    "gap_potential",
+    "gap_hp",
+    "gap_cf",
+    "gap_bk",
+    "gap_bw",
+    "gap_kalman",
+    "source",
+]

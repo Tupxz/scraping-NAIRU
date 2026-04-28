@@ -63,6 +63,11 @@ _SOURCES: dict[str, tuple[str, list[str]]] = {
         "pwt_colombia.csv",
         ["capital_stock_ck", "capital_stock_cn", "human_capital"],
     ),
+    # ── Trimestrales (VIOG — brecha del producto USA) ──────────────
+    "viog": (
+        "viog_usa.csv",
+        ["gap_viog", "gap_inv_viog"],
+    ),
 }
 
 MERGED_FILENAME = "nairu_dataset.csv"
@@ -89,6 +94,9 @@ MERGED_COLUMNS: list[str] = [
     "capital_stock_ck",         # PWT 11.0 - Stock capital PPP corrientes
     "capital_stock_cn",         # PWT 11.0 - Stock capital precios nac. ctes.
     "human_capital",            # PWT 11.0 - Índice Capital Humano
+    # ── Trimestrales (NaN en meses sin observación) ───────
+    "gap_viog",                 # VIOG - Brecha del producto ponderada (VIOG)
+    "gap_inv_viog",             # VIOG - Brecha del producto ponderada (1/VIOG)
 ]
 
 
