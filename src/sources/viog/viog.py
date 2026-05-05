@@ -15,8 +15,8 @@ Notas:
   - Baxter-King recorta K=12 trimestres de cada extremo → NaN en extremos para gap_bk.
   - El divisor N usa len(df) (generalización del notebook original).
   - Kalman usa UnobservedComponents(level="random walk with drift", cycle=True,
-    damped_cycle=True, stochastic_cycle=True, cycle_period_bounds=[0.1, 40]).
-    El nivel suavizado se usa como tendencia (result.level.smoothed).
+    damped_cycle=True, stochastic_cycle=True, cycle_period_bounds=[0.3, 40]).
+    El nivel suavizado (result.level.smoothed) es la tendencia/potencial.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def load_pib_usa(path: Path) -> pd.DataFrame:
 
 # ── 2. Filtros ────────────────────────────────────────────────────────
 
-def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
+def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     """Aplica los 5 filtros de tendencia a la columna Y."""
     from scipy.signal import butter, filtfilt
     from statsmodels.tsa.filters.bk_filter import bkfilter
@@ -93,8 +93,9 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     from statsmodels.tsa.filters.hp_filter import hpfilter
     from statsmodels.tsa.statespace.structural import UnobservedComponents
 
-    from src.config import VIOG_CONFIG
-    cfg = VIOG_CONFIG
+    if cfg is None:
+        from src.config import VIOG_CONFIG
+        cfg = VIOG_CONFIG
     y = df["Y"].astype(float)
 
     # Baxter-King (recorta K obs de cada extremo → NaN en extremos)
@@ -116,8 +117,9 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     _, hp_trend = hpfilter(y, lamb=cfg.hp_lambda)
     df["trend_hp"] = hp_trend.values
 
-    # Kalman / UCM — idéntico al notebook original
-    # level="random walk with drift" + ciclo estocástico amortiguado
+    # Kalman / UCM — random walk with drift + ciclo estocástico amortiguado
+    # Idéntico al modelo USA: bounds [0.3, 40] trimestres (0.075–10 años)
+    # El nivel suavizado (result.level.smoothed) es la tendencia/potencial
     logger.info("[VIOG] Ajustando Kalman UCM (random walk with drift + cycle)...")
     import warnings as _warnings
     ucm = UnobservedComponents(
@@ -126,7 +128,7 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
         cycle=True,
         damped_cycle=True,
         stochastic_cycle=True,
-        cycle_period_bounds=[0.3, 40],
+        cycle_period_bounds=list(cfg.kalman_cycle_period_bounds),
     )
     with _warnings.catch_warnings():
         _warnings.simplefilter("ignore")
@@ -444,7 +446,7 @@ def compute_viog(
     df["_series_label"] = series_col
 
     # ── Calcular ──────────────────────────────────────────────────────
-    df = apply_filters(df)
+    df = apply_filters(df)   # usa VIOG_CONFIG por defecto (cfg=None → fallback)
     df = compute_gaps(df)       # gap_ref solo se crea si Y_ref existe
     df = compute_viog_weights(df)
     df = compute_weighted_gap(df)
@@ -479,7 +481,8 @@ def run_viog_pipeline(
     input_path: Path,
     output_path: Path,
     series_col: str = "Value(Billions)",
-    ref_col: str = "Potential Value(Billions)",
+    ref_col: Optional[str] = "Potential Value(Billions)",
+    source_label: Optional[str] = None,
     plot: bool = False,
     plot_dir: Optional[Path] = None,
 ) -> pd.DataFrame:
@@ -498,7 +501,7 @@ def run_viog_pipeline(
 
     logger.info("[VIOG] Cargando %s (serie=%s, ref=%s)", input_path, series_col, ref_col)
     df = load_series(input_path, series_col=series_col, ref_col=ref_col)
-    df = apply_filters(df)
+    df = apply_filters(df, cfg=VIOG_CONFIG)
     df = compute_gaps(df)
     df = compute_viog_weights(df)
     df = compute_weighted_gap(df)
@@ -509,23 +512,24 @@ def run_viog_pipeline(
         plot_filters(df, save_dir=_plot_dir, show=False)
         logger.info("[VIOG] Gráficas guardadas en %s", _plot_dir)
 
-    out = pd.DataFrame({
+    out = {
         "date":         df.index.to_timestamp(),
         "year":         df.index.year,
         "quarter":      df.index.quarter,
         "gap_viog":     df["gap_viog"],
         "gap_inv_viog": df["gap_inv_viog"],
-        "gap_ref":      df["gap_ref"],
         "gap_hp":       df["gap_hp"],
         "gap_cf":       df["gap_cf"],
         "gap_bk":       df["gap_bk"],
         "gap_bw":       df["gap_bw"],
         "gap_kalman":   df["gap_kalman"],
-        "source":       VIOG_CONFIG.source_label,
-    })
+        "source":       source_label or VIOG_CONFIG.source_label,
+    }
+    if ref_col and "gap_ref" in df.columns:
+        out["gap_ref"] = df["gap_ref"]
 
-    out = out.reset_index(drop=True)
+    out_df = pd.DataFrame(out).reset_index(drop=True)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(output_path, index=False)
-    logger.info("[VIOG] %d observaciones guardadas en %s", len(out), output_path)
-    return out
+    out_df.to_csv(output_path, index=False)
+    logger.info("[VIOG] %d observaciones guardadas en %s", len(out_df), output_path)
+    return out_df

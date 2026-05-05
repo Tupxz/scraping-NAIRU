@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 # ── Rutas del proyecto ────────────────────────────────────────────────
 # Convención de capas (raw → inputs → processed → final):
@@ -251,10 +252,10 @@ class DANEGDPConfig:
     # estable y comparable internacionalmente).
     sheet_name: str = "Cuadro 4"
 
-    # Fila 11 (0-idx 10) = años (texto en col D, H, L, ...).
-    # Fila 12 (0-idx 11) = trimestres romanos (D=I, E=II, F=III, G=IV).
-    year_row: int = 10
-    quarter_row: int = 11
+    # Fila 12 (0-idx 11) = años (col D=2005, H=2006, ...).
+    # Fila 13 (0-idx 12) = trimestres romanos (I, II, III, IV).
+    year_row: int = 11
+    quarter_row: int = 12
 
     # Columna C (0-idx 2) contiene la etiqueta "Producto Interno Bruto"
     concept_col: int = 2
@@ -821,6 +822,11 @@ class VIOGConfig:
     processed_filename: str = "viog_usa.csv"
     source_label: str = "FRED/CBO"
 
+    # Columnas del Excel de entrada.
+    # ref_col=None → VIOG sin referencia externa (solo 5 filtros estadísticos).
+    series_col: str = "Value(Billions)"
+    ref_col: Optional[str] = "Potential Value(Billions)"
+
     # Baxter-King
     bk_low: int = 6
     bk_high: int = 32
@@ -837,8 +843,8 @@ class VIOGConfig:
     bw_cutoff: float = 1.0 / 16.0
     bw_order: int = 8
 
-    # Kalman UCM — bounds del período del ciclo en trimestres (notebook original: [0.3, 40])
-    kalman_cycle_period_bounds: tuple[float, float] = (0.1, 40.0)
+    # Kalman UCM — bounds del período del ciclo en trimestres (igual que notebook original)
+    kalman_cycle_period_bounds: tuple[float, float] = (0.3, 40.0)
 
 
 VIOG_CONFIG = VIOGConfig()
@@ -853,7 +859,9 @@ VIOG_CONFIG = VIOGConfig()
 VIOG_CO_CONFIG = VIOGConfig(
     input_filename="PIB_CO.xlsx",
     processed_filename="viog_colombia.csv",
-    source_label="DANE Cuentas Nacionales / Función de Producción",
+    source_label="DANE Cuentas Nacionales",
+    series_col="Value(Billions)",
+    ref_col=None,  # Sin PIB potencial externo — solo 5 filtros estadísticos
 )
 
 VIOG_PROCESSED_COLUMNS: list[str] = [
