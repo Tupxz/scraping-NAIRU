@@ -1,4 +1,4 @@
-date,year,month,unemployment_rate,tgp_rate,pet_thousands,informality_rate_13c,ipc_index,Inf_Goal,Inf_Rate,Core_Inf,brent_usd_per_barrel,capacity_utilization,TES_UVR_1Y,TES_PESOS_1Y,capital_stock_ck,capital_stock_cn,human_capital,gap_viog,gap_inv_viog
+date,year,month,unemployment_rate,tgp_rate,pet_thousands,informality_rate_13c,ipc_index,Inf_Goal,Inf_Rate,Core_Inf,brent_usd_per_barrel,capacity_utilization,TES_UVR_1Y,TES_PESOS_1Y,capital_stock_ck,capital_stock_cn,human_capital,gap_viog_us,gap_inv_viog_us
 1949-01-01,1949,1,,,,,,,,,,,,,,,,0.021653684364522,0.0004655790183827
 1949-04-01,1949,4,,,,,,,,,,,,,,,,-0.0197590140868841,-0.0174127767223746
 1949-07-01,1949,7,,,,,,,,,,,,,,,,-0.0272047491784457,-0.0205514890817921

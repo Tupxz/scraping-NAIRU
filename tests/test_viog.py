@@ -229,3 +229,38 @@ class TestRunVIOGPipeline:
     def test_quarter_values_valid(self, pipeline_output):
         df, _ = pipeline_output
         assert df["quarter"].isin([1, 2, 3, 4]).all()
+
+
+# ── TestVIOGColombiaRunner ────────────────────────────────────────────
+
+class TestVIOGColombiaRunner:
+    """Tests del orquestador VIOG-Colombia (skip elegante si falta input)."""
+
+    def test_run_colombia_skips_when_input_missing(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Si data/inputs/PIB_CO.xlsx no existe, run_colombia() omite el pipeline sin fallar."""
+        from src.pipelines import run_viog as viog_pipeline
+
+        # Apuntar INPUTS_DIR a un tmp_path vacío para simular ausencia del archivo
+        monkeypatch.setattr(viog_pipeline, "INPUTS_DIR", tmp_path)
+        monkeypatch.setattr(viog_pipeline, "PROCESSED_DIR", tmp_path)
+        monkeypatch.setattr(viog_pipeline, "OUTPUTS_DIR", tmp_path)
+
+        # No debe lanzar excepción
+        viog_pipeline.run_colombia()
+
+        # Debe haber emitido un mensaje informativo
+        captured = capsys.readouterr()
+        assert "PIB_CO.xlsx" in captured.out or "omitido" in captured.out.lower()
+
+    def test_viog_co_config_distinct_from_us(self):
+        """VIOG_CO_CONFIG y VIOG_CONFIG difieren en filename y source label."""
+        from src.config import VIOG_CO_CONFIG, VIOG_CONFIG
+        assert VIOG_CO_CONFIG.input_filename != VIOG_CONFIG.input_filename
+        assert VIOG_CO_CONFIG.processed_filename != VIOG_CONFIG.processed_filename
+        assert VIOG_CO_CONFIG.source_label != VIOG_CONFIG.source_label
+        # Pero comparten parámetros econométricos
+        assert VIOG_CO_CONFIG.bk_low == VIOG_CONFIG.bk_low
+        assert VIOG_CO_CONFIG.hp_lambda == VIOG_CONFIG.hp_lambda
+        assert VIOG_CO_CONFIG.kalman_cycle_period_bounds == VIOG_CONFIG.kalman_cycle_period_bounds

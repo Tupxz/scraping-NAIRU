@@ -33,4 +33,5 @@ def run() -> None:
     run_pwt.run()
     run_dane_gdp.run()
     run_viog.run()
+    run_viog.run_colombia()  # skip elegante si data/inputs/PIB_CO.xlsx no existe
     run_merge.run()

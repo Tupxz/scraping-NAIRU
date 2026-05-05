@@ -843,6 +843,19 @@ class VIOGConfig:
 
 VIOG_CONFIG = VIOGConfig()
 
+# VIOG Colombia — replica del pipeline VIOG sobre el PIB colombiano.
+# Input: data/inputs/PIB_CO.xlsx (combinación manual del usuario:
+#   serie observada del scraper DANE + PIB potencial estimado por
+#   función de producción provisto externamente).
+# Mismos parámetros econométricos que el VIOG-USA (mismos filtros,
+# mismos lambda/cutoff, mismos bounds del Kalman). Lo único que cambia
+# es el nombre de archivo y la etiqueta de fuente.
+VIOG_CO_CONFIG = VIOGConfig(
+    input_filename="PIB_CO.xlsx",
+    processed_filename="viog_colombia.csv",
+    source_label="DANE Cuentas Nacionales / Función de Producción",
+)
+
 VIOG_PROCESSED_COLUMNS: list[str] = [
     "date",
     "year",

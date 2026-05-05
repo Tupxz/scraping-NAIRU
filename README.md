@@ -318,7 +318,9 @@ python -m src.main --andi-reprocess        # ANDI EOIC — reprocesar PDFs local
 
 # ── Variables estructurales / externas ─────────────────────────
 python -m src.main --pwt                   # Capital Stock + Capital Humano (PWT 11.0)
+python -m src.main --dane-gdp              # PIB trimestral DANE (Cuentas Nacionales, desest.)
 python -m src.main --viog                  # Brecha del producto USA (VIOG, 5 filtros + CBO)
+python -m src.main --viog-co               # Brecha del producto Colombia (requiere PIB_CO.xlsx)
 
 # ── Consolidación ──────────────────────────────────────────────
 python -m src.main --merge                 # Unifica todas las fuentes → data/final/nairu_dataset.csv
@@ -336,11 +338,20 @@ python -m src.main --viog --merge          # Recalcular VIOG y luego re-unir
 - `--viog` requiere que `data/inputs/PIB_USA.xlsx` exista (input manual,
   no descargado por scraper). Genera `data/processed/viog_usa.csv` y
   gráficas de los 5 filtros en `outputs/viog/`.
+- `--viog-co` aplica el mismo VIOG sobre el PIB de Colombia. Requiere
+  que el usuario combine en `data/inputs/PIB_CO.xlsx` la serie observada
+  trimestral del DANE (descargada con `--dane-gdp`) con el PIB potencial
+  estimado por función de producción (input externo). Si el archivo no
+  existe, el pipeline omite el paso con un warning sin fallar.
+- `--dane-gdp` descarga el anexo *anex-ProduccionConstantes* más reciente
+  desde Cuentas Nacionales Trimestrales del DANE y produce
+  `data/processed/dane_gdp_colombia.csv`.
 - `--andi-backfill` vs `--andi-reprocess`: el primero descarga **todos** los
   PDFs históricos de la EOIC; el segundo solo procesa PDFs ya descargados
   en `data/raw/andi/` que no aparezcan en el CSV procesado.
-- `--all` ejecuta los 9 pipelines de fuente + merge en orden lógico
-  (insumos → consolidación).
+- `--all` ejecuta los 11 pipelines de fuente + merge en orden lógico
+  (insumos → consolidación). El VIOG-Colombia se omite con warning si
+  todavía no existe `data/inputs/PIB_CO.xlsx`.
 
 > Los mismos comandos funcionan idénticos en PowerShell; solo cambia la
 > activación del entorno virtual (ver arriba).
@@ -366,8 +377,10 @@ Después de ejecutar `python -m src.main --all`, el pipeline genera:
 | `data/processed/andi_capacidad_instalada.csv`  | Capacidad instalada industrial (EOIC)    | `date, year, month, capacity_utilization, source, download_date`         |
 | `data/processed/tes_banrep_colombia.csv`       | Tasas TES Cero Cupón (pesos y UVR, 1Y) | `date, year, month, TES_UVR_1Y, TES_PESOS_1Y, source, download_date`    |
 | `data/processed/pwt_colombia.csv`              | Capital stock y capital humano (anual)   | `date, year, month, capital_stock_ck, capital_stock_cn, human_capital, source, download_date` |
+| `data/processed/dane_gdp_colombia.csv`         | PIB trimestral DANE (desestacionalizado) | `date, year, quarter, gdp_observed, source, download_date`              |
 | `data/processed/viog_usa.csv`                  | Brecha del producto USA (VIOG, trim.)    | `date, year, quarter, gap_viog, gap_inv_viog, gap_ref, gap_hp, gap_cf, gap_bk, gap_bw, gap_kalman, source` |
-| `data/final/nairu_dataset.csv`                 | Base unificada (860 filas × 17 cols)     | `date, year, month, unemployment_rate, tgp_rate, pet_thousands, ipc_index, Inf_Goal, Inf_Rate, Core_Inf, brent_usd_per_barrel, capacity_utilization, TES_UVR_1Y, TES_PESOS_1Y, capital_stock_ck, capital_stock_cn, human_capital` |
+| `data/processed/viog_colombia.csv` (opcional)  | Brecha del producto Colombia (VIOG)      | `date, year, quarter, gap_viog, gap_inv_viog, gap_ref, gap_hp, gap_cf, gap_bk, gap_bw, gap_kalman, source` |
+| `data/final/nairu_dataset.csv`                 | Base unificada (≈884 filas × 22 cols)    | `date, year, month, unemployment_rate, tgp_rate, pet_thousands, informality_rate_13c, ipc_index, Inf_Goal, Inf_Rate, Core_Inf, brent_usd_per_barrel, capacity_utilization, TES_UVR_1Y, TES_PESOS_1Y, capital_stock_ck, capital_stock_cn, human_capital, gap_viog_us, gap_inv_viog_us, gap_viog_co, gap_inv_viog_co` |
 
 ### Cargar el dataset final en pandas
 

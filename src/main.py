@@ -31,6 +31,7 @@ def run_pipeline(
     run_pwt: bool = False,
     run_informality: bool = False,
     run_viog: bool = False,
+    run_viog_co: bool = False,
     run_dane_gdp: bool = False,
     run_ipc: bool = False,
     run_banrep: bool = False,
@@ -68,6 +69,10 @@ def run_pipeline(
         if run_viog:
             from src.pipelines import run_viog as viog_pipeline
             viog_pipeline.run()
+
+        if run_viog_co:
+            from src.pipelines import run_viog as viog_pipeline
+            viog_pipeline.run_colombia()
 
         if run_dane_gdp:
             from src.pipelines import run_dane_gdp as dane_gdp_pipeline
@@ -119,7 +124,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Pipeline NAIRU Colombia")
     parser.add_argument(
         "--viog", action="store_true",
-        help="Ejecutar pipeline VIOG (brecha del producto USA, 5 filtros ponderados)",
+        help="Ejecutar pipeline VIOG-USA (brecha del producto USA, 5 filtros ponderados)",
+    )
+    parser.add_argument(
+        "--viog-co", action="store_true",
+        help="Ejecutar pipeline VIOG-Colombia (requiere data/inputs/PIB_CO.xlsx)",
     )
     parser.add_argument(
         "--informality", action="store_true",
@@ -180,6 +189,7 @@ def main() -> None:
         run_pipeline(
             run_unemployment=True, run_pwt=True,
             run_informality=True, run_viog=True,
+            run_viog_co=True,
             run_dane_gdp=True,
             run_ipc=True, run_banrep=True,
             run_tes=True, run_brent=True,
@@ -194,7 +204,7 @@ def main() -> None:
     # Si no se pasa ningún flag, ejecutar desempleo por defecto.
     any_selected = (
         args.unemployment or args.pwt or args.informality or args.viog
-        or args.dane_gdp
+        or args.viog_co or args.dane_gdp
         or args.ipc or args.banrep
         or args.tes or args.brent or use_andi
         or args.andi_reprocess or args.merge
@@ -209,6 +219,7 @@ def main() -> None:
         run_pwt=args.pwt,
         run_informality=args.informality,
         run_viog=args.viog,
+        run_viog_co=args.viog_co,
         run_dane_gdp=args.dane_gdp,
         run_ipc=args.ipc,
         run_banrep=args.banrep,
