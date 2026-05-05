@@ -224,8 +224,18 @@ scraping-NAIRU/
 ├── docs/bib/                     # Bibliografía de referencia
 ├── logs/                         # Logs del pipeline
 ├── outputs/                      # Reportes generados (ANDI, etc.)
+├── andi_agent/                   # ⚠ DEPRECADO — agente legacy del scraper ANDI EOIC
+│                                 #   (sustituido por src/sources/andi/eoic.py)
 └── requirements.txt
 ```
+
+> **Nota sobre `andi_agent/`:** Es la primera versión standalone del
+> scraper de la ANDI (con su propio `main.py`, `requirements.txt` y CSV
+> auxiliar). La lógica equivalente —scraping + parsing de PDFs— está
+> reescrita y testada en `src/sources/andi/eoic.py` y se invoca con
+> `python -m src.main --andi`. La carpeta `andi_agent/` se conserva sólo
+> como referencia histórica; **no debe modificarse** ni usarse en flujos
+> nuevos.
 
 **Principios de diseño:**
 
@@ -358,6 +368,32 @@ Después de ejecutar `python -m src.main --all`, el pipeline genera:
 | `data/processed/pwt_colombia.csv`              | Capital stock y capital humano (anual)   | `date, year, month, capital_stock_ck, capital_stock_cn, human_capital, source, download_date` |
 | `data/processed/viog_usa.csv`                  | Brecha del producto USA (VIOG, trim.)    | `date, year, quarter, gap_viog, gap_inv_viog, gap_ref, gap_hp, gap_cf, gap_bk, gap_bw, gap_kalman, source` |
 | `data/final/nairu_dataset.csv`                 | Base unificada (860 filas × 17 cols)     | `date, year, month, unemployment_rate, tgp_rate, pet_thousands, ipc_index, Inf_Goal, Inf_Rate, Core_Inf, brent_usd_per_barrel, capacity_utilization, TES_UVR_1Y, TES_PESOS_1Y, capital_stock_ck, capital_stock_cn, human_capital` |
+
+### Cargar el dataset final en pandas
+
+```python
+import pandas as pd
+
+# Carga base con índice temporal
+df = pd.read_csv(
+    "data/final/nairu_dataset.csv",
+    parse_dates=["date"],
+).set_index("date")
+
+# Ejemplo: serie mensual de desempleo + inflación
+df[["unemployment_rate", "Inf_Rate"]].plot(secondary_y="Inf_Rate")
+
+# Ejemplo: filtrar período post-2010
+df_recent = df.loc["2010":]
+
+# Ejemplo: las columnas anuales (PWT) están con NaN en meses no-enero
+pwt_annual = df[["capital_stock_ck", "human_capital"]].dropna()
+```
+
+> Las series anuales (PWT 11.0) sólo tienen valor en enero de cada año;
+> los demás meses contienen NaN. Las trimestrales (VIOG) sólo en
+> enero/abril/julio/octubre. Para análisis mensual puro, filtrar con
+> ``df.dropna(subset=["unemployment_rate"])`` o las columnas que necesites.
 
 Archivos intermedios (en `data/raw/`, ignorados por Git):
 
