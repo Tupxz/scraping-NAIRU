@@ -14,7 +14,9 @@ Pasos:
 Notas:
   - Baxter-King recorta K=12 trimestres de cada extremo → NaN en extremos para gap_bk.
   - El divisor N usa len(df) (generalización del notebook original).
-  - Kalman usa UnobservedComponents con ciclo estocástico amortiguado.
+  - Kalman usa UnobservedComponents(level="random walk with drift", cycle=True,
+    damped_cycle=True, stochastic_cycle=True, cycle_period_bounds=[0.1, 40]).
+    El nivel suavizado se usa como tendencia (result.level.smoothed).
 """
 
 from __future__ import annotations
@@ -31,7 +33,6 @@ logger = logging.getLogger("nairu_pipeline.viog")
 
 _GAP_VARS_WITH_REF    = ["bk", "cf", "bw", "hp", "kalman", "ref"]
 _GAP_VARS_WITHOUT_REF = ["bk", "cf", "bw", "hp", "kalman"]
-_GAP_VARS = _GAP_VARS_WITH_REF  # default; se sobreescribe en runtime si no hay ref
 _FILTER_LABELS = {
     "bk":     "Baxter-King",
     "cf":     "Christiano-Fitzgerald",
@@ -46,8 +47,8 @@ _FILTER_LABELS = {
 
 def load_series(
     path: Path,
-    series_col: str = "PIB",
-    ref_col: Optional[str] = "Potential_PIB",
+    series_col: str = "PIB",           # tests usan "PIB"; archivo real (PIB_USA.xlsx) usa "Value(Billions)"
+    ref_col: Optional[str] = "Potential_PIB",  # tests usan "Potential_PIB"; archivo real usa "Potential Value(Billions)"
 ) -> pd.DataFrame:
     """Carga un Excel y construye PeriodIndex trimestral.
 

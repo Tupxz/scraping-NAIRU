@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.config import PROCESSED_DIR, VIOG_CONFIG
+from src.config import INPUTS_DIR, VIOG_CONFIG
 from src.sources.viog.viog import (
     apply_filters,
     compute_gaps,
@@ -185,7 +185,7 @@ class TestRunVIOGPipeline:
     @pytest.fixture(scope="class")
     def pipeline_output(self, tmp_path_factory):
         tmp = tmp_path_factory.mktemp("viog_out")
-        input_path = PROCESSED_DIR / VIOG_CONFIG.input_filename
+        input_path = INPUTS_DIR / VIOG_CONFIG.input_filename
         output_path = tmp / VIOG_CONFIG.processed_filename
         df = run_viog_pipeline(input_path, output_path)
         return df, output_path
@@ -215,7 +215,7 @@ class TestRunVIOGPipeline:
 
     def test_row_count_matches_input(self, pipeline_output):
         df, _ = pipeline_output
-        input_df = pd.read_excel(PROCESSED_DIR / VIOG_CONFIG.input_filename)
+        input_df = pd.read_excel(INPUTS_DIR / VIOG_CONFIG.input_filename)
         assert len(df) == len(input_df)
 
     def test_source_label(self, pipeline_output):

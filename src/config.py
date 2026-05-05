@@ -10,10 +10,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # ── Rutas del proyecto ────────────────────────────────────────────────
+# Convención de capas (raw → inputs → processed → final):
+#   raw/        Datos crudos descargados por scrapers (no editar a mano).
+#   inputs/     Inputs manuales que NO provienen de un scraper
+#               (ej. PIB_USA.xlsx para VIOG, benchmarks externos).
+#   processed/  Outputs por fuente generados por los pipelines individuales.
+#   final/      Dataset(s) consolidado(s) listos para modelar (output de merge).
 PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
 DATA_DIR: Path = PROJECT_ROOT / "data"
 RAW_DIR: Path = DATA_DIR / "raw"
+INPUTS_DIR: Path = DATA_DIR / "inputs"
 PROCESSED_DIR: Path = DATA_DIR / "processed"
+FINAL_DIR: Path = DATA_DIR / "final"
 LOGS_DIR: Path = PROJECT_ROOT / "logs"
 
 RAW_DANE_DIR: Path = RAW_DIR / "dane"
@@ -702,75 +710,6 @@ HUMAN_CAPITAL_MIN: float = 1.0      # Mínimo teórico del índice PWT
 HUMAN_CAPITAL_MAX: float = 5.0      # Máximo teórico del índice PWT
 
 
-# ── Configuración VIOG – Brecha del producto ponderada ───────────────
-
-@dataclass(frozen=True)
-class VIOGConfig:
-    """Configuración para el pipeline VIOG (brecha del producto ponderada).
-
-    El método VIOG (Variance-weighted Inverse Output Gap) construye una
-    brecha del producto a partir de la combinación lineal ponderada de
-    cinco filtros de tendencia (Baxter-King, Christiano-Fitzgerald,
-    Butterworth, Hodrick-Prescott y Kalman / UCM) más una serie de
-    referencia exógena (e.g. PIB potencial CBO).
-
-    Los pesos se calculan a partir de la "volatilidad acumulada" (VIOG)
-    de cada brecha, con dos esquemas:
-
-    - ``weight_rev_v``     ∝ rev_v (penaliza filtros volátiles)
-    - ``weight_inv_rev_v`` ∝ 1 / rev_v (premia filtros estables)
-
-    El pipeline es **genérico**: opera sobre cualquier serie trimestral
-    renombrando la serie observada a ``Y`` y la referencia a ``Y_ref``.
-
-    Cobertura típica (USA): 1949-Q1 – 2022-Q4 (FRED real GDP + CBO
-    potential GDP).
-    """
-
-    # ── Archivos ──────────────────────────────────────────────────
-    input_filename: str = "PIB_USA.xlsx"
-    processed_filename: str = "viog_usa.csv"
-    source_label: str = "FRED/CBO"
-
-    # ── Parámetros de los filtros ─────────────────────────────────
-    # Baxter-King: ciclos de 6 a 32 trimestres, recorte K=12 obs/extremo
-    bk_low: int = 6
-    bk_high: int = 32
-    bk_K: int = 12
-
-    # Christiano-Fitzgerald: ciclos de 6 a 32 trimestres
-    cf_low: int = 6
-    cf_high: int = 32
-
-    # Hodrick-Prescott: λ=1600 estándar para datos trimestrales
-    hp_lambda: int = 1600
-
-    # Butterworth low-pass: orden 8, frecuencia de corte 1/16
-    bw_cutoff: float = 1 / 16
-    bw_order: int = 8
-
-    # Kalman / UCM: cycle period bounds en trimestres (igual al notebook original).
-    kalman_cycle_period_bounds: tuple[float, float] = (0.3, 40.0)
-
-
-VIOG_CONFIG = VIOGConfig()
-
-VIOG_PROCESSED_COLUMNS: list[str] = [
-    "date",
-    "year",
-    "quarter",
-    "gap_viog",
-    "gap_inv_viog",
-    "gap_ref",
-    "gap_hp",
-    "gap_cf",
-    "gap_bk",
-    "gap_bw",
-    "gap_kalman",
-    "source",
-]
-
-
 # ── Configuración VIOG ───────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -803,8 +742,8 @@ class VIOGConfig:
     bw_cutoff: float = 1.0 / 16.0
     bw_order: int = 8
 
-    # Kalman UCM — igual al notebook original
-    kalman_cycle_period_bounds: tuple[float, float] = (0.3, 40.0)
+    # Kalman UCM — bounds del período del ciclo en trimestres (notebook original: [0.3, 40])
+    kalman_cycle_period_bounds: tuple[float, float] = (0.1, 40.0)
 
 
 VIOG_CONFIG = VIOGConfig()
@@ -815,7 +754,7 @@ VIOG_PROCESSED_COLUMNS: list[str] = [
     "quarter",
     "gap_viog",
     "gap_inv_viog",
-    "gap_potential",
+    "gap_ref",
     "gap_hp",
     "gap_cf",
     "gap_bk",

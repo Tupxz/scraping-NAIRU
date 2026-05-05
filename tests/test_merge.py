@@ -305,9 +305,12 @@ class TestSaveMergedDataset:
         assert "capital_stock_ck" in df_loaded.columns
 
     def test_run_merge_pipeline_returns_dataframe(
-        self, processed_dir_full: Path
+        self, processed_dir_full: Path, tmp_path: Path
     ) -> None:
-        df = run_merge_pipeline(processed_dir_full)
+        # output_dir distinto de processed_dir para reflejar la separación real
+        # processed/ (insumos del merge) vs final/ (dataset consolidado).
+        final_dir = tmp_path / "final"
+        df = run_merge_pipeline(processed_dir_full, output_dir=final_dir)
         assert isinstance(df, pd.DataFrame)
         assert len(df) > 0
-        assert (processed_dir_full / MERGED_FILENAME).exists()
+        assert (final_dir / MERGED_FILENAME).exists()

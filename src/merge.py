@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.config import PROCESSED_DIR
+from src.config import FINAL_DIR, PROCESSED_DIR
 from src.io_utils import load_csv, save_csv
 
 logger = logging.getLogger("nairu_pipeline.merge")
@@ -185,9 +185,10 @@ def merge_all_sources(
 
 def save_merged_dataset(
     df: pd.DataFrame,
-    output_dir: Path = PROCESSED_DIR,
+    output_dir: Path = FINAL_DIR,
 ) -> Path:
-    """Guarda el dataset unificado como CSV."""
+    """Guarda el dataset unificado como CSV en ``data/final/`` por defecto."""
+    output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / MERGED_FILENAME
     save_csv(df, path)
     logger.info("Dataset unificado guardado: %s", path)
@@ -196,8 +197,13 @@ def save_merged_dataset(
 
 def run_merge_pipeline(
     processed_dir: Path = PROCESSED_DIR,
+    output_dir: Path = FINAL_DIR,
 ) -> pd.DataFrame:
-    """Pipeline completo: carga → merge → guardado."""
+    """Pipeline completo: carga → merge → guardado.
+
+    Lee los CSVs por fuente desde ``processed_dir`` y escribe el dataset
+    consolidado en ``output_dir`` (``data/final/`` por defecto).
+    """
     df = merge_all_sources(processed_dir)
-    save_merged_dataset(df, processed_dir)
+    save_merged_dataset(df, output_dir)
     return df
