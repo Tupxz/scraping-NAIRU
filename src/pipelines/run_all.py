@@ -9,6 +9,7 @@ from src.pipelines import (
     run_banrep_inflation,
     run_banrep_tes,
     run_brent,
+    run_dane_gdp,
     run_informality,
     run_ipc,
     run_merge,
@@ -30,5 +31,6 @@ def run() -> None:
     run_brent.run()
     run_andi.run()
     run_pwt.run()
+    run_dane_gdp.run()
     run_viog.run()
     run_merge.run()

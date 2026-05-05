@@ -4,6 +4,7 @@ Uso:
     python -m src.main                  # Solo desempleo (default)
     python -m src.main --unemployment   # Solo desempleo (TD + TGP + PET)
     python -m src.main --pwt            # Solo PWT 10.01 (capital stock + capital humano)
+    python -m src.main --dane-gdp       # Solo PIB trimestral DANE (Cuentas Nacionales)
     python -m src.main --ipc            # Solo IPC (DANE real)
     python -m src.main --banrep         # Solo inflación (BANREP/SUAMECA)
     python -m src.main --tes            # Solo TES Cero Cupón (BANREP/SUAMECA)
@@ -30,6 +31,7 @@ def run_pipeline(
     run_pwt: bool = False,
     run_informality: bool = False,
     run_viog: bool = False,
+    run_dane_gdp: bool = False,
     run_ipc: bool = False,
     run_banrep: bool = False,
     run_tes: bool = False,
@@ -66,6 +68,10 @@ def run_pipeline(
         if run_viog:
             from src.pipelines import run_viog as viog_pipeline
             viog_pipeline.run()
+
+        if run_dane_gdp:
+            from src.pipelines import run_dane_gdp as dane_gdp_pipeline
+            dane_gdp_pipeline.run()
 
         if run_ipc:
             from src.pipelines import run_ipc as ipc_pipeline
@@ -124,6 +130,10 @@ def main() -> None:
         help="Ejecutar solo el pipeline PWT 10.01 (capital stock + capital humano)",
     )
     parser.add_argument(
+        "--dane-gdp", action="store_true",
+        help="Ejecutar pipeline PIB trimestral DANE (Cuentas Nacionales, desestacionalizado)",
+    )
+    parser.add_argument(
         "--ipc", action="store_true",
         help="Ejecutar solo el pipeline IPC (DANE real)",
     )
@@ -170,6 +180,7 @@ def main() -> None:
         run_pipeline(
             run_unemployment=True, run_pwt=True,
             run_informality=True, run_viog=True,
+            run_dane_gdp=True,
             run_ipc=True, run_banrep=True,
             run_tes=True, run_brent=True,
             run_andi=True, andi_reprocess=True,
@@ -183,6 +194,7 @@ def main() -> None:
     # Si no se pasa ningún flag, ejecutar desempleo por defecto.
     any_selected = (
         args.unemployment or args.pwt or args.informality or args.viog
+        or args.dane_gdp
         or args.ipc or args.banrep
         or args.tes or args.brent or use_andi
         or args.andi_reprocess or args.merge
@@ -197,6 +209,7 @@ def main() -> None:
         run_pwt=args.pwt,
         run_informality=args.informality,
         run_viog=args.viog,
+        run_dane_gdp=args.dane_gdp,
         run_ipc=args.ipc,
         run_banrep=args.banrep,
         run_tes=args.tes,

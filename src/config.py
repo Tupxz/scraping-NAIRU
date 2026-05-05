@@ -205,6 +205,101 @@ INFORMALITY_RATE_MIN: float = 0.0
 INFORMALITY_RATE_MAX: float = 100.0
 
 
+# ── Configuración Cuentas Nacionales — PIB Trimestral (DANE real) ─────
+
+@dataclass(frozen=True)
+class DANEGDPConfig:
+    """Configuración para la fuente PIB trimestral desestacionalizado del DANE.
+
+    El DANE publica trimestralmente el anexo **PIB enfoque producción a
+    precios constantes** dentro de la página *Cuentas Nacionales
+    Trimestrales — PIB información técnica*. El archivo ``anex-
+    ProduccionConstantes-{trim}{YYYY}.xlsx`` contiene la serie a precios
+    constantes en datos originales y **desestacionalizados** (los que
+    interesan para el output gap del VIOG-Colombia).
+
+    Estructura del Excel (hoja ``Cuadro 4``):
+      - Fila 11 (0-idx 10) → años (en columnas D, H, L, ... cada año
+        ocupa 4 columnas, una por trimestre).
+      - Fila 12 (0-idx 11) → trimestres en romanos: I, II, III, IV.
+      - Fila con ``col C == "Producto Interno Bruto"`` → serie agregada
+        del PIB total (primer match = bloque de niveles; bloques
+        posteriores son tasas de variación).
+
+    La serie se asigna al primer mes del trimestre (Q1 → enero, Q2 →
+    abril, Q3 → julio, Q4 → octubre), convención usual para empalmar
+    series trimestrales con frecuencias mensuales en el merge.
+    """
+
+    # ── Scraping ──────────────────────────────────────────────────
+    page_url: str = (
+        "https://www.dane.gov.co/index.php/estadisticas-por-tema/"
+        "cuentas-nacionales/cuentas-nacionales-trimestrales/"
+        "pib-informacion-tecnica"
+    )
+    base_url: str = "https://www.dane.gov.co"
+
+    # Patrón regex para el anexo "Producción a precios constantes"
+    # Ej.: /files/operaciones/PIB/anex-ProduccionConstantes-IVtrim2025.xlsx
+    link_pattern: str = (
+        r"/files/operaciones/PIB/anex-ProduccionConstantes-"
+        r"(?:I|II|III|IV)trim\d{4}\.xlsx$"
+    )
+
+    # ── Parsing del Excel ─────────────────────────────────────────
+    # Cuadro 4 = PIB desestacionalizado (12 agrupaciones — la serie más
+    # estable y comparable internacionalmente).
+    sheet_name: str = "Cuadro 4"
+
+    # Fila 11 (0-idx 10) = años (texto en col D, H, L, ...).
+    # Fila 12 (0-idx 11) = trimestres romanos (D=I, E=II, F=III, G=IV).
+    year_row: int = 10
+    quarter_row: int = 11
+
+    # Columna C (0-idx 2) contiene la etiqueta "Producto Interno Bruto"
+    concept_col: int = 2
+    concept_label: str = "Producto Interno Bruto"
+
+    # Datos numéricos empiezan en columna D (0-idx 3)
+    data_start_col: int = 3
+
+    # Etiqueta para el campo source del CSV
+    source_label: str = "DANE - Cuentas Nacionales Trimestrales"
+
+    # ── Archivos ──────────────────────────────────────────────────
+    raw_xlsx_filename: str = "dane_gdp_raw.xlsx"
+    raw_html_filename: str = "dane_gdp_page.html"
+    processed_filename: str = "dane_gdp_colombia.csv"
+
+    # ── HTTP ──────────────────────────────────────────────────────
+    timeout: int = 120
+    http_headers: dict[str, str] = field(
+        default_factory=lambda: {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+        }
+    )
+
+
+DANE_GDP_CONFIG = DANEGDPConfig()
+
+
+# ── Columnas procesadas — PIB Colombia ───────────────────────────────
+
+DANE_GDP_PROCESSED_COLUMNS: list[str] = [
+    "date", "year", "quarter",
+    "gdp_observed",
+    "source", "download_date",
+]
+
+# Sanity bounds (PIB trimestral en miles de millones de pesos)
+DANE_GDP_MIN: float = 0.0           # No puede ser negativo
+DANE_GDP_MAX: float = 1_000_000.0   # Máximo defensivo (PIB CO ~270k bn COP en 2024)
+
+
 # ── Configuración IPC (DANE real) ────────────────────────────────────
 
 @dataclass(frozen=True)
