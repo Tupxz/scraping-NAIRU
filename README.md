@@ -289,22 +289,48 @@ python -m src.main --all
 **Pipelines individuales (se pueden combinar):**
 
 ```bash
-python -m src.main --unemployment          # Desempleo + TGP + PET (DANE GEIH)
+# ── Mercado laboral colombiano ─────────────────────────────────
+python -m src.main --unemployment          # Desempleo + TGP + PET (DANE GEIH desest.)
+python -m src.main --informality           # Tasa de informalidad 13 ciudades (DANE GEIH-EISS)
+
+# ── Precios e inflación ────────────────────────────────────────
 python -m src.main --ipc                   # IPC (DANE)
-python -m src.main --banrep                # Inflación (BANREP/SUAMECA)
-python -m src.main --tes                   # TES Cero Cupón (BANREP/SUAMECA)
-python -m src.main --brent                 # Brent (FRED/EIA)
-python -m src.main --andi                  # ANDI EOIC — último mes disponible
+python -m src.main --banrep                # Inflación + meta + núcleo (BANREP/SUAMECA)
+
+# ── Sector financiero / energético ─────────────────────────────
+python -m src.main --tes                   # TES Cero Cupón pesos+UVR 1Y (BANREP/SUAMECA)
+python -m src.main --brent                 # Precio Brent (FRED/EIA)
+
+# ── Industria ──────────────────────────────────────────────────
+python -m src.main --andi                  # ANDI EOIC — último mes disponible (incremental)
 python -m src.main --andi-backfill         # ANDI EOIC — todos los PDFs históricos
+python -m src.main --andi-reprocess        # ANDI EOIC — reprocesar PDFs locales no incluidos
+
+# ── Variables estructurales / externas ─────────────────────────
 python -m src.main --pwt                   # Capital Stock + Capital Humano (PWT 11.0)
-python -m src.main --merge                 # Unifica todas las fuentes → nairu_dataset.csv
+python -m src.main --viog                  # Brecha del producto USA (VIOG, 5 filtros + CBO)
+
+# ── Consolidación ──────────────────────────────────────────────
+python -m src.main --merge                 # Unifica todas las fuentes → data/final/nairu_dataset.csv
 ```
 
 **Combinar varios pipelines en una sola ejecución:**
 
 ```bash
 python -m src.main --unemployment --ipc --andi
+python -m src.main --viog --merge          # Recalcular VIOG y luego re-unir
 ```
+
+**Notas sobre pipelines especiales:**
+
+- `--viog` requiere que `data/inputs/PIB_USA.xlsx` exista (input manual,
+  no descargado por scraper). Genera `data/processed/viog_usa.csv` y
+  gráficas de los 5 filtros en `outputs/viog/`.
+- `--andi-backfill` vs `--andi-reprocess`: el primero descarga **todos** los
+  PDFs históricos de la EOIC; el segundo solo procesa PDFs ya descargados
+  en `data/raw/andi/` que no aparezcan en el CSV procesado.
+- `--all` ejecuta los 9 pipelines de fuente + merge en orden lógico
+  (insumos → consolidación).
 
 > Los mismos comandos funcionan idénticos en PowerShell; solo cambia la
 > activación del entorno virtual (ver arriba).
