@@ -21,6 +21,7 @@ from src.merge import (
     MERGED_COLUMNS,
     MERGED_FILENAME,
     _SOURCES,
+    _load_source,
     merge_all_sources,
     run_merge_pipeline,
     save_merged_dataset,
@@ -150,6 +151,30 @@ class TestSourcesConfig:
         filename, _ = _SOURCES["pwt"]
         assert filename == "pwt_colombia.csv"
 
+    def test_viog_us_source_exists(self) -> None:
+        assert "viog_us" in _SOURCES
+        filename, _ = _SOURCES["viog_us"]
+        assert filename == "viog_usa.csv"
+
+    def test_viog_us_renames_to_country_suffix(self) -> None:
+        """VIOG-USA renombra columnas con sufijo '_us' para distinguir de Colombia."""
+        _, cols = _SOURCES["viog_us"]
+        assert isinstance(cols, dict)
+        assert cols["gap_viog"] == "gap_viog_us"
+        assert cols["gap_inv_viog"] == "gap_inv_viog_us"
+
+    def test_viog_co_source_exists(self) -> None:
+        assert "viog_co" in _SOURCES
+        filename, _ = _SOURCES["viog_co"]
+        assert filename == "viog_colombia.csv"
+
+    def test_viog_co_renames_to_country_suffix(self) -> None:
+        """VIOG-Colombia renombra columnas con sufijo '_co'."""
+        _, cols = _SOURCES["viog_co"]
+        assert isinstance(cols, dict)
+        assert cols["gap_viog"] == "gap_viog_co"
+        assert cols["gap_inv_viog"] == "gap_inv_viog_co"
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # Tests sobre MERGED_COLUMNS — orden y contenido
@@ -185,8 +210,9 @@ class TestMergedColumnsDefinition:
         assert len(MERGED_COLUMNS) == len(set(MERGED_COLUMNS))
 
     def test_total_column_count(self) -> None:
-        # date + year + month + 3 labor + ipc + 3 inflation + brent + andi + 2 tes + 3 pwt = 17
-        assert len(MERGED_COLUMNS) == 17
+        # date + year + month + 3 labor + informalidad + ipc + 3 inflation +
+        # brent + andi + 2 tes + 3 pwt + 2 viog_us + 2 viog_co = 22
+        assert len(MERGED_COLUMNS) == 22
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -305,9 +331,83 @@ class TestSaveMergedDataset:
         assert "capital_stock_ck" in df_loaded.columns
 
     def test_run_merge_pipeline_returns_dataframe(
-        self, processed_dir_full: Path
+        self, processed_dir_full: Path, tmp_path: Path
     ) -> None:
-        df = run_merge_pipeline(processed_dir_full)
+        # output_dir distinto de processed_dir para reflejar la separación real
+        # processed/ (insumos del merge) vs final/ (dataset consolidado).
+        final_dir = tmp_path / "final"
+        df = run_merge_pipeline(processed_dir_full, output_dir=final_dir)
         assert isinstance(df, pd.DataFrame)
         assert len(df) > 0
-        assert (processed_dir_full / MERGED_FILENAME).exists()
+        assert (final_dir / MERGED_FILENAME).exists()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Tests sobre _load_source — manejo de renombrado de columnas
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _make_viog_csv(processed_dir: Path, filename: str, suffix: str) -> None:
+    """Genera un viog_*.csv sintético con columnas (date, gap_viog, gap_inv_viog, ...)."""
+    quarterly = ["2020-01-01", "2020-04-01", "2020-07-01", "2020-10-01"]
+    df = pd.DataFrame({
+        "date": pd.to_datetime(quarterly),
+        "year": [2020] * 4,
+        "quarter": [1, 2, 3, 4],
+        "gap_viog": [0.01 * i for i in range(4)],
+        "gap_inv_viog": [-0.01 * i for i in range(4)],
+        "source": [f"test-{suffix}"] * 4,
+    })
+    df.to_csv(processed_dir / filename, index=False)
+
+
+class TestLoadSourceRenaming:
+    """Tests para el soporte de renombrado en _load_source."""
+
+    def test_dict_spec_renames_columns(self, tmp_path: Path) -> None:
+        _make_viog_csv(tmp_path, "viog_usa.csv", "us")
+        df = _load_source(
+            "viog_us",
+            "viog_usa.csv",
+            {"gap_viog": "gap_viog_us", "gap_inv_viog": "gap_inv_viog_us"},
+            processed_dir=tmp_path,
+        )
+        assert df is not None
+        assert "gap_viog_us" in df.columns
+        assert "gap_inv_viog_us" in df.columns
+        assert "gap_viog" not in df.columns
+        assert "gap_inv_viog" not in df.columns
+
+    def test_list_spec_keeps_original_names(self, tmp_path: Path) -> None:
+        _make_labor_csv(tmp_path)
+        df = _load_source(
+            "unemployment",
+            "dane_labor_colombia.csv",
+            ["unemployment_rate", "tgp_rate"],
+            processed_dir=tmp_path,
+        )
+        assert df is not None
+        assert "unemployment_rate" in df.columns
+        assert "tgp_rate" in df.columns
+
+    def test_returns_none_when_file_missing(self, tmp_path: Path) -> None:
+        df = _load_source(
+            "viog_co",
+            "viog_colombia.csv",  # no existe
+            {"gap_viog": "gap_viog_co", "gap_inv_viog": "gap_inv_viog_co"},
+            processed_dir=tmp_path,
+        )
+        assert df is None
+
+    def test_merge_with_both_viogs_creates_4_columns(self, tmp_path: Path) -> None:
+        """Si ambos viog_*.csv están presentes, el merge incluye us y co."""
+        _make_labor_csv(tmp_path)
+        _make_viog_csv(tmp_path, "viog_usa.csv", "us")
+        _make_viog_csv(tmp_path, "viog_colombia.csv", "co")
+
+        merged = merge_all_sources(tmp_path)
+        for col in ("gap_viog_us", "gap_inv_viog_us", "gap_viog_co", "gap_inv_viog_co"):
+            assert col in merged.columns, f"Falta columna {col}"
+        # Las viejas (sin sufijo) NO deben existir
+        assert "gap_viog" not in merged.columns
+        assert "gap_inv_viog" not in merged.columns

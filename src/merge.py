@@ -22,17 +22,28 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.config import PROCESSED_DIR
+from src.config import FINAL_DIR, PROCESSED_DIR
 from src.io_utils import load_csv, save_csv
 
 logger = logging.getLogger("nairu_pipeline.merge")
 
-# Mapeo: nombre lógico → (filename, columnas de datos a conservar)
-_SOURCES: dict[str, tuple[str, list[str]]] = {
+# Mapeo: nombre lógico → (filename, columnas a conservar).
+# Las columnas pueden definirse como:
+#   - list[str]            : conservar tal cual (ej. ["ipc_index"])
+#   - dict[str, str]       : conservar y renombrar {"gap_viog": "gap_viog_us"}
+#                            Útil para distinguir series del mismo concepto
+#                            entre dos países (VIOG-USA vs VIOG-Colombia).
+ColumnSpec = list[str] | dict[str, str]
+
+_SOURCES: dict[str, tuple[str, ColumnSpec]] = {
     # ── Mensuales ─────────────────────────────────────────────────
     "unemployment": (
         "dane_labor_colombia.csv",          # TD + TGP + PET (Fase 2)
         ["unemployment_rate", "tgp_rate", "pet_thousands"],
+    ),
+    "informality": (
+        "dane_informality_colombia.csv",    # Tasa informalidad 13 ciudades (trim. móvil)
+        ["informality_rate_13c"],
     ),
     "ipc": (
         "ipc_colombia.csv",
@@ -59,6 +70,16 @@ _SOURCES: dict[str, tuple[str, list[str]]] = {
         "pwt_colombia.csv",
         ["capital_stock_ck", "capital_stock_cn", "human_capital"],
     ),
+    # ── Trimestrales (VIOG — brecha del producto, dos países) ─────
+    # Renombramos para distinguir USA de Colombia en el dataset final.
+    "viog_us": (
+        "viog_usa.csv",
+        {"gap_viog": "gap_viog_us", "gap_inv_viog": "gap_inv_viog_us"},
+    ),
+    "viog_co": (
+        "viog_colombia.csv",
+        {"gap_viog": "gap_viog_co", "gap_inv_viog": "gap_inv_viog_co"},
+    ),
 }
 
 MERGED_FILENAME = "nairu_dataset.csv"
@@ -72,6 +93,7 @@ MERGED_COLUMNS: list[str] = [
     "unemployment_rate",        # GEIH - TD
     "tgp_rate",                 # GEIH - TGP
     "pet_thousands",            # GEIH - PET (calculada)
+    "informality_rate_13c",     # GEIH-EISS - Informalidad 13 ciudades (trim. móvil)
     "ipc_index",                # IPC DANE
     "Inf_Goal",                 # Inflación meta BANREP
     "Inf_Rate",                 # Inflación observada BANREP
@@ -84,28 +106,53 @@ MERGED_COLUMNS: list[str] = [
     "capital_stock_ck",         # PWT 11.0 - Stock capital PPP corrientes
     "capital_stock_cn",         # PWT 11.0 - Stock capital precios nac. ctes.
     "human_capital",            # PWT 11.0 - Índice Capital Humano
+    # ── Trimestrales VIOG-USA (NaN en meses sin observación) ──────
+    "gap_viog_us",              # VIOG-USA - Brecha del producto ponderada (VIOG)
+    "gap_inv_viog_us",          # VIOG-USA - Brecha ponderada (1/VIOG)
+    # ── Trimestrales VIOG-Colombia ─────────────────────────────────
+    "gap_viog_co",              # VIOG-CO - Brecha del producto ponderada (VIOG)
+    "gap_inv_viog_co",          # VIOG-CO - Brecha ponderada (1/VIOG)
 ]
 
 
 def _load_source(
     name: str,
     filename: str,
-    data_cols: list[str],
+    data_cols: ColumnSpec,
     processed_dir: Path = PROCESSED_DIR,
 ) -> pd.DataFrame | None:
-    """Carga un CSV procesado y selecciona solo date + columnas de datos."""
+    """Carga un CSV procesado y selecciona/renombra columnas de datos.
+
+    ``data_cols`` puede ser:
+      - list[str]      : columnas a conservar tal cual.
+      - dict[str, str] : ``{nombre_origen: nombre_destino}`` — selecciona
+                         las columnas y las renombra (útil para distinguir
+                         VIOG-USA de VIOG-Colombia).
+    """
     path = processed_dir / filename
     if not path.exists():
         logger.warning("Archivo no encontrado (se omite): %s", path)
         return None
 
     df = load_csv(path)
-    keep = ["date"] + [c for c in data_cols if c in df.columns]
+
+    if isinstance(data_cols, dict):
+        source_cols = list(data_cols.keys())
+        rename_map = data_cols
+    else:
+        source_cols = list(data_cols)
+        rename_map = {}
+
+    keep = ["date"] + [c for c in source_cols if c in df.columns]
     df = df[keep].copy()
+    if rename_map:
+        df = df.rename(columns=rename_map)
     df["date"] = pd.to_datetime(df["date"])
+
+    output_cols = list(rename_map.values()) if rename_map else source_cols
     logger.info(
         "%-15s cargado: %d filas, cols=%s",
-        name, len(df), data_cols,
+        name, len(df), output_cols,
     )
     return df
 
@@ -172,9 +219,10 @@ def merge_all_sources(
 
 def save_merged_dataset(
     df: pd.DataFrame,
-    output_dir: Path = PROCESSED_DIR,
+    output_dir: Path = FINAL_DIR,
 ) -> Path:
-    """Guarda el dataset unificado como CSV."""
+    """Guarda el dataset unificado como CSV en ``data/final/`` por defecto."""
+    output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / MERGED_FILENAME
     save_csv(df, path)
     logger.info("Dataset unificado guardado: %s", path)
@@ -183,8 +231,13 @@ def save_merged_dataset(
 
 def run_merge_pipeline(
     processed_dir: Path = PROCESSED_DIR,
+    output_dir: Path = FINAL_DIR,
 ) -> pd.DataFrame:
-    """Pipeline completo: carga → merge → guardado."""
+    """Pipeline completo: carga → merge → guardado.
+
+    Lee los CSVs por fuente desde ``processed_dir`` y escribe el dataset
+    consolidado en ``output_dir`` (``data/final/`` por defecto).
+    """
     df = merge_all_sources(processed_dir)
-    save_merged_dataset(df, processed_dir)
+    save_merged_dataset(df, output_dir)
     return df

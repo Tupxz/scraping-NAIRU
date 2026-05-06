@@ -35,6 +35,7 @@ from src.config import (
     CAPACITY_UTILIZATION_MAX,
     CAPACITY_UTILIZATION_MAX_CHANGE,
     CAPACITY_UTILIZATION_MIN,
+    INPUTS_DIR,
     OUTPUTS_DIR,
     PROCESSED_DIR,
     RAW_ANDI_DIR,
@@ -716,6 +717,39 @@ def _load_existing_dates(csv_path: Path) -> set[str]:
         return set()
 
 
+def _load_icu_historical(
+    historical_path: Path | None = None,
+) -> list[dict]:
+    """Carga la serie ICU histórica semilla (data/inputs/icu_historical.csv).
+
+    Esta serie proviene de ``nairu_estimates_v6.csv`` (columna
+    ``icu_current``) y cubre 2004–2025.  El pipeline ANDI solo necesita
+    añadir observaciones **posteriores** a la última fecha de este archivo.
+
+    Returns
+    -------
+    list[dict]
+        Registros en el esquema estándar de ``andi_capacidad_instalada.csv``.
+        Lista vacía si el archivo no existe.
+    """
+    path = historical_path or (INPUTS_DIR / "icu_historical.csv")
+    if not path.exists():
+        logger.debug("[ANDI] icu_historical.csv no encontrado en %s — se omite semilla.", path)
+        return []
+    try:
+        df = pd.read_csv(path)
+        df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+        records = df[ANDI_PROCESSED_COLUMNS].to_dict("records")
+        logger.info(
+            "[ANDI] Semilla histórica ICU cargada: %d obs (%s → %s)",
+            len(records), df["date"].iloc[0], df["date"].iloc[-1],
+        )
+        return records
+    except Exception as exc:
+        logger.warning("[ANDI] Error cargando icu_historical.csv: %s", exc)
+        return []
+
+
 def _build_record(
     date_str: str,
     value: float,
@@ -945,9 +979,18 @@ def run_andi_pipeline(*, backfill: bool = False) -> pd.DataFrame:
 
     scraper = ANDIScraper()
     cache = _load_cache(cache_path)
-    existing_dates = _load_existing_dates(csv_path)
 
-    # Obtener PDFs.
+    # ── Cargar semilla histórica (2004–2025 desde nairu_estimates_v6) ──
+    # Las fechas de la semilla se consideran "ya existentes"; el scraping
+    # solo añade observaciones posteriores a la última fecha del histórico.
+    historical_records = _load_icu_historical()
+    historical_dates: set[str] = {r["date"] for r in historical_records}
+
+    # Fechas adicionales ya scrapeadas y guardadas en el CSV final
+    # (solo las que NO estaban en el histórico, para no perder nada).
+    existing_dates: set[str] = historical_dates | _load_existing_dates(csv_path)
+
+    # ── Obtener PDFs ──────────────────────────────────────────────────
     if backfill:
         pdf_list = scraper.get_all_eoic_pdfs()
         logger.info("Backfill: %d PDFs encontrados.", len(pdf_list))
@@ -984,12 +1027,18 @@ def run_andi_pipeline(*, backfill: bool = False) -> pd.DataFrame:
     # Persistir cache.
     _save_cache(cache, cache_path)
 
-    # Combinar con registros existentes.
-    all_records: list[dict[str, Any]] = []
-    if csv_path.exists():
-        existing_df = pd.read_csv(csv_path)
-        all_records = existing_df.to_dict("records")
-    all_records.extend(new_records)
+    # ── Combinar: semilla histórica + nuevos registros scrapeados ─────
+    # Base = semilla histórica (2004–2025). Los nuevos registros
+    # scrapeados (2026+) se añaden encima. Si la semilla no existe,
+    # se usa el CSV anterior como fallback.
+    if historical_records:
+        base_records = list(historical_records)
+    elif csv_path.exists():
+        base_records = pd.read_csv(csv_path).to_dict("records")
+    else:
+        base_records = []
+
+    all_records: list[dict[str, Any]] = base_records + new_records
 
     # Guardar DataFrame final.
     df = _save_dataframe(all_records, csv_path)

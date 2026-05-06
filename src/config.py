@@ -8,12 +8,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 # ── Rutas del proyecto ────────────────────────────────────────────────
+# Convención de capas (raw → inputs → processed → final):
+#   raw/        Datos crudos descargados por scrapers (no editar a mano).
+#   inputs/     Inputs manuales que NO provienen de un scraper
+#               (ej. PIB_USA.xlsx para VIOG, benchmarks externos).
+#   processed/  Outputs por fuente generados por los pipelines individuales.
+#   final/      Dataset(s) consolidado(s) listos para modelar (output de merge).
 PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
 DATA_DIR: Path = PROJECT_ROOT / "data"
 RAW_DIR: Path = DATA_DIR / "raw"
+INPUTS_DIR: Path = DATA_DIR / "inputs"
 PROCESSED_DIR: Path = DATA_DIR / "processed"
+FINAL_DIR: Path = DATA_DIR / "final"
 LOGS_DIR: Path = PROJECT_ROOT / "logs"
 
 RAW_DANE_DIR: Path = RAW_DIR / "dane"
@@ -118,6 +127,178 @@ class GEIHConfig:
 
 
 GEIH_CONFIG = GEIHConfig()
+
+
+# ── Configuración GEIH-EISS — Informalidad laboral (DANE real) ───────
+
+@dataclass(frozen=True)
+class GEIHInformalityConfig:
+    """Configuración para la fuente de informalidad laboral GEIH-EISS.
+
+    El DANE publica trimestralmente el anexo de **Empleo Informal y
+    Seguridad Social (EISS)** en su página de mercado laboral.  El
+    Excel contiene la hoja 'Prop informalidad' con la proporción de
+    informalidad (% de ocupados informales) para Total Nacional,
+    13 ciudades y A.M., 23 ciudades, y ciudades individuales.
+
+    Series en trimestre móvil (no desestacionalizada):
+      - "Ene - mar 2021" → asignado a 2021-03-01 (último mes)
+      - "Nov 21 - ene 22"→ asignado a 2022-01-01 (último mes)
+
+    Extraemos la fila **13 Ciudades y A.M.** (``city_label_pattern``),
+    la más usada en análisis macro colombiano.
+    """
+
+    # ── Scraping ──────────────────────────────────────────────────
+    page_url: str = (
+        "https://www.dane.gov.co/index.php/estadisticas-por-tema/"
+        "mercado-laboral/empleo-informal-y-seguridad-social"
+    )
+    base_url: str = "https://www.dane.gov.co"
+
+    # Patrón para filtrar el enlace al Excel GEIHEISS
+    link_pattern: str = r"/files/operaciones/GEIH/anex-GEIHEISS-.+\.xlsx$"
+
+    # ── Parsing del Excel ─────────────────────────────────────────
+    sheet_name: str = "Prop informalidad"
+
+    # Fila 10 (0-idx) = años: 2021, NaN, NaN, ..., 2022, NaN, ...
+    year_row: int = 10
+
+    # Fila 11 (0-idx) = trimestres: "Ene - mar", "Feb - abr", ...
+    trimestre_row: int = 11
+
+    # Patrón regex para la fila de 13 ciudades (fila 13 en el Excel)
+    city_label_pattern: str = r"13\s+Ciudades?\s+y\s+A\.?M\.?"
+
+    # Etiqueta de fuente para el CSV de salida
+    source_label: str = "DANE GEIH-EISS"
+
+    # ── Archivos ──────────────────────────────────────────────────
+    raw_xlsx_filename: str = "geiheiss_raw.xlsx"
+    processed_filename: str = "dane_informality_colombia.csv"
+
+    # ── HTTP ──────────────────────────────────────────────────────
+    timeout: int = 120
+    http_headers: dict[str, str] = field(
+        default_factory=lambda: {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+        }
+    )
+
+
+GEIH_INFORMALITY_CONFIG = GEIHInformalityConfig()
+
+
+# ── Columnas procesadas — informalidad ───────────────────────────────
+
+INFORMALITY_PROCESSED_COLUMNS: list[str] = [
+    "date", "year", "month",
+    "informality_rate_13c",
+    "source", "download_date",
+]
+
+INFORMALITY_RATE_MIN: float = 0.0
+INFORMALITY_RATE_MAX: float = 100.0
+
+
+# ── Configuración Cuentas Nacionales — PIB Trimestral (DANE real) ─────
+
+@dataclass(frozen=True)
+class DANEGDPConfig:
+    """Configuración para la fuente PIB trimestral desestacionalizado del DANE.
+
+    El DANE publica trimestralmente el anexo **PIB enfoque producción a
+    precios constantes** dentro de la página *Cuentas Nacionales
+    Trimestrales — PIB información técnica*. El archivo ``anex-
+    ProduccionConstantes-{trim}{YYYY}.xlsx`` contiene la serie a precios
+    constantes en datos originales y **desestacionalizados** (los que
+    interesan para el output gap del VIOG-Colombia).
+
+    Estructura del Excel (hoja ``Cuadro 4``):
+      - Fila 11 (0-idx 10) → años (en columnas D, H, L, ... cada año
+        ocupa 4 columnas, una por trimestre).
+      - Fila 12 (0-idx 11) → trimestres en romanos: I, II, III, IV.
+      - Fila con ``col C == "Producto Interno Bruto"`` → serie agregada
+        del PIB total (primer match = bloque de niveles; bloques
+        posteriores son tasas de variación).
+
+    La serie se asigna al primer mes del trimestre (Q1 → enero, Q2 →
+    abril, Q3 → julio, Q4 → octubre), convención usual para empalmar
+    series trimestrales con frecuencias mensuales en el merge.
+    """
+
+    # ── Scraping ──────────────────────────────────────────────────
+    page_url: str = (
+        "https://www.dane.gov.co/index.php/estadisticas-por-tema/"
+        "cuentas-nacionales/cuentas-nacionales-trimestrales/"
+        "pib-informacion-tecnica"
+    )
+    base_url: str = "https://www.dane.gov.co"
+
+    # Patrón regex para el anexo "Producción a precios constantes"
+    # Ej.: /files/operaciones/PIB/anex-ProduccionConstantes-IVtrim2025.xlsx
+    link_pattern: str = (
+        r"/files/operaciones/PIB/anex-ProduccionConstantes-"
+        r"(?:I|II|III|IV)trim\d{4}\.xlsx$"
+    )
+
+    # ── Parsing del Excel ─────────────────────────────────────────
+    # Cuadro 4 = PIB desestacionalizado (12 agrupaciones — la serie más
+    # estable y comparable internacionalmente).
+    sheet_name: str = "Cuadro 4"
+
+    # Fila 12 (0-idx 11) = años (col D=2005, H=2006, ...).
+    # Fila 13 (0-idx 12) = trimestres romanos (I, II, III, IV).
+    year_row: int = 11
+    quarter_row: int = 12
+
+    # Columna C (0-idx 2) contiene la etiqueta "Producto Interno Bruto"
+    concept_col: int = 2
+    concept_label: str = "Producto Interno Bruto"
+
+    # Datos numéricos empiezan en columna D (0-idx 3)
+    data_start_col: int = 3
+
+    # Etiqueta para el campo source del CSV
+    source_label: str = "DANE - Cuentas Nacionales Trimestrales"
+
+    # ── Archivos ──────────────────────────────────────────────────
+    raw_xlsx_filename: str = "dane_gdp_raw.xlsx"
+    raw_html_filename: str = "dane_gdp_page.html"
+    processed_filename: str = "dane_gdp_colombia.csv"
+
+    # ── HTTP ──────────────────────────────────────────────────────
+    timeout: int = 120
+    http_headers: dict[str, str] = field(
+        default_factory=lambda: {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+        }
+    )
+
+
+DANE_GDP_CONFIG = DANEGDPConfig()
+
+
+# ── Columnas procesadas — PIB Colombia ───────────────────────────────
+
+DANE_GDP_PROCESSED_COLUMNS: list[str] = [
+    "date", "year", "quarter",
+    "gdp_observed",
+    "source", "download_date",
+]
+
+# Sanity bounds (PIB trimestral en miles de millones de pesos)
+DANE_GDP_MIN: float = 0.0           # No puede ser negativo
+DANE_GDP_MAX: float = 1_000_000.0   # Máximo defensivo (PIB CO ~270k bn COP en 2024)
 
 
 # ── Configuración IPC (DANE real) ────────────────────────────────────
@@ -623,3 +804,77 @@ CAPITAL_STOCK_MIN: float = 0.0      # Stock de capital no puede ser negativo
 CAPITAL_STOCK_MAX: float = 5000.0   # Máximo defensivo para Colombia (USD bn)
 HUMAN_CAPITAL_MIN: float = 1.0      # Mínimo teórico del índice PWT
 HUMAN_CAPITAL_MAX: float = 5.0      # Máximo teórico del índice PWT
+
+
+# ── Configuración VIOG ───────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class VIOGConfig:
+    """Configuración para el pipeline VIOG (output gap USA ponderado por filtros).
+
+    Aplica 5 filtros de tendencia (BK, CF, Butterworth, HP, Kalman) más el
+    PIB potencial de función de producción (CBO), calcula ponderadores basados
+    en el error acumulado (VIOG y 1/VIOG) y devuelve la brecha del producto
+    compuesta.
+    """
+
+    input_filename: str = "PIB_USA.xlsx"
+    processed_filename: str = "viog_usa.csv"
+    source_label: str = "FRED/CBO"
+
+    # Columnas del Excel de entrada.
+    # ref_col=None → VIOG sin referencia externa (solo 5 filtros estadísticos).
+    series_col: str = "Value(Billions)"
+    ref_col: Optional[str] = "Potential Value(Billions)"
+
+    # Baxter-King
+    bk_low: int = 6
+    bk_high: int = 32
+    bk_K: int = 12
+
+    # Christiano-Fitzgerald
+    cf_low: int = 6
+    cf_high: int = 32
+
+    # Hodrick-Prescott
+    hp_lambda: int = 1600
+
+    # Butterworth
+    bw_cutoff: float = 1.0 / 16.0
+    bw_order: int = 8
+
+    # Kalman UCM — bounds del período del ciclo en trimestres (igual que notebook original)
+    kalman_cycle_period_bounds: tuple[float, float] = (0.3, 40.0)
+
+
+VIOG_CONFIG = VIOGConfig()
+
+# VIOG Colombia — replica del pipeline VIOG sobre el PIB colombiano.
+# Input: data/inputs/PIB_CO.xlsx (combinación manual del usuario:
+#   serie observada del scraper DANE + PIB potencial estimado por
+#   función de producción provisto externamente).
+# Mismos parámetros econométricos que el VIOG-USA (mismos filtros,
+# mismos lambda/cutoff, mismos bounds del Kalman). Lo único que cambia
+# es el nombre de archivo y la etiqueta de fuente.
+VIOG_CO_CONFIG = VIOGConfig(
+    input_filename="PIB_CO.xlsx",
+    processed_filename="viog_colombia.csv",
+    source_label="DANE Cuentas Nacionales",
+    series_col="Value(Billions)",
+    ref_col=None,  # Sin PIB potencial externo — solo 5 filtros estadísticos
+)
+
+VIOG_PROCESSED_COLUMNS: list[str] = [
+    "date",
+    "year",
+    "quarter",
+    "gap_viog",
+    "gap_inv_viog",
+    "gap_ref",
+    "gap_hp",
+    "gap_cf",
+    "gap_bk",
+    "gap_bw",
+    "gap_kalman",
+    "source",
+]

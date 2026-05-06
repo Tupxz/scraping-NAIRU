@@ -42,7 +42,7 @@ vacío.
 | Pipeline TES Cero Cupón (BANREP – SUAMECA)                    | Funcional         |
 | Pipeline PWT 11.0 (Capital Stock + Capital Humano)              | Funcional         |
 | Base mensual unificada (nairu_dataset.csv — 17 columnas)        | Funcional         |
-| Validaciones de calidad automatizadas                           | 283 tests pasando |
+| Validaciones de calidad automatizadas                           | 371 tests pasando |
 | Estimación econométrica de la NAIRU                           | Por implementar   |
 
 **Datos generados actualmente:**
@@ -170,17 +170,21 @@ scraping-NAIRU/
 │   ├── main.py                   # Punto de entrada CLI
 │   ├── merge.py                  # Unificación de todas las fuentes → nairu_dataset.csv
 │   ├── pipelines/
-│   │   ├── run_unemployment.py   # Orquestación: desempleo + TGP + PET
-│   │   ├── run_ipc.py            # Orquestación: IPC
+│   │   ├── run_unemployment.py     # Orquestación: desempleo + TGP + PET (GEIH)
+│   │   ├── run_informality.py      # Orquestación: tasa de informalidad 13 ciudades
+│   │   ├── run_ipc.py              # Orquestación: IPC
 │   │   ├── run_banrep_inflation.py # Orquestación: inflación BANREP
-│   │   ├── run_banrep_tes.py     # Orquestación: TES Cero Cupón BANREP
-│   │   ├── run_brent.py          # Orquestación: Brent (FRED/EIA)
-│   │   ├── run_andi.py           # Orquestación: ANDI EOIC (capacidad instalada)
-│   │   ├── run_pwt.py            # Orquestación: PWT 11.0 (capital stock + capital humano)
-│   │   └── run_all.py            # Ejecuta todos los pipelines
+│   │   ├── run_banrep_tes.py       # Orquestación: TES Cero Cupón BANREP
+│   │   ├── run_brent.py            # Orquestación: Brent (FRED/EIA)
+│   │   ├── run_andi.py             # Orquestación: ANDI EOIC (capacidad instalada)
+│   │   ├── run_pwt.py              # Orquestación: PWT 11.0 (capital stock + cap. humano)
+│   │   ├── run_viog.py             # Orquestación: VIOG (output gap USA ponderado)
+│   │   └── run_all.py              # Ejecuta todos los pipelines + merge
 │   └── sources/
 │       ├── dane/
+│       │   ├── common.py         # Helpers compartidos del DANE
 │       │   ├── unemployment.py   # Scraping + parsing GEIH (TD, TGP, PET)
+│       │   ├── informality.py    # Parsing GEIH-EISS (informalidad 13 ciudades)
 │       │   └── ipc.py            # Scraping + parsing IPC
 │       ├── banrep/
 │       │   ├── inflation.py      # API REST SUAMECA: inflación + meta
@@ -189,31 +193,49 @@ scraping-NAIRU/
 │       │   └── brent.py          # CSV FRED: precio Brent
 │       ├── andi/
 │       │   └── eoic.py           # Scraping PDFs + extracción capacidad instalada
-│       └── pwt/
-│           └── pwt.py            # Descarga/parsing PWT 11.0 (wide y largo)
+│       ├── pwt/
+│       │   └── pwt.py            # Descarga/parsing PWT 11.0 (wide y largo)
+│       └── viog/
+│           └── viog.py           # Output gap USA: BK, CF, BW, HP, Kalman + ponderación VIOG
 ├── tests/
-│   ├── test_geih.py              # 36 tests — scraping, parsing y calidad GEIH
-│   ├── test_ipc.py               # 23 tests — scraping, parsing y calidad IPC
-│   ├── test_banrep_inflation.py  # 29 tests — API BANREP, parsing y calidad
-│   ├── test_banrep_tes.py       # 40 tests — TES diario→mensual, parsing y calidad
-│   ├── test_brent.py             # 38 tests — CSV FRED, agregación y calidad
-│   ├── test_andi.py              # 63 tests — scraping, PDF parsing y calidad ANDI
-│   ├── test_pwt.py               # 26 tests — wide/largo format, parsing y calidad PWT
-│   ├── test_merge.py             # 21 tests — integración merge, columnas y NaN anuales
-│   └── test_pipeline.py          # 14 tests — estructura, calidad e I/O
+│   ├── test_geih.py              # 44 tests — scraping, parsing y calidad GEIH
+│   ├── test_informality.py       # 31 tests — parsing GEIH-EISS y calidad
+│   ├── test_ipc.py               # 24 tests — scraping, parsing y calidad IPC
+│   ├── test_banrep_inflation.py  # 30 tests — API BANREP, parsing y calidad
+│   ├── test_banrep_tes.py        # 41 tests — TES diario→mensual, parsing y calidad
+│   ├── test_brent.py             # 39 tests — CSV FRED, agregación y calidad
+│   ├── test_andi.py              # 64 tests — scraping, PDF parsing y calidad ANDI
+│   ├── test_pwt.py               # 34 tests — wide/largo format, parsing y calidad PWT
+│   ├── test_viog.py              # 32 tests — filtros (BK/CF/BW/HP/Kalman) y VIOG
+│   ├── test_merge.py             # 28 tests — integración merge, columnas y NaN anuales
+│   └── test_pipeline.py          # 15 tests — estructura, calidad e I/O
 ├── data/
-│   ├── raw/
-│   │   ├── dane/                 # Archivos crudos descargados (Excel, HTML)
-│   │   ├── banrep/               # Respuestas crudas del API SUAMECA (JSON)
-│   │   ├── fred/                 # CSV crudo de FRED (Brent)
-│   │   ├── andi/                 # PDFs descargados de la ANDI (EOIC)
-│   │   └── pwt/                  # CSV exportado desde la herramienta PWT online
-│   └── processed/                # Datasets limpios listos para análisis
+│   ├── raw/                      # Datos crudos descargados por scrapers
+│   │   ├── dane/                 #   Archivos crudos del DANE (Excel, HTML)
+│   │   ├── banrep/               #   Respuestas crudas del API SUAMECA (JSON)
+│   │   ├── fred/                 #   CSV crudo de FRED (Brent, GDPC1, GDPPOT)
+│   │   ├── andi/                 #   PDFs descargados de la ANDI (EOIC)
+│   │   └── pwt/                  #   CSV exportado desde la herramienta PWT online
+│   ├── inputs/                   # Inputs manuales (no provienen de scrapers)
+│   │   ├── PIB_USA.xlsx          #   Insumo del VIOG (CBO + FRED, manual)
+│   │   └── nairu_estimates_v6.csv  # Benchmark externo (estimaciones de NAIRU)
+│   ├── processed/                # Outputs por fuente (alimentan el merge)
+│   └── final/                    # Dataset(s) consolidado(s) — output del merge
 ├── docs/bib/                     # Bibliografía de referencia
 ├── logs/                         # Logs del pipeline
 ├── outputs/                      # Reportes generados (ANDI, etc.)
+├── andi_agent/                   # ⚠ DEPRECADO — agente legacy del scraper ANDI EOIC
+│                                 #   (sustituido por src/sources/andi/eoic.py)
 └── requirements.txt
 ```
+
+> **Nota sobre `andi_agent/`:** Es la primera versión standalone del
+> scraper de la ANDI (con su propio `main.py`, `requirements.txt` y CSV
+> auxiliar). La lógica equivalente —scraping + parsing de PDFs— está
+> reescrita y testada en `src/sources/andi/eoic.py` y se invoca con
+> `python -m src.main --andi`. La carpeta `andi_agent/` se conserva sólo
+> como referencia histórica; **no debe modificarse** ni usarse en flujos
+> nuevos.
 
 **Principios de diseño:**
 
@@ -264,7 +286,9 @@ pip install -r requirements.txt
 ### Ejecución
 
 Cada comando descarga, parsea, valida y guarda los datos automáticamente en
-`data/processed/`.  No se requiere ningún paso manual adicional.
+`data/processed/` (CSVs por fuente).  El merge final se escribe en
+`data/final/nairu_dataset.csv`.  No se requiere ningún paso manual adicional,
+salvo para los inputs manuales en `data/inputs/` (ver "Arquitectura").
 
 **Todos los pipelines a la vez:**
 
@@ -275,22 +299,59 @@ python -m src.main --all
 **Pipelines individuales (se pueden combinar):**
 
 ```bash
-python -m src.main --unemployment          # Desempleo + TGP + PET (DANE GEIH)
+# ── Mercado laboral colombiano ─────────────────────────────────
+python -m src.main --unemployment          # Desempleo + TGP + PET (DANE GEIH desest.)
+python -m src.main --informality           # Tasa de informalidad 13 ciudades (DANE GEIH-EISS)
+
+# ── Precios e inflación ────────────────────────────────────────
 python -m src.main --ipc                   # IPC (DANE)
-python -m src.main --banrep                # Inflación (BANREP/SUAMECA)
-python -m src.main --tes                   # TES Cero Cupón (BANREP/SUAMECA)
-python -m src.main --brent                 # Brent (FRED/EIA)
-python -m src.main --andi                  # ANDI EOIC — último mes disponible
+python -m src.main --banrep                # Inflación + meta + núcleo (BANREP/SUAMECA)
+
+# ── Sector financiero / energético ─────────────────────────────
+python -m src.main --tes                   # TES Cero Cupón pesos+UVR 1Y (BANREP/SUAMECA)
+python -m src.main --brent                 # Precio Brent (FRED/EIA)
+
+# ── Industria ──────────────────────────────────────────────────
+python -m src.main --andi                  # ANDI EOIC — último mes disponible (incremental)
 python -m src.main --andi-backfill         # ANDI EOIC — todos los PDFs históricos
+python -m src.main --andi-reprocess        # ANDI EOIC — reprocesar PDFs locales no incluidos
+
+# ── Variables estructurales / externas ─────────────────────────
 python -m src.main --pwt                   # Capital Stock + Capital Humano (PWT 11.0)
-python -m src.main --merge                 # Unifica todas las fuentes → nairu_dataset.csv
+python -m src.main --dane-gdp              # PIB trimestral DANE (Cuentas Nacionales, desest.)
+python -m src.main --viog                  # Brecha del producto USA (VIOG, 5 filtros + CBO)
+python -m src.main --viog-co               # Brecha del producto Colombia (requiere PIB_CO.xlsx)
+
+# ── Consolidación ──────────────────────────────────────────────
+python -m src.main --merge                 # Unifica todas las fuentes → data/final/nairu_dataset.csv
 ```
 
 **Combinar varios pipelines en una sola ejecución:**
 
 ```bash
 python -m src.main --unemployment --ipc --andi
+python -m src.main --viog --merge          # Recalcular VIOG y luego re-unir
 ```
+
+**Notas sobre pipelines especiales:**
+
+- `--viog` requiere que `data/inputs/PIB_USA.xlsx` exista (input manual,
+  no descargado por scraper). Genera `data/processed/viog_usa.csv` y
+  gráficas de los 5 filtros en `outputs/viog/`.
+- `--viog-co` aplica el mismo VIOG sobre el PIB de Colombia. Requiere
+  que el usuario combine en `data/inputs/PIB_CO.xlsx` la serie observada
+  trimestral del DANE (descargada con `--dane-gdp`) con el PIB potencial
+  estimado por función de producción (input externo). Si el archivo no
+  existe, el pipeline omite el paso con un warning sin fallar.
+- `--dane-gdp` descarga el anexo *anex-ProduccionConstantes* más reciente
+  desde Cuentas Nacionales Trimestrales del DANE y produce
+  `data/processed/dane_gdp_colombia.csv`.
+- `--andi-backfill` vs `--andi-reprocess`: el primero descarga **todos** los
+  PDFs históricos de la EOIC; el segundo solo procesa PDFs ya descargados
+  en `data/raw/andi/` que no aparezcan en el CSV procesado.
+- `--all` ejecuta los 11 pipelines de fuente + merge en orden lógico
+  (insumos → consolidación). El VIOG-Colombia se omite con warning si
+  todavía no existe `data/inputs/PIB_CO.xlsx`.
 
 > Los mismos comandos funcionan idénticos en PowerShell; solo cambia la
 > activación del entorno virtual (ver arriba).
@@ -316,7 +377,36 @@ Después de ejecutar `python -m src.main --all`, el pipeline genera:
 | `data/processed/andi_capacidad_instalada.csv`  | Capacidad instalada industrial (EOIC)    | `date, year, month, capacity_utilization, source, download_date`         |
 | `data/processed/tes_banrep_colombia.csv`       | Tasas TES Cero Cupón (pesos y UVR, 1Y) | `date, year, month, TES_UVR_1Y, TES_PESOS_1Y, source, download_date`    |
 | `data/processed/pwt_colombia.csv`              | Capital stock y capital humano (anual)   | `date, year, month, capital_stock_ck, capital_stock_cn, human_capital, source, download_date` |
-| `data/processed/nairu_dataset.csv`             | Base unificada (860 filas × 17 cols)     | `date, year, month, unemployment_rate, tgp_rate, pet_thousands, ipc_index, Inf_Goal, Inf_Rate, Core_Inf, brent_usd_per_barrel, capacity_utilization, TES_UVR_1Y, TES_PESOS_1Y, capital_stock_ck, capital_stock_cn, human_capital` |
+| `data/processed/dane_gdp_colombia.csv`         | PIB trimestral DANE (desestacionalizado) | `date, year, quarter, gdp_observed, source, download_date`              |
+| `data/processed/viog_usa.csv`                  | Brecha del producto USA (VIOG, trim.)    | `date, year, quarter, gap_viog, gap_inv_viog, gap_ref, gap_hp, gap_cf, gap_bk, gap_bw, gap_kalman, source` |
+| `data/processed/viog_colombia.csv` (opcional)  | Brecha del producto Colombia (VIOG)      | `date, year, quarter, gap_viog, gap_inv_viog, gap_ref, gap_hp, gap_cf, gap_bk, gap_bw, gap_kalman, source` |
+| `data/final/nairu_dataset.csv`                 | Base unificada (≈884 filas × 22 cols)    | `date, year, month, unemployment_rate, tgp_rate, pet_thousands, informality_rate_13c, ipc_index, Inf_Goal, Inf_Rate, Core_Inf, brent_usd_per_barrel, capacity_utilization, TES_UVR_1Y, TES_PESOS_1Y, capital_stock_ck, capital_stock_cn, human_capital, gap_viog_us, gap_inv_viog_us, gap_viog_co, gap_inv_viog_co` |
+
+### Cargar el dataset final en pandas
+
+```python
+import pandas as pd
+
+# Carga base con índice temporal
+df = pd.read_csv(
+    "data/final/nairu_dataset.csv",
+    parse_dates=["date"],
+).set_index("date")
+
+# Ejemplo: serie mensual de desempleo + inflación
+df[["unemployment_rate", "Inf_Rate"]].plot(secondary_y="Inf_Rate")
+
+# Ejemplo: filtrar período post-2010
+df_recent = df.loc["2010":]
+
+# Ejemplo: las columnas anuales (PWT) están con NaN en meses no-enero
+pwt_annual = df[["capital_stock_ck", "human_capital"]].dropna()
+```
+
+> Las series anuales (PWT 11.0) sólo tienen valor en enero de cada año;
+> los demás meses contienen NaN. Las trimestrales (VIOG) sólo en
+> enero/abril/julio/octubre. Para análisis mensual puro, filtrar con
+> ``df.dropna(subset=["unemployment_rate"])`` o las columnas que necesites.
 
 Archivos intermedios (en `data/raw/`, ignorados por Git):
 
@@ -362,7 +452,7 @@ Versiones exactas en [`requirements.txt`](requirements.txt).
 - [X] Pipeline TES Cero Cupón (BANREP/SUAMECA) — tasas pesos y UVR a 1 año (diario → mensual)
 - [X] Pipeline PWT 11.0 — Capital stock (ck, cn) y capital humano (hc) para Colombia (1954–2023)
 - [X] Agregar TGP y PET al pipeline GEIH (Tasa Global de Participación + Población en Edad de Trabajar)
-- [X] Validaciones de calidad automatizadas (283 tests)
+- [X] Validaciones de calidad automatizadas (371 tests)
 - [X] Arquitectura modular (`sources/dane/` + `sources/banrep/` + `sources/fred/` + `sources/andi/` + `sources/pwt/` + `pipelines/`)
 - [X] `series_map` configurable para extraer múltiples series (TGP, TO, TES, etc.)
 - [X] Base mensual unificada (nairu_dataset.csv — 860 filas × 17 columnas)
@@ -379,7 +469,7 @@ Versiones exactas en [`requirements.txt`](requirements.txt).
 - **Reproducibilidad:** los datos crudos se descargan desde la fuente original
   en cada ejecución; los archivos procesados son determinísticos dado el mismo
   insumo.
-- **Tests offline:** los 283 tests usan fixtures sintéticas que simulan la
+- **Tests offline:** los 371 tests usan fixtures sintéticas que simulan la
   estructura real de los datos del DANE, BANREP, FRED, ANDI y PWT, sin requerir conexión a internet.
 - **Validaciones de calidad:** cada pipeline verifica columnas, nulos,
   duplicados, rangos y continuidad temporal antes de guardar.
