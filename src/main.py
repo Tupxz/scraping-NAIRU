@@ -12,6 +12,8 @@ Uso:
     python -m src.main --andi           # Solo ANDI EOIC (incremental)
     python -m src.main --andi-backfill  # ANDI EOIC (backfill completo)
     python -m src.main --andi-reprocess # ANDI EOIC (reprocesar PDFs locales)
+    python -m src.main --nairu-dataset  # Construir Data_NAIRU.xlsx desde fuentes del repo
+    python -m src.main --nairu-estim    # Estimar NAIRU/NAICU v6 (requiere --nairu-dataset)
     python -m src.main --merge          # Solo merge (unir bases existentes)
     python -m src.main --all            # Todos los pipelines + merge
 """
@@ -40,6 +42,8 @@ def run_pipeline(
     run_andi: bool = False,
     andi_backfill: bool = False,
     andi_reprocess: bool = False,
+    run_nairu_dataset: bool = False,
+    run_nairu_estimation: bool = False,
     run_merge: bool = False,
 ) -> None:
     """Ejecuta los pipelines seleccionados."""
@@ -101,6 +105,14 @@ def run_pipeline(
         if andi_reprocess:
             from src.sources.andi.eoic import reprocess_local_pdfs
             reprocess_local_pdfs()
+
+        if run_nairu_dataset:
+            from src.pipelines import build_nairu_dataset as nairu_ds_pipeline
+            nairu_ds_pipeline.run()
+
+        if run_nairu_estimation:
+            from src.pipelines import run_nairu_estimation as nairu_estim_pipeline
+            nairu_estim_pipeline.run()
 
         if run_merge:
             from src.pipelines import run_merge as merge_pipeline
@@ -175,6 +187,14 @@ def main() -> None:
         help="Reprocesar PDFs locales de ANDI que no están en el CSV",
     )
     parser.add_argument(
+        "--nairu-dataset", action="store_true",
+        help="Construir Data_NAIRU.xlsx desde las fuentes procesadas del repo",
+    )
+    parser.add_argument(
+        "--nairu-estim", action="store_true",
+        help="Estimar NAIRU/NAICU v6 con Data_NAIRU.xlsx (requiere --nairu-dataset previo)",
+    )
+    parser.add_argument(
         "--merge", action="store_true",
         help="Unir todas las bases procesadas en nairu_dataset.csv",
     )
@@ -194,6 +214,8 @@ def main() -> None:
             run_ipc=True, run_banrep=True,
             run_tes=True, run_brent=True,
             run_andi=True, andi_reprocess=True,
+            run_nairu_dataset=True,
+            run_nairu_estimation=True,
             run_merge=True,
         )
         return
@@ -207,7 +229,8 @@ def main() -> None:
         or args.viog_co or args.dane_gdp
         or args.ipc or args.banrep
         or args.tes or args.brent or use_andi
-        or args.andi_reprocess or args.merge
+        or args.andi_reprocess or args.nairu_dataset
+        or args.nairu_estim or args.merge
     )
     if not any_selected:
         run_pipeline(run_unemployment=True)
@@ -228,6 +251,8 @@ def main() -> None:
         run_andi=use_andi,
         andi_backfill=args.andi_backfill,
         andi_reprocess=args.andi_reprocess,
+        run_nairu_dataset=args.nairu_dataset,
+        run_nairu_estimation=args.nairu_estim,
         run_merge=args.merge,
     )
 

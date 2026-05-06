@@ -167,8 +167,40 @@ def parse_gdp_excel(
     df_raw = pd.read_excel(path, sheet_name=config.sheet_name, header=None)
 
     # ── Filas de años y trimestres ────────────────────────────────────
-    years_raw = df_raw.iloc[config.year_row].ffill()      # años repetidos hacia adelante
+    # El DANE usa sufijos provisionales (2023pr, 2024p, 2025pr) en algunos
+    # bloques, lo que corrompe el ffill. Se limpian los sufijos y luego se
+    # infiere el año secuencialmente desde los cambios de trimestre (I→II→
+    # III→IV→I implica año+1) para garantizar coherencia.
+    years_row = df_raw.iloc[config.year_row]
     quarters_raw = df_raw.iloc[config.quarter_row]
+
+    # 1) Limpiar sufijos no numéricos (p, pr, e, etc.) de las etiquetas de año
+    def _clean_year(v) -> int | None:
+        if pd.isna(v):
+            return None
+        s = re.sub(r"[^\d]", "", str(v).strip())
+        return int(s) if s else None
+
+    # 2) Construir vector de años inferidos secuencialmente
+    inferred_years: dict[int, int] = {}   # col_idx → año
+    current_year: int | None = None
+    prev_quarter: int | None = None
+    for col_idx in range(config.data_start_col, len(years_row)):
+        raw_year = _clean_year(years_row.iloc[col_idx])
+        q = _parse_quarter(str(quarters_raw.iloc[col_idx]))
+        if q is None:
+            continue
+        if raw_year is not None:
+            # Etiqueta explícita de año (limpiada): usar solo si es >= año actual
+            # y es coherente con la transición de trimestres.
+            if current_year is None or raw_year >= current_year:
+                current_year = raw_year
+        elif current_year is not None and prev_quarter == 4 and q == 1:
+            # Trimestre volvió a I sin etiqueta → nuevo año
+            current_year += 1
+        if current_year is not None:
+            inferred_years[col_idx] = current_year
+        prev_quarter = q
 
     # ── Localizar la fila del PIB total (primer match = bloque niveles) ─
     concept_col_series = df_raw.iloc[:, config.concept_col].astype(str).str.strip()
@@ -189,16 +221,11 @@ def parse_gdp_excel(
     today_str = date.today().isoformat()
 
     for col_idx in range(config.data_start_col, len(pib_row)):
-        year_val = years_raw.iloc[col_idx]
+        year_int = inferred_years.get(col_idx)
         quarter_str = quarters_raw.iloc[col_idx]
         value = pib_row.iloc[col_idx]
 
-        if pd.isna(year_val) or pd.isna(quarter_str) or pd.isna(value):
-            continue
-
-        try:
-            year_int = int(float(str(year_val)))
-        except (ValueError, TypeError):
+        if year_int is None or pd.isna(quarter_str) or pd.isna(value):
             continue
 
         quarter_int = _parse_quarter(str(quarter_str))

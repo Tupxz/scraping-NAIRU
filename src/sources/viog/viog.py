@@ -118,12 +118,13 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     df["trend_hp"] = hp_trend.values
 
     # Kalman / UCM — random walk with drift + ciclo estocástico amortiguado
-    # Idéntico al modelo USA: bounds [0.3, 40] trimestres (0.075–10 años)
-    # El nivel suavizado (result.level.smoothed) es la tendencia/potencial
+    # Se ajusta sobre ln(Y) para que el MLE sea invariante a la escala/moneda.
+    # La tendencia en log se convierte de vuelta a niveles con exp().
     logger.info("[VIOG] Ajustando Kalman UCM (random walk with drift + cycle)...")
     import warnings as _warnings
+    ln_y = np.log(y)
     ucm = UnobservedComponents(
-        endog=y,
+        endog=ln_y,
         level="random walk with drift",
         cycle=True,
         damped_cycle=True,
@@ -133,7 +134,7 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     with _warnings.catch_warnings():
         _warnings.simplefilter("ignore")
         result = ucm.fit(disp=False)
-    df["trend_kalman"] = result.level.smoothed
+    df["trend_kalman"] = np.exp(result.level.smoothed)
 
     return df
 
@@ -237,6 +238,8 @@ def plot_filters(
      11. viog_11_gaps_all.png       — Brecha del producto por cada filtro
      12. viog_12_viog_potential.png — ln PIB vs potencial VIOG y 1/VIOG
      13. viog_13_viog_gap.png       — Crecimiento vs brecha VIOG y 1/VIOG
+     14. viog_14_kalman_gap.png     — Brecha Kalman únicamente
+     15. viog_15_hp_gap.png         — Brecha Hodrick-Prescott únicamente
 
     Parameters
     ----------
@@ -373,6 +376,30 @@ def plot_filters(
     ax.legend(loc="lower center", fontsize="small")
     ax.grid(False)
     _save_show(fig, "viog_13_viog_gap.png")
+
+    # ── Gráfica 14: Brecha Kalman únicamente ─────────────────────────
+    _gk = df["gap_kalman"].dropna()
+    _q01, _q99 = _gk.quantile(0.01), _gk.quantile(0.99)
+    _margin = (_q99 - _q01) * 0.15
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(x, df["gap_kalman"], color="steelblue", label="gap_kalman")
+    ax.axhline(0, linestyle="--", color="black", linewidth=0.8)
+    ax.set_ylim(_q01 - _margin, _q99 + _margin)
+    ax.set_title("Brecha del producto — Filtro Kalman / UCM")
+    ax.set_ylabel("Brecha (log)")
+    ax.legend()
+    ax.grid(True)
+    _save_show(fig, "viog_14_kalman_gap.png")
+
+    # ── Gráfica 15: Brecha Hodrick-Prescott únicamente ────────────────
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(x, df["gap_hp"], color="darkorange", label="gap_hp")
+    ax.axhline(0, linestyle="--", color="black", linewidth=0.8)
+    ax.set_title("Brecha del producto — Filtro Hodrick-Prescott")
+    ax.set_ylabel("Brecha (log)")
+    ax.legend()
+    ax.grid(True)
+    _save_show(fig, "viog_15_hp_gap.png")
 
 
 # ── API de alto nivel ─────────────────────────────────────────────────
