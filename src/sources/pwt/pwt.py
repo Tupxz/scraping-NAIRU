@@ -60,22 +60,44 @@ def _find_local_pwt_file(raw_dir: Path) -> Path | None:
     ``.xlsx`` presente en el directorio (p. ej. exportaciones de la
     herramienta online con nombre tipo ``2026-04-14T12-33_export.csv``).
 
+    Los CSV se validan leyendo solo las primeras 5 líneas para detectar
+    archivos corrompidos (error de encoding o separador inesperado) antes
+    de intentar parsearlos completamente.
+
     Returns
     -------
     Path | None
-        El archivo más reciente encontrado, o ``None`` si no hay ninguno.
+        El archivo más reciente válido encontrado, o ``None`` si no hay ninguno.
     """
     candidates = sorted(
         [p for p in raw_dir.glob("*.csv")] + [p for p in raw_dir.glob("*.xlsx")],
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
-    if candidates:
+    for candidate in candidates:
+        # Validación rápida: leer el archivo completo (sin parsear como tabla)
+        # para detectar problemas de encoding antes de usarlo.
+        if candidate.suffix.lower() == ".csv":
+            valid = False
+            for enc in ("utf-8", "latin-1"):
+                try:
+                    candidate.read_text(encoding=enc)
+                    valid = True
+                    break
+                except (UnicodeDecodeError, OSError):
+                    continue
+            if not valid:
+                logger.warning(
+                    "Archivo PWT local '%s' parece corrompido — se ignorará y "
+                    "se intentará descargar de nuevo.",
+                    candidate.name,
+                )
+                continue
         logger.info(
             "Archivo PWT encontrado localmente: %s (%d bytes)",
-            candidates[0], candidates[0].stat().st_size,
+            candidate, candidate.stat().st_size,
         )
-        return candidates[0]
+        return candidate
     return None
 
 
@@ -265,10 +287,24 @@ def parse_pwt_csv(
             df_raw = pd.read_excel(raw_path, engine="openpyxl")
     else:
         try:
-            df_raw = pd.read_csv(raw_path, low_memory=False, encoding="utf-8")
+            df_raw = pd.read_csv(
+                raw_path,
+                low_memory=False,
+                encoding="utf-8",
+                sep=None,          # detección automática del separador
+                engine="python",
+                on_bad_lines="skip",
+            )
         except UnicodeDecodeError:
             logger.warning("UTF-8 falló al leer CSV PWT — reintentando con latin-1")
-            df_raw = pd.read_csv(raw_path, low_memory=False, encoding="latin-1")
+            df_raw = pd.read_csv(
+                raw_path,
+                low_memory=False,
+                encoding="latin-1",
+                sep=None,
+                engine="python",
+                on_bad_lines="skip",
+            )
 
     logger.info("Archivo leído: %d filas × %d cols", len(df_raw), len(df_raw.columns))
 

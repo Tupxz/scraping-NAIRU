@@ -32,8 +32,8 @@ from src.merge import (
 # Helpers para crear mini-CSVs sintéticos
 # ═══════════════════════════════════════════════════════════════════════
 
-_MONTHLY_DATES = [f"200{y}-0{m}-01" for y in range(1, 4) for m in range(1, 5)]
-# 12 fechas mensuales: 2001-01 → 2003-04
+_MONTHLY_DATES = [f"200{y}-0{m}-01" for y in range(4, 7) for m in range(1, 5)]
+# 12 fechas mensuales: 2004-01 → 2006-04  (dentro del rango >= 2004-01-01)
 
 
 def _write_csv(path: Path, df: pd.DataFrame) -> None:
@@ -82,10 +82,10 @@ def _make_brent_csv(processed_dir: Path) -> None:
 
 def _make_pwt_csv(processed_dir: Path) -> None:
     """pwt_colombia.csv — anual (solo enero de cada año)."""
-    annual_dates = ["2001-01-01", "2002-01-01", "2003-01-01"]
+    annual_dates = ["2004-01-01", "2005-01-01", "2006-01-01"]
     df = pd.DataFrame({
         "date": pd.to_datetime(annual_dates),
-        "year": [2001, 2002, 2003],
+        "year": [2004, 2005, 2006],
         "month": [1, 1, 1],
         "capital_stock_ck": [100.0, 105.0, 110.0],
         "capital_stock_cn": [500_000.0, 510_000.0, 520_000.0],
@@ -210,9 +210,10 @@ class TestMergedColumnsDefinition:
         assert len(MERGED_COLUMNS) == len(set(MERGED_COLUMNS))
 
     def test_total_column_count(self) -> None:
-        # date + year + month + 3 labor + informalidad + ipc + 3 inflation +
-        # brent + andi + 2 tes + 3 pwt + 2 viog_us + 2 viog_co = 22
-        assert len(MERGED_COLUMNS) == 22
+        # date + year + month + 3 labor + ipc + 3 inflation +
+        # brent + andi + 2 tes + 3 pwt + 2 viog_us + 2 viog_co = 21
+        # (informalidad eliminada en refactor 2026-05-07)
+        assert len(MERGED_COLUMNS) == 21
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -283,7 +284,7 @@ class TestMergeAllSources:
         """Los meses de enero (que PWT reporta) deben tener valores no-NaN."""
         df = merge_all_sources(processed_dir_full)
         january_rows = df[
-            (df["month"] == 1) & df["date"].dt.year.isin([2001, 2002, 2003])
+            (df["month"] == 1) & df["date"].dt.year.isin([2004, 2005, 2006])
         ]
         assert january_rows["capital_stock_ck"].notna().all()
         assert january_rows["human_capital"].notna().all()
@@ -291,10 +292,10 @@ class TestMergeAllSources:
     def test_merge_labor_values_correct(self, processed_dir_full: Path) -> None:
         """Verifica que los valores de TGP y PET se preservan tras el merge."""
         df = merge_all_sources(processed_dir_full)
-        jan2001 = df[df["date"] == pd.Timestamp("2001-01-01")]
-        assert len(jan2001) == 1
-        assert jan2001["tgp_rate"].iloc[0] == pytest.approx(63.0, abs=0.01)
-        assert jan2001["pet_thousands"].iloc[0] == pytest.approx(38_000.0, abs=1.0)
+        jan2004 = df[df["date"] == pd.Timestamp("2004-01-01")]
+        assert len(jan2004) == 1
+        assert jan2004["tgp_rate"].iloc[0] == pytest.approx(63.0, abs=0.01)
+        assert jan2004["pet_thousands"].iloc[0] == pytest.approx(38_000.0, abs=1.0)
 
     def test_merge_missing_source_skipped(self, processed_dir_labor_only: Path) -> None:
         """Si faltan archivos opcionales, el merge no lanza error."""
