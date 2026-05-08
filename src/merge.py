@@ -9,7 +9,7 @@ Columnas de salida:
     ipc_index,                                     ← IPC DANE (mensual)
     Inf_Goal, Inf_Rate, Core_Inf,                  ← Inflación BANREP (mensual)
     brent_usd_per_barrel,                          ← Brent FRED/EIA (mensual)
-    capacity_utilization,                          ← ANDI EOIC (mensual)
+    capacity_utilization,                          ← ANDI EOIC (desde 2004-01)
     TES_UVR_1Y, TES_PESOS_1Y,                     ← TES BANREP (mensual)
     capital_stock_ck, capital_stock_cn,            ← PWT 11.0 (anual → NaN meses)
     human_capital                                  ← PWT 11.0 (anual → NaN meses)
@@ -40,10 +40,6 @@ _SOURCES: dict[str, tuple[str, ColumnSpec]] = {
     "unemployment": (
         "dane_labor_colombia.csv",          # TD + TGP + PET (Fase 2)
         ["unemployment_rate", "tgp_rate", "pet_thousands"],
-    ),
-    "informality": (
-        "dane_informality_colombia.csv",    # Tasa informalidad 13 ciudades (trim. móvil)
-        ["informality_rate_13c"],
     ),
     "ipc": (
         "ipc_colombia.csv",
@@ -93,7 +89,6 @@ MERGED_COLUMNS: list[str] = [
     "unemployment_rate",        # GEIH - TD
     "tgp_rate",                 # GEIH - TGP
     "pet_thousands",            # GEIH - PET (calculada)
-    "informality_rate_13c",     # GEIH-EISS - Informalidad 13 ciudades (trim. móvil)
     "ipc_index",                # IPC DANE
     "Inf_Goal",                 # Inflación meta BANREP
     "Inf_Rate",                 # Inflación observada BANREP
@@ -186,6 +181,14 @@ def merge_all_sources(
     for name, (filename, data_cols) in _SOURCES.items():
         df = _load_source(name, filename, data_cols, processed_dir)
         if df is not None:
+            # Safeguard: ICU (ANDI) solo tiene datos confiables desde 2004-01-01
+            if name == "andi":
+                before = len(df)
+                df = df[df["date"] >= "2004-01-01"].reset_index(drop=True)
+                if len(df) < before:
+                    logger.warning(
+                        "[merge] ICU: %d filas pre-2004 descartadas", before - len(df)
+                    )
             dfs.append(df)
 
     if not dfs:
@@ -203,6 +206,10 @@ def merge_all_sources(
     merged = merged.sort_values("date").reset_index(drop=True)
     merged["year"] = merged["date"].dt.year
     merged["month"] = merged["date"].dt.month
+
+    # Recortar: conservar solo desde 2004-01-01 en adelante
+    # (inicio de ICU/ANDI, la serie más restrictiva del modelo NAIRU)
+    merged = merged[merged["date"] >= "2004-01-01"].reset_index(drop=True)
 
     # Ordenar columnas: date, year, month, luego datos en orden definido
     present_cols = [c for c in MERGED_COLUMNS if c in merged.columns]

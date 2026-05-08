@@ -264,7 +264,11 @@ def parse_pwt_csv(
         except Exception:
             df_raw = pd.read_excel(raw_path, engine="openpyxl")
     else:
-        df_raw = pd.read_csv(raw_path, low_memory=False)
+        try:
+            df_raw = pd.read_csv(raw_path, low_memory=False, encoding="utf-8")
+        except UnicodeDecodeError:
+            logger.warning("UTF-8 falló al leer CSV PWT — reintentando con latin-1")
+            df_raw = pd.read_csv(raw_path, low_memory=False, encoding="latin-1")
 
     logger.info("Archivo leído: %d filas × %d cols", len(df_raw), len(df_raw.columns))
 

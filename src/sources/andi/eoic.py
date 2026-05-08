@@ -707,12 +707,13 @@ def _save_cache(cache: dict[str, Any], cache_path: Path) -> None:
 
 
 def _load_existing_dates(csv_path: Path) -> set[str]:
-    """Devuelve el set de fechas ya presentes en el CSV."""
+    """Devuelve el set de fechas ya presentes en el CSV, en formato YYYY-MM-01."""
     if not csv_path.exists():
         return set()
     try:
         df = pd.read_csv(csv_path, usecols=["date"])
-        return set(df["date"].astype(str))
+        # Normalizar a YYYY-MM-01 para comparaciones consistentes.
+        return set(pd.to_datetime(df["date"]).dt.strftime("%Y-%m-01"))
     except Exception:
         return set()
 
@@ -739,6 +740,17 @@ def _load_icu_historical(
     try:
         df = pd.read_csv(path)
         df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+
+        # La EOIC solo existe desde 2004: descartar cualquier fila anterior.
+        pre2004_mask = df["date"] < "2004-01-01"
+        if pre2004_mask.any():
+            logger.warning(
+                "[ANDI] icu_historical.csv: descartando %d filas anteriores a "
+                "2004-01-01 (fechas incorrectas en la semilla).",
+                pre2004_mask.sum(),
+            )
+            df = df[~pre2004_mask].reset_index(drop=True)
+
         records = df[ANDI_PROCESSED_COLUMNS].to_dict("records")
         logger.info(
             "[ANDI] Semilla histórica ICU cargada: %d obs (%s → %s)",
@@ -756,9 +768,12 @@ def _build_record(
     source_url: str,
 ) -> dict[str, Any]:
     """Construye un registro con el esquema estándar del proyecto."""
+    # Normalizar a YYYY-MM-01 si llega en formato YYYY-MM
+    if len(date_str) == 7:
+        date_str = f"{date_str}-01"
     parts = date_str.split("-")
     return {
-        "date": f"{date_str}-01",
+        "date": date_str,
         "year": int(parts[0]),
         "month": int(parts[1]),
         "capacity_utilization": value,
@@ -1105,6 +1120,10 @@ def reprocess_local_pdfs() -> pd.DataFrame:
         # Intentar fecha desde el nombre del archivo.
         date_str = EOICParser.extract_date_from_filename(pdf_path.name)
 
+        # Normalizar a "YYYY-MM-01" para que coincida con el formato del CSV.
+        if date_str and len(date_str) == 7:
+            date_str = f"{date_str}-01"
+
         # Si la fecha ya existe en CSV y cache, omitir.
         if date_str and date_str in existing_dates and date_str in cached_dates:
             stats["skipped"] += 1
@@ -1135,6 +1154,11 @@ def reprocess_local_pdfs() -> pd.DataFrame:
             date_str = parser.extract_date_from_content(
                 hint_month=hint_month,
             )
+
+        # Normalizar a "YYYY-MM-01" (también para fechas extraídas de contenido).
+        if date_str and len(date_str) == 7:
+            date_str = f"{date_str}-01"
+
         if not date_str:
             logger.warning(
                 "Reprocess: sin fecha para %s (valor=%.1f%%)",
