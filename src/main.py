@@ -3,7 +3,7 @@
 Uso:
     python -m src.main                  # Solo desempleo (default)
     python -m src.main --unemployment   # Solo desempleo (TD + TGP + PET)
-    python -m src.main --pwt            # Solo PWT 11.0 (capital stock + depreciación + capital humano)
+    python -m src.main --pwt            # Solo PWT 10.01 (capital stock + capital humano)
     python -m src.main --dane-gdp       # Solo PIB trimestral DANE (Cuentas Nacionales)
     python -m src.main --ipc            # Solo IPC (DANE real)
     python -m src.main --banrep         # Solo inflación (BANREP/SUAMECA)
@@ -12,10 +12,9 @@ Uso:
     python -m src.main --andi           # Solo ANDI EOIC (incremental)
     python -m src.main --andi-backfill  # ANDI EOIC (backfill completo)
     python -m src.main --andi-reprocess # ANDI EOIC (reprocesar PDFs locales)
+    python -m src.main --all            # Todos los pipelines de datos + merge (rápido, ~20s)
     python -m src.main --nairu-dataset  # Construir Data_NAIRU.xlsx desde fuentes del repo
-    python -m src.main --nairu-estim    # Estimar NAIRU/NAICU v6 (requiere --nairu-dataset)
-    python -m src.main --merge          # Solo merge (unir bases existentes)
-    python -m src.main --all            # Todos los pipelines + merge
+    python -m src.main --nairu-estim    # Estimar NAIRU/NAICU (costoso, requiere --nairu-dataset)
 """
 
 from __future__ import annotations
@@ -148,7 +147,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--pwt", action="store_true",
-        help="Ejecutar solo el pipeline PWT 11.0 (capital stock + depreciación + capital humano)",
+        help="Ejecutar solo el pipeline PWT 10.01 (capital stock + capital humano)",
     )
     parser.add_argument(
         "--dane-gdp", action="store_true",
@@ -192,7 +191,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--nairu-estim", action="store_true",
-        help="Estimar NAIRU/NAICU v6 con Data_NAIRU.xlsx (requiere --nairu-dataset previo)",
+        help="Estimar NAIRU/NAICU con Data_NAIRU.xlsx (requiere --nairu-dataset previo)",
     )
     parser.add_argument(
         "--merge", action="store_true",
@@ -208,12 +207,13 @@ def main() -> None:
     if args.all:
         run_pipeline(
             run_unemployment=True, run_pwt=True,
-            run_informality=True, run_viog=True,
+            run_informality=False,  # excluido: no se usa en el dataset final
+            run_viog=True,
             run_viog_co=True,
             run_dane_gdp=True,
             run_ipc=True, run_banrep=True,
             run_tes=True, run_brent=True,
-            run_andi=True, andi_reprocess=True,
+            run_andi=True, andi_reprocess=False,  # reprocess solo con --andi-reprocess explícito
             run_nairu_dataset=True,
             run_nairu_estimation=True,
             run_merge=True,

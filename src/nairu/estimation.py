@@ -1,7 +1,6 @@
-"""Orquestador NAIRU/NAICU estimation v6.
+"""Orquestador NAIRU/NAICU estimation.
 
-Refactor de ``nairu_estimation_v6.py`` (raíz del proyecto) como módulo
-propio dentro de ``src/nairu/``.  Todos los paths son absolutos y derivan
+Módulo propio dentro de ``src/nairu/``.  Todos los paths son absolutos y derivan
 de la configuración del proyecto (``src/config.py``).
 
 Uso programático
@@ -81,7 +80,7 @@ def _load_model_core() -> ModuleType:
 def _rewrite_v5_to_final(text: str) -> str:
     return (
         text
-        .replace("Estimation v5", "Estimation v6")
+        .replace("Estimation v5", "Estimation NAIRU/NAICU")
         .replace("nairu_naicu_panel_v5.png", "nairu_naicu_panel.png")
         .replace("nairu_naicu_panel_v5.svg", "nairu_naicu_panel.svg")
     )
@@ -116,12 +115,9 @@ def build_outputs(
 
     Estrategia
     ----------
-    * Si ``nairu_colombia.csv`` no existe → copia la semilla histórica
-      (``data/inputs/nairu_estimates_v6.csv``) como punto de partida y
-      luego re-estima igualmente si hay datos nuevos.
-    * Si ``nairu_colombia.csv`` existe **y** ``Data_NAIRU.xlsx`` es más
-      nuevo → re-estima con los datos actualizados.
-    * Si ``nairu_colombia.csv`` existe y es más reciente → omite la
+    * Si ``Data_NAIRU.xlsx`` es más nuevo que ``nairu_colombia.csv``
+      (o este no existe) → re-estima con los datos actualizados.
+    * Si ``nairu_colombia.csv`` ya existe y es más reciente → omite la
       re-estimación.
 
     Parameters
@@ -148,18 +144,7 @@ def build_outputs(
     output_dir.mkdir(parents=True, exist_ok=True)
     existing_csv = output_dir / _MAIN_CSV
 
-    # ── Ruta 0: seed histórica si aún no hay resultados ──────────────
-    seed_csv = INPUTS_DIR / "nairu_estimates_v6.csv"
-    if not existing_csv.exists() and seed_csv.exists():
-        logger.info(
-            "[NAIRU] Copiando semilla histórica %s → %s",
-            seed_csv, existing_csv,
-        )
-        shutil.copy2(seed_csv, existing_csv)
-
     # ── Decidir si re-estimar ─────────────────────────────────────────
-    # Re-estimamos cuando: (a) no hay CSV previo, o (b) Data_NAIRU.xlsx
-    # es más reciente que nairu_colombia.csv.
     needs_estimation = not existing_csv.exists() or (
         data_path.stat().st_mtime > existing_csv.stat().st_mtime
     )

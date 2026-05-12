@@ -16,7 +16,7 @@ ICU                  ← andi_capacidad_instalada.csv   [capacity_utilization]
 El rango temporal del dataset resultante se define por la intersección de
 las fuentes con datos completos (todas las filas con al menos Unemp_Desest,
 Inf_Rate e ICU no nulas).  El archivo final se guarda en
-``data/inputs/Data_NAIRU.xlsx`` para ser leído por ``nairu_estimation_v6.py``.
+``data/inputs/Data_NAIRU.xlsx`` para ser leído por ``src/nairu/estimation.py``.
 """
 
 from __future__ import annotations
