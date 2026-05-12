@@ -26,7 +26,6 @@ from pathlib import Path
 from urllib.parse import urljoin
 
 import pandas as pd
-import requests
 from bs4 import BeautifulSoup
 
 from src.config import (
@@ -36,6 +35,7 @@ from src.config import (
     RAW_DANE_DIR,
 )
 from src.io_utils import save_csv
+from src.sources.dane.common import MONTH_ABBR_ES, make_dane_session
 
 logger = logging.getLogger("nairu_pipeline.dane.informality")
 
@@ -47,15 +47,17 @@ logger = logging.getLogger("nairu_pipeline.dane.informality")
 
 def fetch_informality_page(
     config: GEIHInformalityConfig = GEIH_INFORMALITY_CONFIG,
+    session: "requests.Session | None" = None,  # type: ignore[name-defined]
 ) -> str:
-    """Descarga el HTML de la página de empleo informal del DANE."""
+    """Descarga el HTML de la página de empleo informal del DANE.
+
+    Si ``session`` no se proporciona, se crea una efímera con retries y
+    keep-alive. Para encadenar la descarga del Excel después, conviene
+    pasar la misma sesión y reutilizar la conexión TLS.
+    """
     logger.info("Descargando página informalidad DANE: %s", config.page_url)
-    response = requests.get(
-        config.page_url,
-        headers=config.http_headers,
-        timeout=config.timeout,
-        verify=False,
-    )
+    sess = session or make_dane_session(headers=config.http_headers)
+    response = sess.get(config.page_url, timeout=config.timeout)
     response.raise_for_status()
     logger.info("Página descargada: %d bytes", len(response.content))
     return response.text
@@ -98,15 +100,12 @@ def download_informality_excel(
     url: str,
     output_dir: Path = RAW_DANE_DIR,
     config: GEIHInformalityConfig = GEIH_INFORMALITY_CONFIG,
+    session: "requests.Session | None" = None,  # type: ignore[name-defined]
 ) -> Path:
     """Descarga el Excel GEIHEISS y lo guarda en data/raw/dane/."""
     logger.info("Descargando Excel GEIHEISS: %s", url)
-    response = requests.get(
-        url,
-        headers=config.http_headers,
-        timeout=config.timeout,
-        verify=False,
-    )
+    sess = session or make_dane_session(headers=config.http_headers)
+    response = sess.get(url, timeout=config.timeout)
     response.raise_for_status()
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -132,11 +131,6 @@ def _parse_trimestre_date(trimestre_str: str, year: int) -> date | None:
       "Nov 21 - ene 22"     + any       → date(2022, 1, 1)
       "Dic 21 - feb 22"     + any       → date(2022, 2, 1)
     """
-    month_map = {
-        "ene": 1, "feb": 2, "mar": 3, "abr": 4,
-        "may": 5, "jun": 6, "jul": 7, "ago": 8,
-        "sep": 9, "oct": 10, "nov": 11, "dic": 12,
-    }
     s = str(trimestre_str).strip().lower()
     if s in ("nan", ""):
         return None
@@ -144,7 +138,7 @@ def _parse_trimestre_date(trimestre_str: str, year: int) -> date | None:
     # Patrón inter-año: "nov 21 - ene 22"
     cross = re.search(r"\w+\s+\d+\s*-\s*(\w+)\s+(\d{2})", s)
     if cross:
-        last_month = month_map.get(cross.group(1))
+        last_month = MONTH_ABBR_ES.get(cross.group(1))
         last_year = 2000 + int(cross.group(2))
         if last_month:
             return date(last_year, last_month, 1)
@@ -152,7 +146,7 @@ def _parse_trimestre_date(trimestre_str: str, year: int) -> date | None:
     # Patrón normal: "ene - mar" o "abr - jun "
     normal = re.search(r"\w+\s*-\s*(\w+)", s)
     if normal:
-        last_month = month_map.get(normal.group(1).strip())
+        last_month = MONTH_ABBR_ES.get(normal.group(1).strip())
         if last_month and year:
             return date(int(year), last_month, 1)
 
@@ -259,12 +253,18 @@ def run_informality_pipeline(
     raw_dir: Path = RAW_DANE_DIR,
     processed_dir: Path = PROCESSED_DIR,
 ) -> pd.DataFrame:
-    """Ejecuta el pipeline completo: scraping → descarga → parsing → guardado."""
+    """Ejecuta el pipeline completo: scraping → descarga → parsing → guardado.
+
+    Reutiliza una sola ``requests.Session`` con keep-alive para los dos
+    GETs (página índice + descarga del Excel) — evita renegociar TLS
+    contra ``www.dane.gov.co``.
+    """
     logger.info("── Iniciando pipeline informalidad DANE ──")
 
-    html = fetch_informality_page(config)
+    session = make_dane_session(headers=config.http_headers)
+    html = fetch_informality_page(config, session=session)
     url = extract_informality_xlsx_link(html, config)
-    xlsx_path = download_informality_excel(url, raw_dir, config)
+    xlsx_path = download_informality_excel(url, raw_dir, config, session=session)
     df = parse_informality_excel(xlsx_path, config)
 
     output_path = processed_dir / config.processed_filename

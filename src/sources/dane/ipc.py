@@ -28,6 +28,7 @@ from src.config import (
     RAW_DANE_DIR,
 )
 from src.io_utils import save_csv
+from src.sources.dane.common import MONTH_ABBR_ES, make_dane_session
 
 logger = logging.getLogger("nairu_pipeline.dane.ipc")
 
@@ -37,12 +38,19 @@ logger = logging.getLogger("nairu_pipeline.dane.ipc")
 # ═══════════════════════════════════════════════════════════════════════
 
 
-def fetch_ipc_page(config: IPCConfig = IPC_CONFIG) -> str:
-    """Descarga el HTML de la página del IPC del DANE."""
+def fetch_ipc_page(
+    config: IPCConfig = IPC_CONFIG,
+    session: "requests.Session | None" = None,
+) -> str:
+    """Descarga el HTML de la página del IPC del DANE.
+
+    Si ``session`` no se provee, se crea una efímera con retries y
+    keep-alive. Pasar la misma sesión a ``download_ipc_excel`` reutiliza
+    la conexión TLS contra ``www.dane.gov.co``.
+    """
     logger.info("Descargando página IPC: %s", config.page_url)
-    response = requests.get(
-        config.page_url, headers=config.http_headers, timeout=config.timeout,
-    )
+    sess = session or make_dane_session(headers=config.http_headers)
+    response = sess.get(config.page_url, timeout=config.timeout)
     response.raise_for_status()
     logger.info("Página descargada: %d bytes", len(response.content))
     return response.text
@@ -108,17 +116,12 @@ def select_target_link(
 
 def _sort_by_period(links: list[dict[str, str]]) -> list[dict[str, str]]:
     """Ordena enlaces por periodo (más reciente primero)."""
-    month_map = {
-        "ene": 1, "feb": 2, "mar": 3, "abr": 4,
-        "may": 5, "jun": 6, "jul": 7, "ago": 8,
-        "sep": 9, "oct": 10, "nov": 11, "dic": 12,
-    }
     period_re = re.compile(r"([a-z]{3})(\d{4})\.xlsx$", re.IGNORECASE)
 
     def sort_key(lnk: dict[str, str]) -> tuple[int, int]:
         m = period_re.search(lnk["href"])
         if m:
-            month_num = month_map.get(m.group(1).lower(), 0)
+            month_num = MONTH_ABBR_ES.get(m.group(1).lower(), 0)
             return (int(m.group(2)), month_num)
         return (0, 0)
 
@@ -130,14 +133,9 @@ def parse_period_from_href(href: str) -> tuple[int, int] | None:
 
     Ejemplo: 'anex-IPC-Indices-feb2026.xlsx' → (2026, 2)
     """
-    month_map = {
-        "ene": 1, "feb": 2, "mar": 3, "abr": 4,
-        "may": 5, "jun": 6, "jul": 7, "ago": 8,
-        "sep": 9, "oct": 10, "nov": 11, "dic": 12,
-    }
     m = re.search(r"([a-z]{3})(\d{4})\.xlsx$", href, re.IGNORECASE)
     if m:
-        month_num = month_map.get(m.group(1).lower())
+        month_num = MONTH_ABBR_ES.get(m.group(1).lower())
         year = int(m.group(2))
         if month_num:
             return (year, month_num)
@@ -154,12 +152,12 @@ def download_ipc_excel(
     output_dir: Path = RAW_DANE_DIR,
     filename: str | None = None,
     config: IPCConfig = IPC_CONFIG,
+    session: "requests.Session | None" = None,
 ) -> Path:
     """Descarga el archivo Excel del IPC desde una URL directa."""
     logger.info("Descargando Excel IPC: %s", url)
-    response = requests.get(
-        url, headers=config.http_headers, timeout=config.timeout,
-    )
+    sess = session or make_dane_session(headers=config.http_headers)
+    response = sess.get(url, timeout=config.timeout)
     response.raise_for_status()
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -381,9 +379,16 @@ def run_ipc_pipeline(
     output_dir: Path = PROCESSED_DIR,
     raw_dir: Path = RAW_DANE_DIR,
 ) -> pd.DataFrame:
-    """Ejecuta el pipeline IPC completo: scraping → descarga → parse → save."""
+    """Ejecuta el pipeline IPC completo: scraping → descarga → parse → save.
+
+    Reutiliza una sola ``requests.Session`` con keep-alive y retries para
+    los dos GETs (página índice + Excel) — evita renegociar TLS contra
+    ``www.dane.gov.co``.
+    """
+    session = make_dane_session(headers=config.http_headers)
+
     # 1. Scraping
-    html = fetch_ipc_page(config)
+    html = fetch_ipc_page(config, session=session)
     save_html_snapshot(html, output_dir=raw_dir, config=config)
 
     # 2. Seleccionar enlace
@@ -392,7 +397,7 @@ def run_ipc_pipeline(
 
     # 3. Descargar Excel
     xlsx_path = download_ipc_excel(
-        url=target["url"], output_dir=raw_dir, config=config,
+        url=target["url"], output_dir=raw_dir, config=config, session=session,
     )
 
     # 4. Parsear y limpiar

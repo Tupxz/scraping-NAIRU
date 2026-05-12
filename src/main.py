@@ -3,7 +3,7 @@
 Uso:
     python -m src.main                  # Solo desempleo (default)
     python -m src.main --unemployment   # Solo desempleo (TD + TGP + PET)
-    python -m src.main --pwt            # Solo PWT 10.01 (capital stock + capital humano)
+    python -m src.main --pwt            # Solo PWT 11.0 (capital stock + depreciación + capital humano)
     python -m src.main --dane-gdp       # Solo PIB trimestral DANE (Cuentas Nacionales)
     python -m src.main --ipc            # Solo IPC (DANE real)
     python -m src.main --banrep         # Solo inflación (BANREP/SUAMECA)
@@ -147,7 +147,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--pwt", action="store_true",
-        help="Ejecutar solo el pipeline PWT 10.01 (capital stock + capital humano)",
+        help="Ejecutar solo el pipeline PWT 11.0 (capital stock + depreciación + capital humano)",
     )
     parser.add_argument(
         "--dane-gdp", action="store_true",
