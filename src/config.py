@@ -741,11 +741,11 @@ LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 LOG_FILENAME: str = "pipeline.log"
 
 
-# ── Configuración PWT 11.0 – Stock de Capital, Depreciación y Capital Humano ──
+# ── Configuración PWT 10.01 – Stock de Capital y Capital Humano ──────
 
 @dataclass(frozen=True)
 class PWTConfig:
-    """Configuración para la fuente Penn World Tables 11.0.
+    """Configuración para la fuente Penn World Tables 10.01.
 
     Las Penn World Tables (PWT) publican datos de cuentas nacionales
     comparables internacionalmente.  El archivo CSV completo se descarga
@@ -792,20 +792,18 @@ PWT_PROCESSED_COLUMNS: list[str] = [
     "date",
     "year",
     "month",
-    "capital_stock_real",   # ← rnna (precios nac. const. 2017)
-    "depreciation_rate",    # ← delta (fracción)
-    "human_capital",        # ← hc (índice)
+    "capital_stock_ck",
+    "capital_stock_cn",
+    "human_capital",
     "source",
     "download_date",
 ]
 
 # PWT: rangos razonables
-CAPITAL_STOCK_MIN: float = 0.0          # Stock de capital no puede ser negativo
-CAPITAL_STOCK_MAX: float = 5_000_000.0  # millones COP 2017 (Colombia ≈ 0.9–2.7M)
-DEPRECIATION_RATE_MIN: float = 0.01     # Tasa de depreciación mínima razonable
-DEPRECIATION_RATE_MAX: float = 0.15     # Tasa de depreciación máxima defensiva
-HUMAN_CAPITAL_MIN: float = 1.0          # Mínimo teórico del índice PWT
-HUMAN_CAPITAL_MAX: float = 5.0          # Máximo teórico del índice PWT
+CAPITAL_STOCK_MIN: float = 0.0      # Stock de capital no puede ser negativo
+CAPITAL_STOCK_MAX: float = 5000.0   # Máximo defensivo para Colombia (USD bn)
+HUMAN_CAPITAL_MIN: float = 1.0      # Mínimo teórico del índice PWT
+HUMAN_CAPITAL_MAX: float = 5.0      # Máximo teórico del índice PWT
 
 
 # ── Configuración VIOG ───────────────────────────────────────────────
