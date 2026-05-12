@@ -1,31 +1,29 @@
-"""Pipeline: Dataset anual para la función de producción Cobb-Douglas.
+"""Pipeline: Dataset trimestral para la función de producción Cobb-Douglas.
 
-Construye un CSV anual que replica la estructura de la hoja ``Niveles``
-del Excel de referencia (``FUNCION DE PRODUCCION.xlsx``):
+Construye un CSV **trimestral** que replica la estructura de la hoja
+``Niveles`` del Excel de referencia (``FUNCION DE PRODUCCION.xlsx``):
 
     Periodo, PIB, Var%PIB, UCI, Var%UCI, K, Var%K, PET, Var%PET,
     TGP, Var%TGP, TD, Var%TD, H, Var%H, delta, Var%delta,
     L, Var%L, A, Var%A
 
-Fórmulas clave (con alpha = 0.4, beta = 0.6)
---------------------------------------------
-    L = (TGP/100) × PET × (1 − TD/100)      [miles de personas]
-    A = PIB / (K^alpha × L^beta)              [PTF — Productividad Total de Factores]
+Reglas de agregación trimestral
+---------------------------------
+    PIB      → valor directo del trimestre (dane_gdp_colombia.csv)
+    UCI      → último mes del trimestre   (andi_capacidad_instalada.csv)
+    TGP, TD  → último mes del trimestre   (dane_labor_colombia.csv, tasas)
+    PET      → último mes del trimestre   (dane_labor_colombia.csv, stock)
+    K, H, δ  → PWT es anual; se forward-fill al trimestre (valor de enero
+               se propaga a Q2–Q4 del mismo año)
 
-Variables fuente
-----------------
-    PIB      ← dane_gdp_colombia.csv      (suma anual de 4 trimestres)
-    UCI      ← andi_capacidad_instalada.csv (media anual)
-    K        ← pwt_colombia.csv           (capital_stock_real, anual — PWT 11.0 rnna)
-    delta    ← pwt_colombia.csv           (depreciation_rate, anual)
-    H        ← pwt_colombia.csv           (human_capital, anual)
-    PET      ← dane_labor_colombia.csv    (media anual, miles)
-    TGP      ← dane_labor_colombia.csv    (media anual, %)
-    TD       ← dane_labor_colombia.csv    (media anual, %)
+Fórmulas clave (alpha = 0.4, beta = 0.6)
+-----------------------------------------
+    L = (TGP/100) × PET × (1 − TD/100)   [miles de personas ocupadas]
+    A = PIB / (K^alpha × L^beta)           [PTF — Productividad Total de Factores]
 
 Salida
 ------
-    data/outputs/production_function_annual.csv
+    outputs/production_function_quarterly.csv
 """
 
 from __future__ import annotations
@@ -39,9 +37,9 @@ from src.config import OUTPUTS_DIR, PROCESSED_DIR
 
 logger = logging.getLogger("nairu_pipeline.prod_func")
 
-ALPHA: float = 0.4      # elasticidad del capital (Cobb-Douglas)
-BETA: float  = 0.6      # elasticidad del trabajo
-OUTPUT_FILENAME = "production_function_annual.csv"
+ALPHA: float = 0.4
+BETA: float  = 0.6
+OUTPUT_FILENAME = "production_function_quarterly.csv"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -51,11 +49,16 @@ OUTPUT_FILENAME = "production_function_annual.csv"
 def _load(filename: str) -> pd.DataFrame:
     path = PROCESSED_DIR / filename
     df = pd.read_csv(path, parse_dates=["date"])
-    return df.sort_values("date")
+    return df.sort_values("date").set_index("date")
+
+
+def _resample_last(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+    """Resamplea a frecuencia trimestral tomando el ÚLTIMO dato del trimestre."""
+    return df[cols].resample("QS").last()
 
 
 def _pct_change(s: pd.Series) -> pd.Series:
-    """Variación porcentual año a año (fracción, no %)."""
+    """Variación porcentual trimestre a trimestre (fracción)."""
     return s.pct_change()
 
 
@@ -66,7 +69,7 @@ def _pct_change(s: pd.Series) -> pd.Series:
 def build_production_function_dataset(
     output_dir: Path | None = None,
 ) -> pd.DataFrame:
-    """Construye el dataset anual de función de producción y lo guarda.
+    """Construye el dataset trimestral de función de producción y lo guarda.
 
     Returns
     -------
@@ -78,86 +81,94 @@ def build_production_function_dataset(
     out_dir = output_dir or OUTPUTS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── 1. Cargar fuentes ──────────────────────────────────────────
     logger.info("[ProdFunc] Cargando fuentes …")
 
-    # PIB trimestral → suma anual
+    # ── 1. PIB — ya es trimestral (inicio de cada trimestre) ──────
     gdp = _load("dane_gdp_colombia.csv")
-    gdp["year"] = gdp["date"].dt.year
-    pib_annual = gdp.groupby("year")["gdp_observed"].sum().rename("PIB")
+    pib_q = gdp[["gdp_observed"]].resample("QS").last().rename(
+        columns={"gdp_observed": "PIB"}
+    )
 
-    # UCI mensual → media anual
+    # ── 2. UCI — mensual → último del trimestre ───────────────────
     andi = _load("andi_capacidad_instalada.csv")
-    andi["year"] = andi["date"].dt.year
-    uci_annual = andi.groupby("year")["capacity_utilization"].mean().rename("UCI")
-
-    # PWT: anual (solo enero de cada año en el CSV)
-    pwt = _load("pwt_colombia.csv")
-    pwt["year"] = pwt["date"].dt.year
-    pwt_annual = pwt.groupby("year").agg(
-        K    =("capital_stock_real", "first"),
-        delta=("depreciation_rate",  "first"),
-        H    =("human_capital",       "first"),
+    uci_q = _resample_last(andi, ["capacity_utilization"]).rename(
+        columns={"capacity_utilization": "UCI"}
     )
 
-    # Labor: media anual
+    # ── 3. Labor (tasas y PET) — mensual → último del trimestre ───
     labor = _load("dane_labor_colombia.csv")
-    labor["year"] = labor["date"].dt.year
-    labor_annual = labor.groupby("year").agg(
-        PET=("pet_thousands",      "mean"),
-        TGP=("tgp_rate",           "mean"),
-        TD =("unemployment_rate",  "mean"),
-    )
+    labor_q = _resample_last(
+        labor, ["tgp_rate", "unemployment_rate", "pet_thousands"]
+    ).rename(columns={
+        "tgp_rate":           "TGP",
+        "unemployment_rate":  "TD",
+        "pet_thousands":      "PET",
+    })
 
-    # ── 2. Unir todo por año ───────────────────────────────────────
+    # ── 4. PWT — anual → forward-fill a trimestres ────────────────
+    # El CSV de PWT solo tiene enero de cada año; reindexamos a todos los
+    # inicios de trimestre y forward-fill para propagar Q1 → Q2, Q3, Q4.
+    pwt = _load("pwt_colombia.csv")
+    pwt_q = pwt[["capital_stock_real", "depreciation_rate", "human_capital"]]
+    # Construir índice trimestral completo y ffill
+    full_q_idx = pd.date_range(
+        start=pwt_q.index.min(),
+        end=pwt_q.index.max() + pd.DateOffset(months=9),
+        freq="QS",
+    )
+    pwt_q = pwt_q.reindex(full_q_idx).ffill().rename(columns={
+        "capital_stock_real": "K",
+        "depreciation_rate":  "delta",
+        "human_capital":      "H",
+    })
+    pwt_q.index.name = "date"
+
+    # ── 5. Unir todo por trimestre ────────────────────────────────
     df = (
-        pib_annual
-        .to_frame()
-        .join(uci_annual, how="outer")
-        .join(pwt_annual,   how="left")
-        .join(labor_annual, how="left")
+        pib_q
+        .join(uci_q,   how="left")
+        .join(labor_q, how="left")
+        .join(pwt_q,   how="left")
     )
     df.index.name = "Periodo"
     df = df.reset_index()
     df = df.dropna(subset=["PIB", "K", "TGP", "TD", "PET"]).copy()
     df = df.sort_values("Periodo").reset_index(drop=True)
 
-    # ── 3. Derivar L y A ──────────────────────────────────────────
-    # L en miles de personas ocupadas
+    # ── 6. Derivar L y A ─────────────────────────────────────────
     df["L"] = (df["TGP"] / 100.0) * df["PET"] * (1.0 - df["TD"] / 100.0)
-
-    # PTF: A = PIB / (K^alpha × L^beta)
     df["A"] = df["PIB"] / (df["K"] ** ALPHA * df["L"] ** BETA)
 
-    # ── 4. Variaciones porcentuales ──────────────────────────────
+    # ── 7. Variaciones porcentuales (trim-a-trim) ─────────────────
     var_cols = ["PIB", "UCI", "K", "PET", "TGP", "TD", "H", "delta", "L", "A"]
     for col in var_cols:
         if col in df.columns:
             df[f"Var%{col}"] = _pct_change(df[col]).round(6)
 
-    # ── 5. Ordenar columnas (igual que el Excel de referencia) ────
+    # ── 8. Ordenar columnas ───────────────────────────────────────
     ordered = [
         "Periodo",
-        "PIB",    "Var%PIB",
-        "UCI",    "Var%UCI",
-        "K",      "Var%K",
-        "PET",    "Var%PET",
-        "TGP",    "Var%TGP",
-        "TD",     "Var%TD",
-        "H",      "Var%H",
-        "delta",  "Var%delta",
-        "L",      "Var%L",
-        "A",      "Var%A",
+        "PIB",   "Var%PIB",
+        "UCI",   "Var%UCI",
+        "K",     "Var%K",
+        "PET",   "Var%PET",
+        "TGP",   "Var%TGP",
+        "TD",    "Var%TD",
+        "H",     "Var%H",
+        "delta", "Var%delta",
+        "L",     "Var%L",
+        "A",     "Var%A",
     ]
     df = df[[c for c in ordered if c in df.columns]]
 
-    # ── 6. Guardar ────────────────────────────────────────────────
+    # ── 9. Guardar ────────────────────────────────────────────────
     out_path = out_dir / OUTPUT_FILENAME
     df.to_csv(out_path, index=False)
     logger.info(
-        "[ProdFunc] Guardado: %s  (%d años, %d–%d)",
+        "[ProdFunc] Guardado: %s  (%d trimestres, %s → %s)",
         out_path.name, len(df),
-        int(df["Periodo"].min()), int(df["Periodo"].max()),
+        str(df["Periodo"].iloc[0])[:10],
+        str(df["Periodo"].iloc[-1])[:10],
     )
     return df
 
