@@ -11,6 +11,7 @@ Columnas de salida:
     brent_usd_per_barrel,                          ← Brent FRED/EIA (mensual)
     capacity_utilization,                          ← ANDI EOIC (desde 2004-01)
     TES_UVR_1Y, TES_PESOS_1Y,                     ← TES BANREP (mensual)
+    gdp_observed,                                  ← PIB DANE (trimestral → NaN meses intermedios)
     capital_stock_real, depreciation_rate,         ← PWT 11.0 (anual → NaN meses)
     human_capital                                  ← PWT 11.0 (anual → NaN meses)
 """
@@ -61,6 +62,11 @@ _SOURCES: dict[str, tuple[str, ColumnSpec]] = {
         "tes_banrep_colombia.csv",
         ["TES_UVR_1Y", "TES_PESOS_1Y"],
     ),
+    # ── Trimestrales (PIB DANE — aparecerán con NaN en meses no inicio-trimestre) ─
+    "dane_gdp": (
+        "dane_gdp_colombia.csv",
+        ["gdp_observed"],
+    ),
     # ── Anuales (PWT 11.0 — aparecerán con NaN en meses sin dato) ─
     "pwt": (
         "pwt_colombia.csv",
@@ -97,6 +103,8 @@ MERGED_COLUMNS: list[str] = [
     "capacity_utilization",     # ANDI EOIC
     "TES_UVR_1Y",               # TES UVR 1Y BANREP
     "TES_PESOS_1Y",             # TES Pesos 1Y BANREP
+    # ── Trimestrales (NaN en meses intermedios) ───────────────────
+    "gdp_observed",             # DANE - PIB trimestral (miles de millones COP 2017)
     # ── Anuales (NaN en meses sin observación) ────────────
     "capital_stock_real",       # PWT 11.0 - rnna (precios nac. const. 2017)
     "depreciation_rate",        # PWT 11.0 - delta (tasa de depreciación)

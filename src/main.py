@@ -15,6 +15,7 @@ Uso:
     python -m src.main --all            # Todos los pipelines de datos + merge (rápido, ~20s)
     python -m src.main --nairu-dataset  # Construir Data_NAIRU.xlsx desde fuentes del repo
     python -m src.main --nairu-estim    # Estimar NAIRU/NAICU (costoso, requiere --nairu-dataset)
+    python -m src.main --prod-func      # Dataset anual función de producción Cobb-Douglas (con A)
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ def run_pipeline(
     run_nairu_dataset: bool = False,
     run_nairu_estimation: bool = False,
     run_merge: bool = False,
+    run_prod_func: bool = False,
 ) -> None:
     """Ejecuta los pipelines seleccionados."""
     logger = setup_logging()
@@ -116,6 +118,10 @@ def run_pipeline(
         if run_merge:
             from src.pipelines import run_merge as merge_pipeline
             merge_pipeline.run()
+
+        if run_prod_func:
+            from src.pipelines import build_production_function_dataset as prod_func_pipeline
+            prod_func_pipeline.run()
 
         elapsed = time.time() - start_time
         logger.info("=" * 60)
@@ -194,6 +200,10 @@ def main() -> None:
         help="Estimar NAIRU/NAICU con Data_NAIRU.xlsx (requiere --nairu-dataset previo)",
     )
     parser.add_argument(
+        "--prod-func", action="store_true",
+        help="Construir dataset anual de función de producción Cobb-Douglas (con PTF/A)",
+    )
+    parser.add_argument(
         "--merge", action="store_true",
         help="Unir todas las bases procesadas en nairu_dataset.csv",
     )
@@ -217,6 +227,7 @@ def main() -> None:
             run_nairu_dataset=True,
             run_nairu_estimation=True,
             run_merge=True,
+            run_prod_func=True,
         )
         return
 
@@ -230,7 +241,7 @@ def main() -> None:
         or args.ipc or args.banrep
         or args.tes or args.brent or use_andi
         or args.andi_reprocess or args.nairu_dataset
-        or args.nairu_estim or args.merge
+        or args.nairu_estim or args.merge or args.prod_func
     )
     if not any_selected:
         run_pipeline(run_unemployment=True)
@@ -254,6 +265,7 @@ def main() -> None:
         run_nairu_dataset=args.nairu_dataset,
         run_nairu_estimation=args.nairu_estim,
         run_merge=args.merge,
+        run_prod_func=args.prod_func,
     )
 
 
