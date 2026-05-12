@@ -11,7 +11,7 @@ Columnas de salida:
     brent_usd_per_barrel,                          ← Brent FRED/EIA (mensual)
     capacity_utilization,                          ← ANDI EOIC (desde 2004-01)
     TES_UVR_1Y, TES_PESOS_1Y,                     ← TES BANREP (mensual)
-    capital_stock_ck, capital_stock_cn,            ← PWT 11.0 (anual → NaN meses)
+    capital_stock_real, depreciation_rate,         ← PWT 11.0 (anual → NaN meses)
     human_capital                                  ← PWT 11.0 (anual → NaN meses)
 """
 
@@ -64,7 +64,7 @@ _SOURCES: dict[str, tuple[str, ColumnSpec]] = {
     # ── Anuales (PWT 11.0 — aparecerán con NaN en meses sin dato) ─
     "pwt": (
         "pwt_colombia.csv",
-        ["capital_stock_ck", "capital_stock_cn", "human_capital"],
+        ["capital_stock_real", "depreciation_rate", "human_capital"],
     ),
     # ── Trimestrales (VIOG — brecha del producto, dos países) ─────
     # Renombramos para distinguir USA de Colombia en el dataset final.
@@ -98,9 +98,9 @@ MERGED_COLUMNS: list[str] = [
     "TES_UVR_1Y",               # TES UVR 1Y BANREP
     "TES_PESOS_1Y",             # TES Pesos 1Y BANREP
     # ── Anuales (NaN en meses sin observación) ────────────
-    "capital_stock_ck",         # PWT 11.0 - Stock capital PPP corrientes
-    "capital_stock_cn",         # PWT 11.0 - Stock capital precios nac. ctes.
-    "human_capital",            # PWT 11.0 - Índice Capital Humano
+    "capital_stock_real",       # PWT 11.0 - rnna (precios nac. const. 2017)
+    "depreciation_rate",        # PWT 11.0 - delta (tasa de depreciación)
+    "human_capital",            # PWT 11.0 - hc (índice)
     # ── Trimestrales VIOG-USA (NaN en meses sin observación) ──────
     "gap_viog_us",              # VIOG-USA - Brecha del producto ponderada (VIOG)
     "gap_inv_viog_us",          # VIOG-USA - Brecha ponderada (1/VIOG)

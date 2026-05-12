@@ -20,6 +20,7 @@ from src.pipelines import (
     run_banrep_tes,
     run_brent,
     run_dane_gdp,
+    run_informality,
     run_ipc,
     run_merge,
     run_pwt,
@@ -34,6 +35,7 @@ def run() -> None:
     """Ejecuta todos los pipelines + merge secuencialmente."""
     # Fuentes mensuales
     run_unemployment.run()
+    run_informality.run()
     run_ipc.run()
     run_banrep_inflation.run()
     run_banrep_tes.run()
