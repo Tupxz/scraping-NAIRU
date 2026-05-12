@@ -36,9 +36,9 @@ def _make_synthetic_gdp_excel(tmp_path: Path) -> Path:
     """Construye un Excel con la estructura mínima del Cuadro 4 del DANE.
 
     Replica exactamente:
-      - Filas 0-9: títulos/metadata (pueden ser cualquier cosa)
-      - Fila 10 (year_row): años en columnas D, H, L (cada año = 4 cols)
-      - Fila 11 (quarter_row): I, II, III, IV repetidos
+      - Filas 0-10: títulos/metadata (pueden ser cualquier cosa)
+      - Fila 11 (year_row): años en columnas D, H, L (cada año = 4 cols)
+      - Fila 12 (quarter_row): I, II, III, IV repetidos
       - Fila 28: PIB total (col C = "Producto Interno Bruto")
       - Filas extra simulando bloque de variación trimestral (debe
         ignorarse — segundo match no debe usarse)
@@ -47,8 +47,8 @@ def _make_synthetic_gdp_excel(tmp_path: Path) -> Path:
     n_cols = 12  # 9 metadata cols + 3 años × 4 trimestres → simplificamos
     rows: list[list] = []
 
-    # Filas 0-9: metadata variada
-    for i in range(10):
+    # Filas 0-10: metadata variada
+    for i in range(11):
         row: list = [None] * n_cols
         if i == 7:
             row[0] = "Datos ajustados por efecto estacional y calendario"
@@ -56,12 +56,12 @@ def _make_synthetic_gdp_excel(tmp_path: Path) -> Path:
             row[0] = "Miles de millones de pesos"
         rows.append(row)
 
-    # Fila 10 (year_row=10): años en columnas 3, 7, 11 (D, H, L)
+    # Fila 11 (year_row=11): años en columnas 3, 7, 11 (D, H, L)
     year_row: list = [None, None, "Concepto"] + [2005] + [None, None, None] + \
                     [2006] + [None, None, None] + [2007]
     rows.append(year_row)
 
-    # Fila 11 (quarter_row=11): I, II, III, IV repetidos
+    # Fila 12 (quarter_row=12): I, II, III, IV repetidos
     quarter_row: list = [None, None, None] + ["I", "II", "III", "IV"] * 3
     # quarter_row tiene 15 elementos, recortar a n_cols
     quarter_row = quarter_row[:n_cols]

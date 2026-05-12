@@ -337,7 +337,7 @@ def parse_pwt_csv(
             raise ValueError(
                 f"No hay datos para countrycode == '{config.country_code}'."
             )
-        pwt_version = "PWT 10.01"
+        pwt_version = "PWT 11.0"
 
     # Descartar filas sin rnna (variable principal)
     rows_before = len(df_col)
