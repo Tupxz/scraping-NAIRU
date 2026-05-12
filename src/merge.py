@@ -67,6 +67,11 @@ _SOURCES: dict[str, tuple[str, ColumnSpec]] = {
         "dane_gdp_colombia.csv",
         ["gdp_observed"],
     ),
+    # ── Trimestrales (Inversión DANE enfoque gasto) ───────────────
+    "dane_gdp_expenditure": (
+        "dane_gdp_expenditure_colombia.csv",
+        ["investment"],
+    ),
     # ── Anuales (PWT 11.0 — aparecerán con NaN en meses sin dato) ─
     "pwt": (
         "pwt_colombia.csv",
@@ -105,6 +110,7 @@ MERGED_COLUMNS: list[str] = [
     "TES_PESOS_1Y",             # TES Pesos 1Y BANREP
     # ── Trimestrales (NaN en meses intermedios) ───────────────────
     "gdp_observed",             # DANE - PIB trimestral (miles de millones COP 2017)
+    "investment",               # DANE - Inversión (FBKF) trimestral (miles de mill. COP 2017)
     # ── Anuales (NaN en meses sin observación) ────────────
     "capital_stock_real",       # PWT 11.0 - rnna (precios nac. const. 2017)
     "depreciation_rate",        # PWT 11.0 - delta (tasa de depreciación)

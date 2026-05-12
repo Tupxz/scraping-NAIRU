@@ -296,6 +296,74 @@ DANE_GDP_PROCESSED_COLUMNS: list[str] = [
     "source", "download_date",
 ]
 
+
+# ── Configuración PIB enfoque del gasto (Inversión) ──────────────────
+
+@dataclass(frozen=True)
+class DANEGDPExpenditureConfig:
+    """Configuración para el anexo PIB enfoque del gasto del DANE.
+
+    El DANE publica ``anex-GastoConstantes-{trim}{YYYY}.xlsx`` en la
+    misma página de PIB información técnica.  Contiene datos originales
+    y desestacionalizados.
+
+    Estructura del Excel (hoja ``Cuadro 2`` — desestacionalizado):
+      - Fila 9  (0-idx) col B='Concepto', col C en adelante = años
+      - Fila 10 (0-idx) = trimestres romanos (I, II, III, IV) en col C+
+      - Concepto en columna B (0-idx 1)
+      - Datos numéricos empiezan en columna C (0-idx 2)
+      - Fila "Formación bruta de capital fijo" = inversión desest.
+    """
+
+    # ── Scraping ──────────────────────────────────────────────────
+    page_url: str = (
+        "https://www.dane.gov.co/index.php/estadisticas-por-tema/"
+        "cuentas-nacionales/cuentas-nacionales-trimestrales/"
+        "pib-informacion-tecnica"
+    )
+    base_url: str = "https://www.dane.gov.co"
+
+    # Patrón regex para el anexo GastoConstantes
+    link_pattern: str = (
+        r"/files/operaciones/PIB/anex-GastoConstantes-"
+        r"(?:I{1,3}|IV)trim\d{4}\.xlsx$"
+    )
+
+    # ── Parsing del Excel ─────────────────────────────────────────
+    sheet_name: str = "Cuadro 2"
+    year_row: int = 9
+    quarter_row: int = 10
+    concept_col: int = 1           # columna B
+    concept_label: str = "Formación bruta de capital fijo"
+    data_start_col: int = 2        # columna C
+
+    source_label: str = "DANE - Cuentas Nacionales Trimestrales (Gasto)"
+
+    # ── Archivos ──────────────────────────────────────────────────
+    raw_xlsx_filename: str = "dane_gdp_gasto_raw.xlsx"
+    processed_filename: str = "dane_gdp_expenditure_colombia.csv"
+
+    # ── HTTP ──────────────────────────────────────────────────────
+    timeout: int = 120
+    http_headers: dict[str, str] = field(
+        default_factory=lambda: {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+        }
+    )
+
+
+DANE_GDP_EXPENDITURE_CONFIG = DANEGDPExpenditureConfig()
+
+DANE_GDP_EXPENDITURE_PROCESSED_COLUMNS: list[str] = [
+    "date", "year", "quarter",
+    "investment",
+    "source", "download_date",
+]
+
 # Sanity bounds (PIB trimestral en miles de millones de pesos)
 DANE_GDP_MIN: float = 0.0           # No puede ser negativo
 DANE_GDP_MAX: float = 1_000_000.0   # Máximo defensivo (PIB CO ~270k bn COP en 2024)

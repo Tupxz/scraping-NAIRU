@@ -21,6 +21,7 @@ from src.pipelines import (
     run_brent,
     build_production_function_dataset,
     run_dane_gdp,
+    run_dane_gdp_expenditure,
     run_informality,
     run_ipc,
     run_merge,
@@ -46,6 +47,7 @@ def run() -> None:
     # Fuentes anuales / trimestrales
     run_pwt.run()
     run_dane_gdp.run()
+    run_dane_gdp_expenditure.run()
 
     # VIOG (depende de dane_gdp para Colombia)
     run_viog.run()

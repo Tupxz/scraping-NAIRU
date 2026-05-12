@@ -35,6 +35,7 @@ def run_pipeline(
     run_viog: bool = False,
     run_viog_co: bool = False,
     run_dane_gdp: bool = False,
+    run_investment: bool = False,
     run_ipc: bool = False,
     run_banrep: bool = False,
     run_tes: bool = False,
@@ -82,6 +83,10 @@ def run_pipeline(
         if run_dane_gdp:
             from src.pipelines import run_dane_gdp as dane_gdp_pipeline
             dane_gdp_pipeline.run()
+
+        if run_investment:
+            from src.pipelines import run_dane_gdp_expenditure as investment_pipeline
+            investment_pipeline.run()
 
         if run_ipc:
             from src.pipelines import run_ipc as ipc_pipeline
@@ -160,6 +165,10 @@ def main() -> None:
         help="Ejecutar pipeline PIB trimestral DANE (Cuentas Nacionales, desestacionalizado)",
     )
     parser.add_argument(
+        "--investment", action="store_true",
+        help="Ejecutar pipeline Inversión (FBKF) trimestral DANE (enfoque del gasto, desest.)",
+    )
+    parser.add_argument(
         "--ipc", action="store_true",
         help="Ejecutar solo el pipeline IPC (DANE real)",
     )
@@ -221,6 +230,7 @@ def main() -> None:
             run_viog=True,
             run_viog_co=True,
             run_dane_gdp=True,
+            run_investment=True,
             run_ipc=True, run_banrep=True,
             run_tes=True, run_brent=True,
             run_andi=True, andi_reprocess=False,  # reprocess solo con --andi-reprocess explícito
@@ -237,7 +247,7 @@ def main() -> None:
     # Si no se pasa ningún flag, ejecutar desempleo por defecto.
     any_selected = (
         args.unemployment or args.pwt or args.informality or args.viog
-        or args.viog_co or args.dane_gdp
+        or args.viog_co or args.dane_gdp or args.investment
         or args.ipc or args.banrep
         or args.tes or args.brent or use_andi
         or args.andi_reprocess or args.nairu_dataset
@@ -255,6 +265,7 @@ def main() -> None:
         run_viog=args.viog,
         run_viog_co=args.viog_co,
         run_dane_gdp=args.dane_gdp,
+        run_investment=args.investment,
         run_ipc=args.ipc,
         run_banrep=args.banrep,
         run_tes=args.tes,
