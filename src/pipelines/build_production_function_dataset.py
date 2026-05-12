@@ -31,6 +31,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from src.config import OUTPUTS_DIR, PROCESSED_DIR
@@ -105,22 +106,45 @@ def build_production_function_dataset(
         "pet_thousands":      "PET",
     })
 
-    # ── 4. PWT — anual → forward-fill a trimestres ────────────────
-    # El CSV de PWT solo tiene enero de cada año; reindexamos a todos los
-    # inicios de trimestre y forward-fill para propagar Q1 → Q2, Q3, Q4.
+    # ── 4. PWT — anual → trimestral vía ley de acumulación de capital ────
+    # K(t+1) = K(t)·(1−δ) + I(t)
+    # Pasos:
+    #   a) Derivar inversión anual implícita: I_t = K_{t+1} − K_t·(1−δ_t)
+    #   b) Convertir δ anual a trimestral:    δ_q = 1 − (1−δ)^(1/4)
+    #   c) Distribuir inversión uniformemente: I_q = I_t / 4
+    #   d) Propagar Q2, Q3, Q4 dentro de cada año desde el ancla Q1 = K_t anual
+    #   e) Capital humano H (sin ley de acumulación propia): ffill intra-año
     pwt = _load("pwt_colombia.csv")
-    pwt_q = pwt[["capital_stock_real", "depreciation_rate", "human_capital"]]
-    # Construir índice trimestral completo y ffill
-    full_q_idx = pd.date_range(
-        start=pwt_q.index.min(),
-        end=pwt_q.index.max() + pd.DateOffset(months=9),
-        freq="QS",
+    ann = pwt[["capital_stock_real", "depreciation_rate", "human_capital"]].copy()
+    ann = ann.sort_index()
+
+    # Inversión anual implícita (último año: extrapolar con I del año anterior)
+    K  = ann["capital_stock_real"].values
+    d  = ann["depreciation_rate"].values
+    I_ann = np.empty(len(K))
+    I_ann[:-1] = K[1:] - K[:-1] * (1 - d[:-1])
+    I_ann[-1]  = I_ann[-2]                       # extrapolar último año
+
+    # Construir trimestres vía ley de acumulación
+    rows = []
+    for i, (date, row) in enumerate(ann.iterrows()):
+        delta_q = 1 - (1 - row["depreciation_rate"]) ** 0.25
+        I_q     = I_ann[i] / 4
+        K_q     = row["capital_stock_real"]        # ancla Q1 = dato anual PWT
+        for q in range(4):
+            rows.append({
+                "date":  date + pd.DateOffset(months=3 * q),
+                "K":     K_q,
+                "delta": row["depreciation_rate"],
+                "H":     row["human_capital"],
+            })
+            K_q = K_q * (1 - delta_q) + I_q      # siguiente trimestre
+
+    pwt_q = (
+        pd.DataFrame(rows)
+        .set_index("date")
+        .sort_index()
     )
-    pwt_q = pwt_q.reindex(full_q_idx).ffill().rename(columns={
-        "capital_stock_real": "K",
-        "depreciation_rate":  "delta",
-        "human_capital":      "H",
-    })
     pwt_q.index.name = "date"
 
     # ── 5. Unir todo por trimestre ────────────────────────────────
