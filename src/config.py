@@ -364,6 +364,70 @@ DANE_GDP_EXPENDITURE_PROCESSED_COLUMNS: list[str] = [
     "source", "download_date",
 ]
 
+
+# ── Configuración PIB enfoque del ingreso ─────────────────────────────
+
+@dataclass(frozen=True)
+class DANEGDPIncomeConfig:
+    """Configuración para el anexo PIB enfoque del ingreso del DANE.
+
+    Archivo ``anex-PIB-EnfoqueCorriente-{trim}{YYYY}.xlsx``, hoja
+    ``PIB_Ingreso``.  Contiene valores a **precios corrientes** en miles
+    de millones de pesos (base 2015), disponible desde 2016-Q1.
+
+    Estructura:
+      - Fila 10 (0-idx): años (col 4 en adelante)
+      - Fila 11 (0-idx): trimestres romanos (I–IV)
+      - Columna 2 (0-idx): etiqueta del concepto
+      - Datos numéricos desde columna 4 (0-idx)
+    """
+    page_url: str = (
+        "https://www.dane.gov.co/index.php/estadisticas-por-tema/"
+        "cuentas-nacionales/cuentas-nacionales-trimestrales/"
+        "pib-informacion-tecnica"
+    )
+    base_url: str = "https://www.dane.gov.co"
+    link_pattern: str = (
+        r"/files/operaciones/PIB/anex-PIB-EnfoqueCorriente-"
+        r"(?:I{1,3}|IV)trim\d{4}\.xlsx$"
+    )
+
+    sheet_name: str = "PIB_Ingreso"
+    year_row: int = 10
+    quarter_row: int = 11
+    concept_col: int = 2
+    data_start_col: int = 4
+
+    label_compensation: str = "Remuneración de los asalariados"
+    label_gross_surplus: str = "Excedente Bruto de Explotación"
+    label_mixed_income: str = "Ingreso Mixto"
+
+    source_label: str = "DANE - Cuentas Nacionales Trimestrales (Ingreso)"
+    raw_xlsx_filename: str = "dane_pib_ingreso_raw.xlsx"
+    processed_filename: str = "dane_gdp_income_colombia.csv"
+
+    timeout: int = 120
+    http_headers: dict[str, str] = field(
+        default_factory=lambda: {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+        }
+    )
+
+
+DANE_GDP_INCOME_CONFIG = DANEGDPIncomeConfig()
+
+DANE_GDP_INCOME_PROCESSED_COLUMNS: list[str] = [
+    "date", "year", "quarter",
+    "compensation_employees",
+    "gross_operating_surplus",
+    "mixed_income",
+    "source", "download_date",
+]
+
 # Sanity bounds (PIB trimestral en miles de millones de pesos)
 DANE_GDP_MIN: float = 0.0           # No puede ser negativo
 DANE_GDP_MAX: float = 1_000_000.0   # Máximo defensivo (PIB CO ~270k bn COP en 2024)
@@ -718,6 +782,9 @@ PROCESSED_COLUMNS: list[str] = [
     "month",
     "unemployment_rate",
     "tgp_rate",
+    "occupied_thousands",
+    "unemployed_thousands",
+    "inactive_thousands",
     "pet_thousands",
     "source",
     "download_date",

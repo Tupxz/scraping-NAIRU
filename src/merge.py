@@ -39,8 +39,10 @@ ColumnSpec = list[str] | dict[str, str]
 _SOURCES: dict[str, tuple[str, ColumnSpec]] = {
     # ── Mensuales ─────────────────────────────────────────────────
     "unemployment": (
-        "dane_labor_colombia.csv",          # TD + TGP + PET (Fase 2)
-        ["unemployment_rate", "tgp_rate", "pet_thousands"],
+        "dane_labor_colombia.csv",          # TD + TGP + Ocupados + Desocupados + Inactivos + PET
+        ["unemployment_rate", "tgp_rate",
+         "occupied_thousands", "unemployed_thousands", "inactive_thousands",
+         "pet_thousands"],
     ),
     "ipc": (
         "ipc_colombia.csv",
@@ -72,6 +74,11 @@ _SOURCES: dict[str, tuple[str, ColumnSpec]] = {
         "dane_gdp_expenditure_colombia.csv",
         ["investment"],
     ),
+    # ── Trimestrales (PIB enfoque ingreso — precios corrientes) ───
+    "dane_gdp_income": (
+        "dane_gdp_income_colombia.csv",
+        ["compensation_employees", "gross_operating_surplus", "mixed_income"],
+    ),
     # ── Anuales (PWT 11.0 — aparecerán con NaN en meses sin dato) ─
     "pwt": (
         "pwt_colombia.csv",
@@ -99,7 +106,10 @@ MERGED_COLUMNS: list[str] = [
     # ── Mensuales ─────────────────────────────────────────
     "unemployment_rate",        # GEIH - TD
     "tgp_rate",                 # GEIH - TGP
-    "pet_thousands",            # GEIH - PET (calculada)
+    "occupied_thousands",       # GEIH - Ocupados (miles)
+    "unemployed_thousands",     # GEIH - Desocupados (miles)
+    "inactive_thousands",       # GEIH - Inactivos/PEI (miles)
+    "pet_thousands",            # GEIH - PET (calculada = O+D+I)
     "ipc_index",                # IPC DANE
     "Inf_Goal",                 # Inflación meta BANREP
     "Inf_Rate",                 # Inflación observada BANREP
@@ -111,6 +121,10 @@ MERGED_COLUMNS: list[str] = [
     # ── Trimestrales (NaN en meses intermedios) ───────────────────
     "gdp_observed",             # DANE - PIB trimestral (miles de millones COP 2017)
     "investment",               # DANE - Inversión (FBKF) trimestral (miles de mill. COP 2017)
+    # ── Trimestrales enfoque ingreso (precios corrientes, desde 2016) ─
+    "compensation_employees",   # DANE - Remuneración asalariados (miles de mill. COP corrientes)
+    "gross_operating_surplus",  # DANE - Excedente Bruto de Explotación
+    "mixed_income",             # DANE - Ingreso Mixto
     # ── Anuales (NaN en meses sin observación) ────────────
     "capital_stock_real",       # PWT 11.0 - rnna (precios nac. const. 2017)
     "depreciation_rate",        # PWT 11.0 - delta (tasa de depreciación)

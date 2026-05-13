@@ -31,7 +31,7 @@ from src.quality_checks import (
 
 @pytest.fixture()
 def sample_processed_df() -> pd.DataFrame:
-    """DataFrame procesado de ejemplo con esquema estándar (incluyendo TGP y PET)."""
+    """DataFrame procesado de ejemplo con esquema estándar (incluyendo TGP, PET y niveles)."""
     return pd.DataFrame(
         {
             "date": pd.to_datetime(["2020-01-01", "2020-02-01", "2020-03-01"]),
@@ -39,7 +39,10 @@ def sample_processed_df() -> pd.DataFrame:
             "month": [1, 2, 3],
             "unemployment_rate": [3.6, 3.5, 4.4],
             "tgp_rate": [63.2, 63.0, 62.8],
-            "pet_thousands": [38_500.0, 38_510.0, 38_520.0],
+            "occupied_thousands":   [20_000.0, 20_100.0, 20_200.0],
+            "unemployed_thousands": [800.0, 790.0, 810.0],
+            "inactive_thousands":   [10_000.0, 10_010.0, 10_020.0],
+            "pet_thousands": [30_800.0, 30_900.0, 31_030.0],
             "source": ["DANE", "DANE", "DANE"],
             "download_date": [date.today().isoformat()] * 3,
         }

@@ -538,10 +538,13 @@ def clean_geih_data(
     # ── Calcular PET a partir de los tres componentes auxiliares ──
     raw_cols = ("_raw_pop_employed", "_raw_pop_unemployed", "_raw_pop_inactive")
     if all(c in df.columns for c in raw_cols):
+        df["occupied_thousands"]   = df["_raw_pop_employed"].round(1)
+        df["unemployed_thousands"] = df["_raw_pop_unemployed"].round(1)
+        df["inactive_thousands"]   = df["_raw_pop_inactive"].round(1)
         df["pet_thousands"] = (
-            df["_raw_pop_employed"]
-            + df["_raw_pop_unemployed"]
-            + df["_raw_pop_inactive"]
+            df["occupied_thousands"]
+            + df["unemployed_thousands"]
+            + df["inactive_thousands"]
         ).round(1)
         df = df.drop(columns=list(raw_cols))
         logger.info(

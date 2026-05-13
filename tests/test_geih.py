@@ -608,10 +608,10 @@ class TestGEIHQuality:
     """Validaciones de calidad sobre el dataset GEIH procesado."""
 
     def test_run_all_checks_pass(
-        self, sample_geih_xlsx: Path, geih_config: GEIHConfig
+        self, sample_geih_xlsx_with_pet: Path,
     ) -> None:
         """El dataset procesado pasa todas las validaciones."""
-        df = clean_geih_data(sample_geih_xlsx, geih_config)
+        df = clean_geih_data(sample_geih_xlsx_with_pet, GEIH_CONFIG)
         assert run_all_checks(df) is True
 
     def test_no_nulls_in_unemployment_rate(
@@ -797,10 +797,14 @@ class TestSeriesMapFase2:
             "date": pd.to_datetime([f"2022-{m:02d}-01" for m in range(1, n + 1)]),
             "year": [2022] * n,
             "month": list(range(1, n + 1)),
-            "unemployment_rate": [10.0] * n,
-            "tgp_rate": [63.0] * n,
-            "source": ["DANE"] * n,
-            "download_date": ["2026-04-14"] * n,
+            "unemployment_rate":   [10.0] * n,
+            "tgp_rate":            [63.0] * n,
+            "occupied_thousands":  [20_000.0] * n,
+            "unemployed_thousands":[800.0] * n,
+            "inactive_thousands":  [10_000.0] * n,
+            "pet_thousands":       [30_800.0] * n,
+            "source":              ["DANE"] * n,
+            "download_date":       ["2026-04-14"] * n,
         })
         # Valor válido: no lanza
         assert run_labor_checks(df) is True
@@ -826,11 +830,14 @@ class TestSeriesMapFase2:
             "date": pd.to_datetime([f"2022-{m:02d}-01" for m in range(1, n + 1)]),
             "year": [2022] * n,
             "month": list(range(1, n + 1)),
-            "unemployment_rate": [10.0] * n,
-            "tgp_rate": [63.0] * n,
-            "pet_thousands": [38_500.0] * n,
-            "source": ["DANE"] * n,
-            "download_date": ["2026-04-14"] * n,
+            "unemployment_rate":   [10.0] * n,
+            "tgp_rate":            [63.0] * n,
+            "occupied_thousands":  [20_000.0] * n,
+            "unemployed_thousands":[800.0] * n,
+            "inactive_thousands":  [10_000.0] * n,
+            "pet_thousands":       [38_500.0] * n,
+            "source":              ["DANE"] * n,
+            "download_date":       ["2026-04-14"] * n,
         })
         # Valor válido: no lanza
         assert run_labor_checks(df) is True
