@@ -876,7 +876,7 @@ LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 LOG_FILENAME: str = "pipeline.log"
 
 
-# ── Configuración PWT 10.01 – Stock de Capital y Capital Humano ──────
+# ── Configuración PWT 11.0 – Stock de Capital y Capital Humano ──────
 
 @dataclass(frozen=True)
 class PWTConfig:
