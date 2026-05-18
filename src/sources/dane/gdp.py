@@ -40,6 +40,7 @@ from src.config import (
     RAW_DANE_DIR,
 )
 from src.io_utils import save_csv
+from src.sources.dane.common import dane_request_kwargs
 
 logger = logging.getLogger("nairu_pipeline.dane.gdp")
 
@@ -55,8 +56,7 @@ def fetch_gdp_page(config: DANEGDPConfig = DANE_GDP_CONFIG) -> str:
     response = requests.get(
         config.page_url,
         headers=config.http_headers,
-        timeout=config.timeout,
-        verify=False,
+        **dane_request_kwargs(timeout=config.timeout),
     )
     response.raise_for_status()
     logger.info("Página descargada: %d bytes", len(response.content))
@@ -123,8 +123,7 @@ def download_gdp_excel(
     response = requests.get(
         url,
         headers=config.http_headers,
-        timeout=config.timeout,
-        verify=False,
+        **dane_request_kwargs(timeout=config.timeout),
     )
     response.raise_for_status()
 

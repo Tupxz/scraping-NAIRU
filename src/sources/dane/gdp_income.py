@@ -36,6 +36,7 @@ from src.config import (
     RAW_DANE_DIR,
 )
 from src.io_utils import save_csv
+from src.sources.dane.common import dane_request_kwargs
 
 logger = logging.getLogger("nairu_pipeline.dane.gdp_income")
 
@@ -52,7 +53,7 @@ def fetch_income_page(
 ) -> str:
     logger.info("Descargando página PIB ingreso DANE: %s", config.page_url)
     r = requests.get(config.page_url, headers=config.http_headers,
-                     timeout=config.timeout, verify=False)
+                     **dane_request_kwargs(timeout=config.timeout))
     r.raise_for_status()
     return r.text
 
@@ -99,7 +100,7 @@ def download_income_excel(
 ) -> Path:
     logger.info("Descargando Excel PIB ingreso: %s", url)
     r = requests.get(url, headers=config.http_headers,
-                     timeout=config.timeout, verify=False)
+                     **dane_request_kwargs(timeout=config.timeout))
     r.raise_for_status()
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / config.raw_xlsx_filename

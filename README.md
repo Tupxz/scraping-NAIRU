@@ -89,6 +89,11 @@ pip install -e ".[dev]"              # runtime + tests
 
 El paquete se instala como `scraping-nairu` y queda importable como `src.*` desde cualquier directorio. La fuente de verdad de las dependencias es `pyproject.toml`; `requirements.txt` se mantiene como espejo para usuarios sin `pip install -e`.
 
+### Variables de entorno
+
+- `DANE_VERIFY_TLS=1` activa verificación TLS contra `www.dane.gov.co`
+  (default `0` por problemas históricos con la cadena de certificados).
+
 ---
 
 ## 4. Uso

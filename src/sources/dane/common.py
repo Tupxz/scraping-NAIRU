@@ -22,10 +22,13 @@ debe migrarse a las constantes de este módulo.
 
 from __future__ import annotations
 
+import os
+import warnings
 from types import MappingProxyType
 from typing import Mapping
 
 import requests
+import urllib3
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -104,8 +107,37 @@ def make_dane_session(
     return session
 
 
+# ── Manejo centralizado de TLS contra DANE ──────────────────────────
+
+def dane_request_kwargs(timeout: float = 30.0) -> dict:
+    """Kwargs estándar para ``requests.get`` contra ``www.dane.gov.co``.
+
+    DANE tiene problemas recurrentes de cadena de certificados. Permitimos
+    saltarse la verificación TLS controlado por la variable de entorno
+    ``DANE_VERIFY_TLS`` (default: ``0`` → no verifica). Producción puede
+    exportarla a ``1`` cuando DANE arregle el certificado.
+
+    Parameters
+    ----------
+    timeout : float
+        Segundos antes de lanzar ``requests.Timeout`` (default: 30.0).
+
+    Returns
+    -------
+    dict
+        Diccionario listo para pasar como ``**kwargs`` a ``requests.get``.
+    """
+    verify_tls = os.environ.get("DANE_VERIFY_TLS", "0") == "1"
+    if not verify_tls:
+        warnings.filterwarnings(
+            "ignore", category=urllib3.exceptions.InsecureRequestWarning,
+        )
+    return {"timeout": timeout, "verify": verify_tls}
+
+
 __all__ = [
     "MONTH_ABBR_ES",
     "MONTH_FULL_ES",
     "make_dane_session",
+    "dane_request_kwargs",
 ]

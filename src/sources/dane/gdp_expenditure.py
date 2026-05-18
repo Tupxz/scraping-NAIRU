@@ -37,6 +37,7 @@ from src.config import (
     RAW_DANE_DIR,
 )
 from src.io_utils import save_csv
+from src.sources.dane.common import dane_request_kwargs
 
 logger = logging.getLogger("nairu_pipeline.dane.gdp_expenditure")
 
@@ -57,8 +58,7 @@ def fetch_expenditure_page(
     response = requests.get(
         config.page_url,
         headers=config.http_headers,
-        timeout=config.timeout,
-        verify=False,
+        **dane_request_kwargs(timeout=config.timeout),
     )
     response.raise_for_status()
     return response.text
@@ -117,8 +117,7 @@ def download_expenditure_excel(
     response = requests.get(
         url,
         headers=config.http_headers,
-        timeout=config.timeout,
-        verify=False,
+        **dane_request_kwargs(timeout=config.timeout),
     )
     response.raise_for_status()
 
