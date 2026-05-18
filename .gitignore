@@ -238,3 +238,8 @@ __marimo__/
 # Excel lock files (Office crea estos al abrir un .xlsx)
 ~$*
 *.~lock.*
+
+# Caches locales del directorio legacy (no versionar)
+legacy/**/__pycache__/
+legacy/**/outputs/
+legacy/**/data/
