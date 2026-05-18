@@ -211,9 +211,10 @@ class TestMergedColumnsDefinition:
 
     def test_total_column_count(self) -> None:
         # date + year + month + 2 labor rates + 3 labor levels + pet +
-        # ipc + 3 inflation + brent + andi + 2 tes + pib + investment +
-        # 3 income + 3 pwt + 2 viog_us + 2 viog_co = 29
-        assert len(MERGED_COLUMNS) == 29
+        # ipc + 3 inflation + 3 derivadas (ipc_yoy, ipc_mom, inflation_gap) +
+        # brent + andi + 2 tes + pib + investment +
+        # 3 income + 3 pwt + 2 viog_us + 2 viog_co = 32
+        assert len(MERGED_COLUMNS) == 32
 
 
 # ═══════════════════════════════════════════════════════════════════════

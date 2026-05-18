@@ -114,6 +114,9 @@ MERGED_COLUMNS: list[str] = [
     "Inf_Goal",                 # Inflación meta BANREP
     "Inf_Rate",                 # Inflación observada BANREP
     "Core_Inf",                 # Inflación núcleo BANREP
+    "ipc_yoy",                  # IPC variación interanual (derivada de ipc_index)
+    "ipc_mom",                  # IPC variación mensual (derivada de ipc_index)
+    "inflation_gap",            # Inf_Rate - Inf_Goal (BANREP)
     "brent_usd_per_barrel",     # Brent FRED/EIA
     "capacity_utilization",     # ANDI EOIC
     "TES_UVR_1Y",               # TES UVR 1Y BANREP
@@ -238,6 +241,16 @@ def merge_all_sources(
     # Recortar: conservar solo desde 2004-01-01 en adelante
     # (inicio de ICU/ANDI, la serie más restrictiva del modelo NAIRU)
     merged = merged[merged["date"] >= "2004-01-01"].reset_index(drop=True)
+
+    # ── Variables derivadas ─────────────────────────────────────────
+    # Solo se calculan si las columnas base están presentes en el merge.
+    if "ipc_index" in merged.columns:
+        # IPC: variación interanual y mensual reconstruida del propio índice.
+        merged["ipc_yoy"] = merged["ipc_index"].pct_change(12) * 100
+        merged["ipc_mom"] = merged["ipc_index"].pct_change(1) * 100
+    if "Inf_Rate" in merged.columns and "Inf_Goal" in merged.columns:
+        # Brecha de inflación: desviación de la observada vs la meta BANREP.
+        merged["inflation_gap"] = merged["Inf_Rate"] - merged["Inf_Goal"]
 
     # Ordenar columnas: date, year, month, luego datos en orden definido
     present_cols = [c for c in MERGED_COLUMNS if c in merged.columns]

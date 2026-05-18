@@ -868,3 +868,66 @@ def run_pwt_checks(df: pd.DataFrame) -> bool:
 
     logger.info("─── Todas las validaciones PWT pasaron ✓ ───")
     return True
+
+
+# ── Validaciones de variables derivadas del dataset unificado ────────────────
+
+def run_derived_checks(df: pd.DataFrame) -> bool:
+    """Valida la coherencia de las variables derivadas del dataset unificado.
+
+    Comprueba:
+
+    - ``corr(ipc_yoy, Inf_Rate) > 0.97`` para filas con ambas series no nulas
+      (se aceptan los primeros 12 meses con NaN en ``ipc_yoy``).
+    - La aproximación ``ipc_mom * 12`` y ``ipc_yoy`` no divergen más de 5 pp
+      en el 90 % de las filas (diferencia esperada por composición geométrica).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataset unificado (resultado de ``merge_all_sources``).
+
+    Returns
+    -------
+    bool
+        True si todas las validaciones pasan.
+
+    Raises
+    ------
+    QualityCheckError
+        Si alguna validación falla.
+    """
+    logger.info("─── Validaciones de variables derivadas ───")
+
+    required = {"ipc_yoy", "ipc_mom", "inflation_gap", "Inf_Rate"}
+    missing = required - set(df.columns)
+    if missing:
+        raise QualityCheckError(
+            f"Columnas derivadas faltantes en el dataset: {sorted(missing)}"
+        )
+
+    # 1. Correlación ipc_yoy vs Inf_Rate > 0.97
+    mask = df["ipc_yoy"].notna() & df["Inf_Rate"].notna()
+    if mask.sum() > 0:
+        corr = df.loc[mask, "ipc_yoy"].corr(df.loc[mask, "Inf_Rate"])
+        if corr <= 0.97:
+            raise QualityCheckError(
+                f"corr(ipc_yoy, Inf_Rate) = {corr:.4f} ≤ 0.97 — "
+                "las series de inflación no son coherentes entre sí."
+            )
+        logger.info("corr(ipc_yoy, Inf_Rate) = %.4f ✓", corr)
+
+    # 2. Aproximación lineal: |ipc_mom*12 - ipc_yoy| ≤ 5 pp en ≥ 90 % de filas
+    mask2 = df["ipc_yoy"].notna() & df["ipc_mom"].notna()
+    if mask2.sum() > 0:
+        diff = (df.loc[mask2, "ipc_mom"] * 12 - df.loc[mask2, "ipc_yoy"]).abs()
+        pct_ok = (diff <= 5.0).mean()
+        if pct_ok < 0.90:
+            raise QualityCheckError(
+                f"Solo el {pct_ok:.1%} de las filas cumplen "
+                "|ipc_mom*12 - ipc_yoy| ≤ 5 pp (mínimo esperado: 90 %)."
+            )
+        logger.info("|ipc_mom*12 - ipc_yoy| ≤ 5 pp en %.1f %% de las filas ✓", pct_ok * 100)
+
+    logger.info("─── Todas las validaciones de variables derivadas pasaron ✓ ───")
+    return True
