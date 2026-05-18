@@ -22,6 +22,8 @@ from src.config import (
     CAPACITY_UTILIZATION_MIN,
     CAPITAL_STOCK_MAX,
     CAPITAL_STOCK_MIN,
+    DEPRECIATION_RATE_MAX,
+    DEPRECIATION_RATE_MIN,
     HUMAN_CAPITAL_MAX,
     HUMAN_CAPITAL_MIN,
     INFLATION_GOAL_MAX,
@@ -697,7 +699,7 @@ def run_banrep_tes_checks(df: pd.DataFrame) -> bool:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Validaciones de calidad para PWT 10.01 (Stock de Capital / Capital Humano)
+# Validaciones de calidad para PWT 11.0 (Stock de Capital / Depreciación / Capital Humano)
 # ═══════════════════════════════════════════════════════════════════════
 
 
@@ -712,7 +714,7 @@ def check_pwt_columns(df: pd.DataFrame) -> None:
 
 
 def check_capital_stock_range(df: pd.DataFrame) -> None:
-    """Verifica que capital_stock_ck esté en un rango razonable.
+    """Verifica que capital_stock_real esté en un rango razonable.
 
     Parameters
     ----------
@@ -724,19 +726,48 @@ def check_capital_stock_range(df: pd.DataFrame) -> None:
     QualityCheckError
         Si hay valores fuera del rango ``[CAPITAL_STOCK_MIN, CAPITAL_STOCK_MAX]``.
     """
-    vals = df["capital_stock_ck"].dropna()
+    vals = df["capital_stock_real"].dropna()
     out_of_range = vals[
         (vals < CAPITAL_STOCK_MIN) | (vals > CAPITAL_STOCK_MAX)
     ]
     if not out_of_range.empty:
         raise QualityCheckError(
-            f"Valores de capital_stock_ck fuera de rango "
+            f"Valores de capital_stock_real fuera de rango "
             f"[{CAPITAL_STOCK_MIN}, {CAPITAL_STOCK_MAX}]: "
             f"{out_of_range.values[:5]}..."
         )
     logger.info(
-        "✓ Validación de rango capital_stock_ck [%.1f, %.1f]: OK",
+        "✓ Validación de rango capital_stock_real [%.1f, %.1f]: OK",
         CAPITAL_STOCK_MIN, CAPITAL_STOCK_MAX,
+    )
+
+
+def check_depreciation_rate_range(df: pd.DataFrame) -> None:
+    """Verifica que depreciation_rate esté en un rango razonable.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame PWT procesado.
+
+    Raises
+    ------
+    QualityCheckError
+        Si hay valores fuera del rango ``[DEPRECIATION_RATE_MIN, DEPRECIATION_RATE_MAX]``.
+    """
+    vals = df["depreciation_rate"].dropna()
+    out_of_range = vals[
+        (vals < DEPRECIATION_RATE_MIN) | (vals > DEPRECIATION_RATE_MAX)
+    ]
+    if not out_of_range.empty:
+        raise QualityCheckError(
+            f"Valores de depreciation_rate fuera de rango "
+            f"[{DEPRECIATION_RATE_MIN}, {DEPRECIATION_RATE_MAX}]: "
+            f"{out_of_range.values[:5]}..."
+        )
+    logger.info(
+        "✓ Validación de rango depreciation_rate [%.4f, %.4f]: OK",
+        DEPRECIATION_RATE_MIN, DEPRECIATION_RATE_MAX,
     )
 
 
@@ -795,12 +826,13 @@ def check_pwt_min_rows(df: pd.DataFrame, min_rows: int = 50) -> None:
 
 
 def run_pwt_checks(df: pd.DataFrame) -> bool:
-    """Ejecuta todas las validaciones de calidad para PWT 10.01.
+    """Ejecuta todas las validaciones de calidad para PWT 11.0.
 
     Verifica:
-    - Columnas presentes: ``date``, ``year``, ``capital_stock_ck``,
-      ``human_capital`` (y el resto del esquema estándar).
-    - ``capital_stock_ck`` dentro de ``[CAPITAL_STOCK_MIN, CAPITAL_STOCK_MAX]``.
+    - Columnas presentes: ``date``, ``year``, ``capital_stock_real``,
+      ``depreciation_rate``, ``human_capital`` (y el resto del esquema estándar).
+    - ``capital_stock_real`` dentro de ``[CAPITAL_STOCK_MIN, CAPITAL_STOCK_MAX]``.
+    - ``depreciation_rate`` dentro de ``[DEPRECIATION_RATE_MIN, DEPRECIATION_RATE_MAX]``.
     - ``human_capital`` dentro de ``[HUMAN_CAPITAL_MIN, HUMAN_CAPITAL_MAX]``.
     - Sin duplicados en ``date``.
     - Al menos 50 filas (cobertura desde 1950).
@@ -820,15 +852,82 @@ def run_pwt_checks(df: pd.DataFrame) -> bool:
     QualityCheckError
         Si alguna validación falla.
     """
-    logger.info("─── Validaciones de calidad PWT 10.01 ───")
+    logger.info("─── Validaciones de calidad PWT 11.0 ───")
     logger.info("Dataset: %d filas × %d columnas", *df.shape)
 
     check_pwt_columns(df)
-    check_no_nulls_generic(df, ["date", "year", "capital_stock_ck", "human_capital"])
+    check_no_nulls_generic(
+        df,
+        ["date", "year", "capital_stock_real", "depreciation_rate", "human_capital"],
+    )
     check_capital_stock_range(df)
+    check_depreciation_rate_range(df)
     check_human_capital_range(df)
     check_no_duplicates(df)
     check_pwt_min_rows(df)
 
     logger.info("─── Todas las validaciones PWT pasaron ✓ ───")
+    return True
+
+
+# ── Validaciones de variables derivadas del dataset unificado ────────────────
+
+def run_derived_checks(df: pd.DataFrame) -> bool:
+    """Valida la coherencia de las variables derivadas del dataset unificado.
+
+    Comprueba:
+
+    - ``corr(ipc_yoy, Inf_Rate) > 0.97`` para filas con ambas series no nulas
+      (se aceptan los primeros 12 meses con NaN en ``ipc_yoy``).
+    - La aproximación ``ipc_mom * 12`` y ``ipc_yoy`` no divergen más de 5 pp
+      en el 90 % de las filas (diferencia esperada por composición geométrica).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataset unificado (resultado de ``merge_all_sources``).
+
+    Returns
+    -------
+    bool
+        True si todas las validaciones pasan.
+
+    Raises
+    ------
+    QualityCheckError
+        Si alguna validación falla.
+    """
+    logger.info("─── Validaciones de variables derivadas ───")
+
+    required = {"ipc_yoy", "ipc_mom", "inflation_gap", "Inf_Rate"}
+    missing = required - set(df.columns)
+    if missing:
+        raise QualityCheckError(
+            f"Columnas derivadas faltantes en el dataset: {sorted(missing)}"
+        )
+
+    # 1. Correlación ipc_yoy vs Inf_Rate > 0.97
+    mask = df["ipc_yoy"].notna() & df["Inf_Rate"].notna()
+    if mask.sum() > 0:
+        corr = df.loc[mask, "ipc_yoy"].corr(df.loc[mask, "Inf_Rate"])
+        if corr <= 0.97:
+            raise QualityCheckError(
+                f"corr(ipc_yoy, Inf_Rate) = {corr:.4f} ≤ 0.97 — "
+                "las series de inflación no son coherentes entre sí."
+            )
+        logger.info("corr(ipc_yoy, Inf_Rate) = %.4f ✓", corr)
+
+    # 2. Aproximación lineal: |ipc_mom*12 - ipc_yoy| ≤ 5 pp en ≥ 90 % de filas
+    mask2 = df["ipc_yoy"].notna() & df["ipc_mom"].notna()
+    if mask2.sum() > 0:
+        diff = (df.loc[mask2, "ipc_mom"] * 12 - df.loc[mask2, "ipc_yoy"]).abs()
+        pct_ok = (diff <= 5.0).mean()
+        if pct_ok < 0.90:
+            raise QualityCheckError(
+                f"Solo el {pct_ok:.1%} de las filas cumplen "
+                "|ipc_mom*12 - ipc_yoy| ≤ 5 pp (mínimo esperado: 90 %)."
+            )
+        logger.info("|ipc_mom*12 - ipc_yoy| ≤ 5 pp en %.1f %% de las filas ✓", pct_ok * 100)
+
+    logger.info("─── Todas las validaciones de variables derivadas pasaron ✓ ───")
     return True

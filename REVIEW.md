@@ -404,3 +404,25 @@ existente. Recomiendo abordar los puntos 1-6 en un PR de limpieza,
 luego 11 (variables derivadas), y a partir de ahí empezar la
 implementación del modelo de Phillips/Kalman como un paquete nuevo
 `src/models/nairu/`, manteniendo el patrón modular que ya funciona.
+
+---
+
+## 9. Estado al cierre (2026-05-17)
+
+Todos los ítems de la sección 7 cerrados en commits posteriores al
+2026-04-28. Resumen:
+
+| # | Acción | Estado | Commit / nota |
+|---|---|---|---|
+| 1 | `run_all.py` completo | ✅ | incluye PWT, informality, dane_gdp, viog, production_function |
+| 2 | `dane/__init__.py` re-exporta informalidad | ✅ | |
+| 3 | `verify=False` en informalidad | ✅ corregido + 4 scrapers GDP centralizados vía `dane_request_kwargs` (env override) |
+| 4 | Archivos vacíos | ✅ | `dane/common.py` poblado; `pwt/__init__.py` re-exporta; `download_brent_oil_prices.py` eliminado |
+| 5 | `PWT 10.01` → `PWT 11.0` | ✅ | bloque B1 |
+| 6 | Contador de tests en README | ✅ | bloque D1 |
+| 7 | Consolidar `month_map` | ⏸ Diferido a v0.3 | trabajo > 30 min, beneficio bajo |
+| 8 | Destino de `andi_agent/` | ✅ | movido a `legacy/andi_agent/` (bloque B3) |
+| 9 | `pyproject.toml` | ✅ | ya existía + exclude `legacy/` |
+| 10 | GitHub Actions | ✅ | `.github/workflows/tests.yml` |
+| 11 | Variables derivadas | ✅ | bloque C1 |
+| 12 | `INFORMALITY_RATE` warning → error | ⏸ Diferido a v0.3 | decisión econométrica, no urgente |

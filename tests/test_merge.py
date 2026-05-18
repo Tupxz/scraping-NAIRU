@@ -32,8 +32,8 @@ from src.merge import (
 # Helpers para crear mini-CSVs sintéticos
 # ═══════════════════════════════════════════════════════════════════════
 
-_MONTHLY_DATES = [f"200{y}-0{m}-01" for y in range(1, 4) for m in range(1, 5)]
-# 12 fechas mensuales: 2001-01 → 2003-04
+_MONTHLY_DATES = [f"200{y}-0{m}-01" for y in range(4, 7) for m in range(1, 5)]
+# 12 fechas mensuales: 2004-01 → 2006-04  (dentro del rango >= 2004-01-01)
 
 
 def _write_csv(path: Path, df: pd.DataFrame) -> None:
@@ -82,13 +82,13 @@ def _make_brent_csv(processed_dir: Path) -> None:
 
 def _make_pwt_csv(processed_dir: Path) -> None:
     """pwt_colombia.csv — anual (solo enero de cada año)."""
-    annual_dates = ["2001-01-01", "2002-01-01", "2003-01-01"]
+    annual_dates = ["2004-01-01", "2005-01-01", "2006-01-01"]
     df = pd.DataFrame({
         "date": pd.to_datetime(annual_dates),
-        "year": [2001, 2002, 2003],
+        "year": [2004, 2005, 2006],
         "month": [1, 1, 1],
-        "capital_stock_ck": [100.0, 105.0, 110.0],
-        "capital_stock_cn": [500_000.0, 510_000.0, 520_000.0],
+        "capital_stock_real": [100_000.0, 105_000.0, 110_000.0],
+        "depreciation_rate": [0.047, 0.047, 0.048],
         "human_capital": [2.5, 2.6, 2.7],
         "source": ["PWT 11.0"] * 3,
         "download_date": ["2026-01-01"] * 3,
@@ -143,8 +143,8 @@ class TestSourcesConfig:
 
     def test_pwt_source_columns(self) -> None:
         _, cols = _SOURCES["pwt"]
-        assert "capital_stock_ck" in cols
-        assert "capital_stock_cn" in cols
+        assert "capital_stock_real" in cols
+        assert "depreciation_rate" in cols
         assert "human_capital" in cols
 
     def test_pwt_filename(self) -> None:
@@ -193,14 +193,14 @@ class TestMergedColumnsDefinition:
         assert "pet_thousands" in MERGED_COLUMNS
 
     def test_includes_pwt_columns(self) -> None:
-        assert "capital_stock_ck" in MERGED_COLUMNS
-        assert "capital_stock_cn" in MERGED_COLUMNS
+        assert "capital_stock_real" in MERGED_COLUMNS
+        assert "depreciation_rate" in MERGED_COLUMNS
         assert "human_capital" in MERGED_COLUMNS
 
     def test_pwt_columns_are_last(self) -> None:
         """Las columnas anuales (PWT) deben ir al final, tras las mensuales."""
         idx_pet = MERGED_COLUMNS.index("pet_thousands")
-        idx_ck = MERGED_COLUMNS.index("capital_stock_ck")
+        idx_ck = MERGED_COLUMNS.index("capital_stock_real")
         idx_hc = MERGED_COLUMNS.index("human_capital")
         # PWT va después de las series mensuales
         assert idx_ck > idx_pet
@@ -210,9 +210,11 @@ class TestMergedColumnsDefinition:
         assert len(MERGED_COLUMNS) == len(set(MERGED_COLUMNS))
 
     def test_total_column_count(self) -> None:
-        # date + year + month + 3 labor + informalidad + ipc + 3 inflation +
-        # brent + andi + 2 tes + 3 pwt + 2 viog_us + 2 viog_co = 22
-        assert len(MERGED_COLUMNS) == 22
+        # date + year + month + 2 labor rates + 3 labor levels + pet +
+        # ipc + 3 inflation + 3 derivadas (ipc_yoy, ipc_mom, inflation_gap) +
+        # brent + andi + 2 tes + pib + investment +
+        # 3 income + 3 pwt + 2 viog_us + 2 viog_co = 32
+        assert len(MERGED_COLUMNS) == 32
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -239,11 +241,11 @@ class TestMergeAllSources:
         assert "unemployment_rate" in df.columns
 
     def test_merge_includes_pwt_columns(self, processed_dir_full: Path) -> None:
-        """capital_stock_ck y human_capital deben estar en el resultado."""
+        """capital_stock_real y human_capital deben estar en el resultado."""
         df = merge_all_sources(processed_dir_full)
-        assert "capital_stock_ck" in df.columns
+        assert "capital_stock_real" in df.columns
         assert "human_capital" in df.columns
-        assert "capital_stock_cn" in df.columns
+        assert "depreciation_rate" in df.columns
 
     def test_merge_column_order(self, processed_dir_full: Path) -> None:
         """El DataFrame resultante respeta el orden de MERGED_COLUMNS."""
@@ -266,7 +268,7 @@ class TestMergeAllSources:
         assert (df["month"] == df["date"].dt.month).all()
 
     def test_merge_pwt_annual_nulls(self, processed_dir_full: Path) -> None:
-        """Los meses que no son enero deben tener NaN en capital_stock_ck.
+        """Los meses que no son enero deben tener NaN en capital_stock_real.
 
         PWT es anual (solo enero); los meses feb–dic aparecen en el outer-join
         con NaN para las columnas de capital.
@@ -276,32 +278,32 @@ class TestMergeAllSources:
         if len(non_january) > 0:
             # Para los meses no-enero provenientes de fuentes mensuales,
             # las columnas PWT deben ser NaN
-            assert non_january["capital_stock_ck"].isna().all()
+            assert non_january["capital_stock_real"].isna().all()
             assert non_january["human_capital"].isna().all()
 
     def test_merge_pwt_january_has_values(self, processed_dir_full: Path) -> None:
         """Los meses de enero (que PWT reporta) deben tener valores no-NaN."""
         df = merge_all_sources(processed_dir_full)
         january_rows = df[
-            (df["month"] == 1) & df["date"].dt.year.isin([2001, 2002, 2003])
+            (df["month"] == 1) & df["date"].dt.year.isin([2004, 2005, 2006])
         ]
-        assert january_rows["capital_stock_ck"].notna().all()
+        assert january_rows["capital_stock_real"].notna().all()
         assert january_rows["human_capital"].notna().all()
 
     def test_merge_labor_values_correct(self, processed_dir_full: Path) -> None:
         """Verifica que los valores de TGP y PET se preservan tras el merge."""
         df = merge_all_sources(processed_dir_full)
-        jan2001 = df[df["date"] == pd.Timestamp("2001-01-01")]
-        assert len(jan2001) == 1
-        assert jan2001["tgp_rate"].iloc[0] == pytest.approx(63.0, abs=0.01)
-        assert jan2001["pet_thousands"].iloc[0] == pytest.approx(38_000.0, abs=1.0)
+        jan2004 = df[df["date"] == pd.Timestamp("2004-01-01")]
+        assert len(jan2004) == 1
+        assert jan2004["tgp_rate"].iloc[0] == pytest.approx(63.0, abs=0.01)
+        assert jan2004["pet_thousands"].iloc[0] == pytest.approx(38_000.0, abs=1.0)
 
     def test_merge_missing_source_skipped(self, processed_dir_labor_only: Path) -> None:
         """Si faltan archivos opcionales, el merge no lanza error."""
         df = merge_all_sources(processed_dir_labor_only)
         assert "unemployment_rate" in df.columns
         # Las columnas de fuentes ausentes no están en el resultado
-        assert "capital_stock_ck" not in df.columns
+        assert "capital_stock_real" not in df.columns
 
     def test_merge_no_sources_raises(self, tmp_path: Path) -> None:
         """Si no hay ningún archivo procesado, debe lanzar ValueError."""
@@ -328,7 +330,7 @@ class TestSaveMergedDataset:
         path = save_merged_dataset(df, processed_dir_full)
         df_loaded = pd.read_csv(path, parse_dates=["date"])
         assert len(df_loaded) == len(df)
-        assert "capital_stock_ck" in df_loaded.columns
+        assert "capital_stock_real" in df_loaded.columns
 
     def test_run_merge_pipeline_returns_dataframe(
         self, processed_dir_full: Path, tmp_path: Path

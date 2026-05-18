@@ -1,7 +1,6 @@
-"""Orquestador NAIRU/NAICU estimation v6.
+"""Orquestador NAIRU/NAICU estimation.
 
-Refactor de ``nairu_estimation_v6.py`` (raíz del proyecto) como módulo
-propio dentro de ``src/nairu/``.  Todos los paths son absolutos y derivan
+Módulo propio dentro de ``src/nairu/``.  Todos los paths son absolutos y derivan
 de la configuración del proyecto (``src/config.py``).
 
 Uso programático
@@ -40,16 +39,20 @@ DATA_NAIRU_PATH: Path = INPUTS_DIR / "Data_NAIRU.xlsx"
 OUTPUT_DIR:      Path = OUTPUTS_DIR / "nairu"
 MODEL_CORE_PATH: Path = Path(__file__).resolve().parent / "model_core.py"
 
-# Nombres de archivo: desde el modelo (v5) → repo (v6)
-_V5_TO_V6: dict[str, str] = {
-    "nairu_estimates_v5.csv":      "nairu_estimates_v6.csv",
-    "nairu_summary_v5.txt":        "nairu_summary_v6.txt",
-    "nairu_mle_coefficients_v5.csv": "nairu_mle_coefficients_v6.csv",
-    "nairu_mle_covariance_v5.csv": "nairu_mle_covariance_v6.csv",
-    "nairu_mle_diagnostics_v5.txt": "nairu_mle_diagnostics_v6.txt",
-    "nairu_naicu_panel_v5.png":    "nairu_naicu_panel_v6.png",
-    "nairu_naicu_panel_v5.svg":    "nairu_naicu_panel_v6.svg",
+# Nombres de archivo: desde el modelo (v5) → outputs del repo
+_V5_TO_FINAL: dict[str, str] = {
+    "nairu_estimates_v5.csv":        "nairu_colombia.csv",
+    "nairu_summary_v5.txt":          "nairu_summary.txt",
+    "nairu_mle_coefficients_v5.csv": "nairu_mle_coefficients.csv",
+    "nairu_mle_covariance_v5.csv":   "nairu_mle_covariance.csv",
+    "nairu_mle_diagnostics_v5.txt":  "nairu_mle_diagnostics.txt",
+    "nairu_naicu_panel_v5.png":      "nairu_naicu_panel.png",
+    "nairu_naicu_panel_v5.svg":      "nairu_naicu_panel.svg",
 }
+
+# Nombre canónico del CSV principal de resultados
+_MAIN_CSV = "nairu_colombia.csv"
+_MAIN_SUMMARY = "nairu_summary.txt"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -74,30 +77,30 @@ def _load_model_core() -> ModuleType:
     return module
 
 
-def _rewrite_v5_to_v6(text: str) -> str:
+def _rewrite_v5_to_final(text: str) -> str:
     return (
         text
-        .replace("Estimation v5", "Estimation v6")
-        .replace("nairu_naicu_panel_v5.png", "nairu_naicu_panel_v6.png")
-        .replace("nairu_naicu_panel_v5.svg", "nairu_naicu_panel_v6.svg")
+        .replace("Estimation v5", "Estimation NAIRU/NAICU")
+        .replace("nairu_naicu_panel_v5.png", "nairu_naicu_panel.png")
+        .replace("nairu_naicu_panel_v5.svg", "nairu_naicu_panel.svg")
     )
 
 
 def _copy_outputs(src_dir: Path, dst_dir: Path) -> None:
-    """Copia y renombra outputs v5 → v6."""
+    """Copia y renombra outputs v5 → nombres finales del repo."""
     dst_dir.mkdir(parents=True, exist_ok=True)
-    for v5_name, v6_name in _V5_TO_V6.items():
+    for v5_name, final_name in _V5_TO_FINAL.items():
         src_file = src_dir / v5_name
-        dst_file = dst_dir / v6_name
+        dst_file = dst_dir / final_name
         if not src_file.exists():
-            logger.warning("[NAIRU-v6] Archivo no encontrado para copiar: %s", src_file)
+            logger.warning("[NAIRU] Archivo no encontrado para copiar: %s", src_file)
             continue
         if v5_name.endswith(".txt"):
             text = src_file.read_text(encoding="utf-8")
-            dst_file.write_text(_rewrite_v5_to_v6(text), encoding="utf-8")
+            dst_file.write_text(_rewrite_v5_to_final(text), encoding="utf-8")
         else:
             shutil.copy2(src_file, dst_file)
-    logger.info("[NAIRU-v6] Outputs copiados a %s", dst_dir)
+    logger.info("[NAIRU] Outputs copiados a %s", dst_dir)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -108,14 +111,14 @@ def build_outputs(
     data_path: Path | None = None,
     output_dir: Path | None = None,
 ) -> str:
-    """Ejecuta la estimación NAIRU/NAICU v6 y escribe los outputs.
+    """Ejecuta la estimación NAIRU/NAICU y escribe los outputs.
 
     Estrategia
     ----------
-    1. Si ``output_dir`` ya contiene resultados previos válidos (``nairu_estimates_v6.csv``),
-       los reporta sin re-estimar.
-    2. En caso contrario, carga ``model_core.py``, lo ejecuta con
-       ``data_path`` (``data/inputs/Data_NAIRU.xlsx``) y guarda los outputs.
+    * Si ``Data_NAIRU.xlsx`` es más nuevo que ``nairu_colombia.csv``
+      (o este no existe) → re-estima con los datos actualizados.
+    * Si ``nairu_colombia.csv`` ya existe y es más reciente → omite la
+      re-estimación.
 
     Parameters
     ----------
@@ -138,62 +141,52 @@ def build_outputs(
             "Ejecuta primero: python -m src.main --nairu-dataset"
         )
 
-    tmp_dir = output_dir / "_v6_tmp"
-    if tmp_dir.exists():
-        shutil.rmtree(tmp_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    existing_csv = output_dir / _MAIN_CSV
 
-    # ── Ruta 0: resultados pre-existentes en data/inputs/ (seed inicial) ──
-    # Si outputs/nairu/ aún no tiene resultados pero data/inputs/ tiene el
-    # CSV de una ejecución previa, los copiamos como punto de partida.
-    seed_csv = INPUTS_DIR / "nairu_estimates_v6.csv"
-    existing_csv = output_dir / "nairu_estimates_v6.csv"
-    if not existing_csv.exists() and seed_csv.exists():
-        logger.info(
-            "[NAIRU-v6] Copiando resultados pre-existentes desde %s → %s",
-            seed_csv, output_dir,
-        )
-        output_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(seed_csv, existing_csv)
+    # ── Decidir si re-estimar ─────────────────────────────────────────
+    needs_estimation = not existing_csv.exists() or (
+        data_path.stat().st_mtime > existing_csv.stat().st_mtime
+    )
 
-    # ── Ruta 1: outputs ya existían de una ejecución anterior ─────────
-    if existing_csv.exists():
-        summary_path = output_dir / "nairu_summary_v6.txt"
+    if not needs_estimation:
+        summary_path = output_dir / _MAIN_SUMMARY
         summary = (
             summary_path.read_text(encoding="utf-8")
             if summary_path.exists() else
-            f"[NAIRU-v6] Resultados cargados desde {output_dir} (no re-estimado)."
+            f"[NAIRU] Resultados en {output_dir} están al día — se omite re-estimación."
         )
         logger.info(
-            "[NAIRU-v6] Resultados en %s — se omite re-estimación "
-            "(para forzar: borra outputs/nairu/ y corre de nuevo).",
-            output_dir,
+            "[NAIRU] %s está actualizado — se omite re-estimación.", existing_csv.name
         )
         return summary
 
     # ── Ruta 2: correr el modelo ──────────────────────────────────────
-    logger.info("[NAIRU-v6] Cargando modelo core desde %s …", MODEL_CORE_PATH)
+    tmp_dir = output_dir / "_tmp"
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir)
+
+    logger.info("[NAIRU] Cargando modelo core desde %s …", MODEL_CORE_PATH)
     module = _load_model_core()
 
-    logger.info("[NAIRU-v6] Cargando y preparando datos desde %s …", data_path)
+    logger.info("[NAIRU] Cargando y preparando datos desde %s …", data_path)
     data = module.load_and_prepare_data(data_path)
 
-    logger.info("[NAIRU-v6] Construyendo dataset del modelo …")
+    logger.info("[NAIRU] Construyendo dataset del modelo …")
     model_data = module.build_model_data(data)
 
-    logger.info("[NAIRU-v6] Estimando parámetros (MLE) …")
+    logger.info("[NAIRU] Estimando parámetros (MLE) …")
     fit = module.estimate_parameters(model_data)
 
-    logger.info("[NAIRU-v6] Generando outputs en %s …", tmp_dir)
+    logger.info("[NAIRU] Generando outputs en %s …", tmp_dir)
     try:
         _, summary_v5 = module.build_outputs(data, model_data, fit, tmp_dir)
-        summary = _rewrite_v5_to_v6(summary_v5)
+        summary = _rewrite_v5_to_final(summary_v5)
 
-        # Copiar y renombrar v5 → v6
         _copy_outputs(tmp_dir, output_dir)
-        summary_path = output_dir / "nairu_summary_v6.txt"
-        summary_path.write_text(summary, encoding="utf-8")
+        (output_dir / _MAIN_SUMMARY).write_text(summary, encoding="utf-8")
 
-        logger.info("[NAIRU-v6] Estimación completada. Outputs en %s", output_dir)
+        logger.info("[NAIRU] Estimación completada. Outputs en %s", output_dir)
         return summary
     finally:
         if tmp_dir.exists():

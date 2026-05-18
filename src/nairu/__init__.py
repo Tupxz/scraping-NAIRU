@@ -4,7 +4,7 @@ Estructura
 ----------
 src/nairu/
   __init__.py         — este archivo
-  estimation.py       — orquestador v6 (refactor de nairu_estimation_v6.py)
+  estimation.py       — orquestador de estimación NAIRU/NAICU
   model_core.py       — modelo estadístico (nairu_estimation_v5 promovido)
                         ← AGREGAR ESTE ARCHIVO con el código del modelo
 

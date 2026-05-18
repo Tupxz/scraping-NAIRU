@@ -233,16 +233,45 @@ class ANDIScraper:
             return []
         return self.find_eoic_links(html)
 
-    def get_latest_eoic_pdf(self) -> dict[str, str | None] | None:
-        """Obtiene el enlace EOIC más reciente (para incremental).
+    def get_new_eoic_pdfs(
+        self, existing_dates: set[str]
+    ) -> list[dict[str, str | None]]:
+        """Obtiene los PDFs EOIC cuya fecha no está en *existing_dates*.
+
+        Estrategia eficiente de 2 pasos:
+        1. Descarga la página UNA sola vez y obtiene todos los enlaces.
+        2. Devuelve solo los que no están en ``existing_dates``.
+
+        Esto detecta meses intermedios perdidos (si el pipeline estuvo
+        inactivo varias semanas) sin necesitar llamadas extra a la red.
+        La carga de página ocurre una sola vez — igual que antes.
+
+        Parameters
+        ----------
+        existing_dates : set[str]
+            Fechas ya presentes (formato ``YYYY-MM-01``).
 
         Returns
         -------
-        dict | None
-            Dict del enlace más reciente, o ``None``.
+        list[dict]
+            PDFs nuevos, ordenados por fecha (más antiguo primero).
         """
-        pdfs = self.get_all_eoic_pdfs()
-        return pdfs[-1] if pdfs else None
+        pdfs = self.get_all_eoic_pdfs()   # 1 sola petición HTTP
+
+        # Normalizar existing_dates a YYYY-MM (para comparar con las fechas
+        # de los PDFs que vienen en formato YYYY-MM desde la web de la ANDI).
+        existing_ym = {d[:7] for d in existing_dates if d}
+
+        new = [p for p in pdfs if (p.get("date") or "")[:7] not in existing_ym]
+        if not new:
+            logger.info("Incremental: ningún PDF nuevo encontrado.")
+        else:
+            logger.info(
+                "Incremental: %d PDF(s) nuevo(s): %s",
+                len(new),
+                ", ".join(p.get("date", "?") for p in new),
+            )
+        return new
 
     def download_pdf(self, url: str) -> Path | None:
         """Descarga un PDF a ``self.data_dir``.
@@ -707,12 +736,13 @@ def _save_cache(cache: dict[str, Any], cache_path: Path) -> None:
 
 
 def _load_existing_dates(csv_path: Path) -> set[str]:
-    """Devuelve el set de fechas ya presentes en el CSV."""
+    """Devuelve el set de fechas ya presentes en el CSV, en formato YYYY-MM-01."""
     if not csv_path.exists():
         return set()
     try:
         df = pd.read_csv(csv_path, usecols=["date"])
-        return set(df["date"].astype(str))
+        # Normalizar a YYYY-MM-01 para comparaciones consistentes.
+        return set(pd.to_datetime(df["date"]).dt.strftime("%Y-%m-01"))
     except Exception:
         return set()
 
@@ -722,9 +752,9 @@ def _load_icu_historical(
 ) -> list[dict]:
     """Carga la serie ICU histórica semilla (data/inputs/icu_historical.csv).
 
-    Esta serie proviene de ``nairu_estimates_v6.csv`` (columna
-    ``icu_current``) y cubre 2004–2025.  El pipeline ANDI solo necesita
-    añadir observaciones **posteriores** a la última fecha de este archivo.
+    Esta serie cubre 2004–2025 y sirve como base histórica para el pipeline
+    ANDI.  El pipeline solo necesita añadir observaciones **posteriores** a
+    la última fecha de este archivo.
 
     Returns
     -------
@@ -739,6 +769,17 @@ def _load_icu_historical(
     try:
         df = pd.read_csv(path)
         df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+
+        # La EOIC solo existe desde 2004: descartar cualquier fila anterior.
+        pre2004_mask = df["date"] < "2004-01-01"
+        if pre2004_mask.any():
+            logger.warning(
+                "[ANDI] icu_historical.csv: descartando %d filas anteriores a "
+                "2004-01-01 (fechas incorrectas en la semilla).",
+                pre2004_mask.sum(),
+            )
+            df = df[~pre2004_mask].reset_index(drop=True)
+
         records = df[ANDI_PROCESSED_COLUMNS].to_dict("records")
         logger.info(
             "[ANDI] Semilla histórica ICU cargada: %d obs (%s → %s)",
@@ -756,9 +797,12 @@ def _build_record(
     source_url: str,
 ) -> dict[str, Any]:
     """Construye un registro con el esquema estándar del proyecto."""
+    # Normalizar a YYYY-MM-01 si llega en formato YYYY-MM
+    if len(date_str) == 7:
+        date_str = f"{date_str}-01"
     parts = date_str.split("-")
     return {
-        "date": f"{date_str}-01",
+        "date": date_str,
         "year": int(parts[0]),
         "month": int(parts[1]),
         "capacity_utilization": value,
@@ -824,9 +868,13 @@ def process_one_pdf(
 
     # Revisar si la fecha ya existe.
     date_from_link = pdf_info.get("date")
-    if not force and date_from_link and date_from_link in existing_dates:
-        logger.debug("Fecha ya existe: %s", date_from_link)
-        return None
+    if not force and date_from_link:
+        # Normalizar: tanto YYYY-MM como YYYY-MM-DD → YYYY-MM para comparar
+        date_ym = date_from_link[:7]
+        existing_ym = {d[:7] for d in existing_dates if d}
+        if date_ym in existing_ym:
+            logger.debug("Fecha ya existe: %s", date_from_link)
+            return None
 
     # Descargar.
     local_path = scraper.download_pdf(url)
@@ -980,7 +1028,7 @@ def run_andi_pipeline(*, backfill: bool = False) -> pd.DataFrame:
     scraper = ANDIScraper()
     cache = _load_cache(cache_path)
 
-    # ── Cargar semilla histórica (2004–2025 desde nairu_estimates_v6) ──
+    # ── Cargar semilla histórica ICU (2004–2025) ──────────────────────
     # Las fechas de la semilla se consideran "ya existentes"; el scraping
     # solo añade observaciones posteriores a la última fecha del histórico.
     historical_records = _load_icu_historical()
@@ -995,12 +1043,9 @@ def run_andi_pipeline(*, backfill: bool = False) -> pd.DataFrame:
         pdf_list = scraper.get_all_eoic_pdfs()
         logger.info("Backfill: %d PDFs encontrados.", len(pdf_list))
     else:
-        latest = scraper.get_latest_eoic_pdf()
-        pdf_list = [latest] if latest else []
-        logger.info(
-            "Incremental: %s",
-            f"PDF más reciente → {latest.get('date', '?')}" if latest else "sin PDFs",
-        )
+        # Revisa TODOS los PDFs disponibles y filtra los ya procesados.
+        # Así no se pierden meses intermedios si el pipeline estuvo inactivo.
+        pdf_list = scraper.get_new_eoic_pdfs(existing_dates)
 
     # Procesar.
     new_records: list[dict[str, Any]] = []
@@ -1105,6 +1150,10 @@ def reprocess_local_pdfs() -> pd.DataFrame:
         # Intentar fecha desde el nombre del archivo.
         date_str = EOICParser.extract_date_from_filename(pdf_path.name)
 
+        # Normalizar a "YYYY-MM-01" para que coincida con el formato del CSV.
+        if date_str and len(date_str) == 7:
+            date_str = f"{date_str}-01"
+
         # Si la fecha ya existe en CSV y cache, omitir.
         if date_str and date_str in existing_dates and date_str in cached_dates:
             stats["skipped"] += 1
@@ -1135,6 +1184,11 @@ def reprocess_local_pdfs() -> pd.DataFrame:
             date_str = parser.extract_date_from_content(
                 hint_month=hint_month,
             )
+
+        # Normalizar a "YYYY-MM-01" (también para fechas extraídas de contenido).
+        if date_str and len(date_str) == 7:
+            date_str = f"{date_str}-01"
+
         if not date_str:
             logger.warning(
                 "Reprocess: sin fecha para %s (valor=%.1f%%)",

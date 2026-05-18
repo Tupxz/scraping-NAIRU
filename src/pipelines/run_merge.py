@@ -9,6 +9,7 @@ import logging
 
 from src.io_utils import setup_logging
 from src.merge import run_merge_pipeline
+from src.quality_checks import run_derived_checks
 
 logger = logging.getLogger("nairu_pipeline")
 
@@ -19,6 +20,7 @@ def run() -> None:
     logger.info("── Pipeline MERGE (dataset unificado) ──")
 
     df = run_merge_pipeline()
+    run_derived_checks(df)
 
     logger.info(
         "Dataset unificado: %d filas × %d columnas",

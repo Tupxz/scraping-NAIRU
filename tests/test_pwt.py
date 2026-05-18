@@ -1,10 +1,10 @@
-"""Tests para el pipeline PWT 10.01 (Stock de Capital y Capital Humano).
+"""Tests para el pipeline PWT 11.0 (Stock de Capital, Depreciación y Capital Humano).
 
 Verifica:
 - Parseo del CSV crudo con filtro por countrycode
 - Columnas y tipos de datos correctos del DataFrame resultante
 - Filtro exclusivo para Colombia (COL)
-- Ausencia de NaN en capital_stock_ck
+- Ausencia de NaN en capital_stock_real
 - Validaciones de calidad (pass y fail)
 - Detección de valores fuera de rango
 
@@ -29,43 +29,45 @@ from src.sources.pwt.pwt import parse_pwt_csv
 # Fixtures: CSV de PWT simulado
 # ═══════════════════════════════════════════════════════════════════════
 
-# CSV con datos válidos para COL y otro país (MEX) para probar el filtro
+# CSV con datos válidos para COL y otro país (MEX) para probar el filtro.
+# Valores realistas PWT 11.0: rnna en millones COP 2017 (Colombia ≈ 0.9–2.7M),
+# delta ≈ 0.047–0.048, hc ≈ 1.5–2.6.
 SAMPLE_PWT_CSV = textwrap.dedent("""\
-    countrycode,year,ck,cn,hc
-    COL,1950,10.5,8.2,1.45
-    COL,1951,11.0,8.6,1.47
-    COL,1952,11.8,9.0,1.50
-    MEX,1950,50.0,42.0,1.60
-    MEX,1951,52.0,44.0,1.62
+    countrycode,year,rnna,delta,hc
+    COL,1950,900000.0,0.0478,1.45
+    COL,1951,910000.0,0.0479,1.47
+    COL,1952,920000.0,0.0480,1.50
+    MEX,1950,1500000.0,0.0500,1.60
+    MEX,1951,1520000.0,0.0501,1.62
 """)
 
-# CSV con filas de COL con ck nulo (deben descartarse)
+# CSV con filas de COL con rnna nulo (deben descartarse)
 SAMPLE_PWT_WITH_NULLS = textwrap.dedent("""\
-    countrycode,year,ck,cn,hc
-    COL,1950,10.5,8.2,1.45
-    COL,1951,,8.6,1.47
-    COL,1952,11.8,,1.50
-    COL,1953,12.0,9.3,1.52
+    countrycode,year,rnna,delta,hc
+    COL,1950,900000.0,0.0478,1.45
+    COL,1951,,0.0479,1.47
+    COL,1952,920000.0,,1.50
+    COL,1953,930000.0,0.0481,1.52
 """)
 
 # CSV con 70 filas de COL para test de mínimo de filas
 SAMPLE_PWT_LARGE = "\n".join(
-    ["countrycode,year,ck,cn,hc"]
-    + [f"COL,{1950 + i},{10.0 + i * 0.5:.1f},{8.0 + i * 0.4:.1f},{1.40 + i * 0.01:.2f}"
+    ["countrycode,year,rnna,delta,hc"]
+    + [f"COL,{1950 + i},{900_000.0 + i * 5_000:.1f},{0.0478 + i * 0.00001:.5f},{1.40 + i * 0.01:.2f}"
        for i in range(70)]
 )
 
 # CSV sin la columna requerida countrycode
 SAMPLE_PWT_BAD_SCHEMA = textwrap.dedent("""\
-    country,year,ck,cn,hc
-    COL,1950,10.5,8.2,1.45
+    country,year,rnna,delta,hc
+    COL,1950,900000.0,0.0478,1.45
 """)
 
 # CSV con país inexistente
 SAMPLE_PWT_WRONG_COUNTRY = textwrap.dedent("""\
-    countrycode,year,ck,cn,hc
-    USA,1950,500.0,420.0,3.20
-    DEU,1950,300.0,250.0,2.90
+    countrycode,year,rnna,delta,hc
+    USA,1950,5000000.0,0.0500,3.20
+    DEU,1950,3000000.0,0.0500,2.90
 """)
 
 
@@ -79,7 +81,7 @@ def tmp_pwt_csv(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def tmp_pwt_nulls_csv(tmp_path: Path) -> Path:
-    """CSV con filas que tienen ck nulo."""
+    """CSV con filas que tienen rnna nulo."""
     p = tmp_path / "pwt_nulls.csv"
     p.write_text(SAMPLE_PWT_WITH_NULLS, encoding="utf-8")
     return p
@@ -149,9 +151,9 @@ class TestParsePwtCsvBasic:
         assert (df["date"].dt.day == 1).all()
 
     def test_source_field(self, tmp_pwt_csv: Path) -> None:
-        """El campo source es 'PWT 10.01'."""
+        """El campo source es 'PWT 11.0'."""
         df = parse_pwt_csv(tmp_pwt_csv)
-        assert (df["source"] == "PWT 10.01").all()
+        assert (df["source"] == "PWT 11.0").all()
 
     def test_download_date_present(self, tmp_pwt_csv: Path) -> None:
         """download_date está presente y tiene formato ISO (YYYY-MM-DD)."""
@@ -160,10 +162,15 @@ class TestParsePwtCsvBasic:
         for d in df["download_date"]:
             assert len(d) == 10  # "YYYY-MM-DD"
 
-    def test_capital_stock_ck_is_float(self, tmp_pwt_csv: Path) -> None:
-        """capital_stock_ck es numérico (float)."""
+    def test_capital_stock_real_is_float(self, tmp_pwt_csv: Path) -> None:
+        """capital_stock_real es numérico (float)."""
         df = parse_pwt_csv(tmp_pwt_csv)
-        assert pd.api.types.is_float_dtype(df["capital_stock_ck"])
+        assert pd.api.types.is_float_dtype(df["capital_stock_real"])
+
+    def test_depreciation_rate_is_float(self, tmp_pwt_csv: Path) -> None:
+        """depreciation_rate es numérico (float)."""
+        df = parse_pwt_csv(tmp_pwt_csv)
+        assert pd.api.types.is_float_dtype(df["depreciation_rate"])
 
     def test_human_capital_is_float(self, tmp_pwt_csv: Path) -> None:
         """human_capital es numérico (float)."""
@@ -225,28 +232,28 @@ class TestParsePwtColFilter:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# test_parse_pwt_no_nulls_ck
+# test_parse_pwt_no_nulls_rnna
 # ═══════════════════════════════════════════════════════════════════════
 
 
-class TestParsePwtNoNullsCk:
-    """Tests que verifican que no haya NaN en capital_stock_ck."""
+class TestParsePwtNoNullsRnna:
+    """Tests que verifican que no haya NaN en capital_stock_real (rnna)."""
 
-    def test_no_nulls_in_ck(self, tmp_pwt_nulls_csv: Path) -> None:
-        """capital_stock_ck no tiene NaN tras el parseo."""
+    def test_no_nulls_in_capital_stock_real(self, tmp_pwt_nulls_csv: Path) -> None:
+        """capital_stock_real no tiene NaN tras el parseo."""
         df = parse_pwt_csv(tmp_pwt_nulls_csv)
-        assert df["capital_stock_ck"].isna().sum() == 0
+        assert df["capital_stock_real"].isna().sum() == 0
 
-    def test_row_with_null_ck_is_dropped(self, tmp_pwt_nulls_csv: Path) -> None:
-        """La fila con ck nulo (1951) se elimina; quedan 3 filas."""
+    def test_row_with_null_rnna_is_dropped(self, tmp_pwt_nulls_csv: Path) -> None:
+        """La fila con rnna nulo (1951) se elimina; quedan 3 filas."""
         df = parse_pwt_csv(tmp_pwt_nulls_csv)
         assert len(df) == 3
         assert 1951 not in df["year"].values
 
-    def test_null_cn_is_kept(self, tmp_pwt_nulls_csv: Path) -> None:
-        """Filas con cn nulo (pero ck presente) se conservan."""
+    def test_null_delta_is_kept(self, tmp_pwt_nulls_csv: Path) -> None:
+        """Filas con delta nulo (pero rnna presente) se conservan."""
         df = parse_pwt_csv(tmp_pwt_nulls_csv)
-        # El año 1952 tiene cn nulo pero ck válido → debe estar
+        # El año 1952 tiene delta nulo pero rnna válido → debe estar
         assert 1952 in df["year"].values
 
 
@@ -259,17 +266,23 @@ class TestRunPwtChecksPass:
     """Tests que verifican que un DataFrame válido supera las validaciones."""
 
     def _make_valid_df(self, n: int = 70) -> pd.DataFrame:
-        """Construye un DataFrame PWT válido con n filas."""
+        """Construye un DataFrame PWT válido con n filas.
+
+        Valores realistas Colombia (PWT 11.0):
+          - capital_stock_real ≈ 0.9–2.7 millones (millones COP 2017)
+          - depreciation_rate ≈ 0.0478 (4.78%)
+          - human_capital ≈ 1.5–2.6 (índice)
+        """
         years = list(range(1950, 1950 + n))
         return pd.DataFrame({
             "date": pd.to_datetime([f"{y}-01-01" for y in years]),
             "year": years,
             "month": [1] * n,
-            "capital_stock_ck": [100.0 + i for i in range(n)],
-            "capital_stock_cn": [80.0 + i for i in range(n)],
+            "capital_stock_real": [900_000.0 + i * 5_000 for i in range(n)],
+            "depreciation_rate": [0.0478 + i * 0.00001 for i in range(n)],
             "human_capital": [1.5 + i * 0.01 for i in range(n)],
-            "source": ["PWT 10.01"] * n,
-            "download_date": ["2026-04-14"] * n,
+            "source": ["PWT 11.0"] * n,
+            "download_date": ["2026-05-11"] * n,
         })
 
     def test_valid_df_passes(self) -> None:
@@ -304,25 +317,39 @@ class TestRunPwtChecksFailRange:
             "date": pd.to_datetime([f"{y}-01-01" for y in years]),
             "year": years,
             "month": [1] * n,
-            "capital_stock_ck": [100.0 + i for i in range(n)],
-            "capital_stock_cn": [80.0 + i for i in range(n)],
+            "capital_stock_real": [900_000.0 + i * 5_000 for i in range(n)],
+            "depreciation_rate": [0.0478 + i * 0.00001 for i in range(n)],
             "human_capital": [1.5 + i * 0.01 for i in range(n)],
-            "source": ["PWT 10.01"] * n,
-            "download_date": ["2026-04-14"] * n,
+            "source": ["PWT 11.0"] * n,
+            "download_date": ["2026-05-11"] * n,
         })
 
-    def test_capital_stock_ck_too_high(self) -> None:
-        """capital_stock_ck > CAPITAL_STOCK_MAX lanza QualityCheckError."""
+    def test_capital_stock_real_too_high(self) -> None:
+        """capital_stock_real > CAPITAL_STOCK_MAX lanza QualityCheckError."""
         df = self._make_valid_df()
-        df.loc[0, "capital_stock_ck"] = 9999.0
-        with pytest.raises(QualityCheckError, match="capital_stock_ck fuera de rango"):
+        df.loc[0, "capital_stock_real"] = 9_999_999_999.0
+        with pytest.raises(QualityCheckError, match="capital_stock_real fuera de rango"):
             run_pwt_checks(df)
 
-    def test_capital_stock_ck_negative(self) -> None:
-        """capital_stock_ck negativo lanza QualityCheckError."""
+    def test_capital_stock_real_negative(self) -> None:
+        """capital_stock_real negativo lanza QualityCheckError."""
         df = self._make_valid_df()
-        df.loc[0, "capital_stock_ck"] = -1.0
-        with pytest.raises(QualityCheckError, match="capital_stock_ck fuera de rango"):
+        df.loc[0, "capital_stock_real"] = -1.0
+        with pytest.raises(QualityCheckError, match="capital_stock_real fuera de rango"):
+            run_pwt_checks(df)
+
+    def test_depreciation_rate_too_high(self) -> None:
+        """depreciation_rate > DEPRECIATION_RATE_MAX lanza QualityCheckError."""
+        df = self._make_valid_df()
+        df.loc[0, "depreciation_rate"] = 0.99
+        with pytest.raises(QualityCheckError, match="depreciation_rate fuera de rango"):
+            run_pwt_checks(df)
+
+    def test_depreciation_rate_too_low(self) -> None:
+        """depreciation_rate < DEPRECIATION_RATE_MIN lanza QualityCheckError."""
+        df = self._make_valid_df()
+        df.loc[0, "depreciation_rate"] = 0.0
+        with pytest.raises(QualityCheckError, match="depreciation_rate fuera de rango"):
             run_pwt_checks(df)
 
     def test_human_capital_too_high(self) -> None:
@@ -340,16 +367,23 @@ class TestRunPwtChecksFailRange:
             run_pwt_checks(df)
 
     def test_missing_column_raises(self) -> None:
-        """DataFrame sin columna capital_stock_ck lanza QualityCheckError."""
+        """DataFrame sin columna capital_stock_real lanza QualityCheckError."""
         df = self._make_valid_df()
-        df = df.drop(columns=["capital_stock_ck"])
+        df = df.drop(columns=["capital_stock_real"])
         with pytest.raises(QualityCheckError, match="faltantes"):
             run_pwt_checks(df)
 
-    def test_null_in_ck_raises(self) -> None:
-        """NaN en capital_stock_ck lanza QualityCheckError."""
+    def test_null_in_capital_stock_raises(self) -> None:
+        """NaN en capital_stock_real lanza QualityCheckError."""
         df = self._make_valid_df()
-        df.loc[0, "capital_stock_ck"] = None
+        df.loc[0, "capital_stock_real"] = None
+        with pytest.raises(QualityCheckError, match="nulos"):
+            run_pwt_checks(df)
+
+    def test_null_in_depreciation_rate_raises(self) -> None:
+        """NaN en depreciation_rate lanza QualityCheckError."""
+        df = self._make_valid_df()
+        df.loc[0, "depreciation_rate"] = None
         with pytest.raises(QualityCheckError, match="nulos"):
             run_pwt_checks(df)
 

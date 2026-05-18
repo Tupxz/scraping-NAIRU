@@ -3,7 +3,7 @@
 Uso:
     python -m src.main                  # Solo desempleo (default)
     python -m src.main --unemployment   # Solo desempleo (TD + TGP + PET)
-    python -m src.main --pwt            # Solo PWT 10.01 (capital stock + capital humano)
+    python -m src.main --pwt            # Solo PWT 11.0 (capital stock + capital humano)
     python -m src.main --dane-gdp       # Solo PIB trimestral DANE (Cuentas Nacionales)
     python -m src.main --ipc            # Solo IPC (DANE real)
     python -m src.main --banrep         # Solo inflación (BANREP/SUAMECA)
@@ -12,10 +12,10 @@ Uso:
     python -m src.main --andi           # Solo ANDI EOIC (incremental)
     python -m src.main --andi-backfill  # ANDI EOIC (backfill completo)
     python -m src.main --andi-reprocess # ANDI EOIC (reprocesar PDFs locales)
+    python -m src.main --all            # Todos los pipelines de datos + merge (rápido, ~20s)
     python -m src.main --nairu-dataset  # Construir Data_NAIRU.xlsx desde fuentes del repo
-    python -m src.main --nairu-estim    # Estimar NAIRU/NAICU v6 (requiere --nairu-dataset)
-    python -m src.main --merge          # Solo merge (unir bases existentes)
-    python -m src.main --all            # Todos los pipelines + merge
+    python -m src.main --nairu-estim    # Estimar NAIRU/NAICU (costoso, requiere --nairu-dataset)
+    python -m src.main --prod-func      # Dataset anual función de producción Cobb-Douglas (con A)
 """
 
 from __future__ import annotations
@@ -35,6 +35,8 @@ def run_pipeline(
     run_viog: bool = False,
     run_viog_co: bool = False,
     run_dane_gdp: bool = False,
+    run_investment: bool = False,
+    run_income: bool = False,
     run_ipc: bool = False,
     run_banrep: bool = False,
     run_tes: bool = False,
@@ -45,6 +47,7 @@ def run_pipeline(
     run_nairu_dataset: bool = False,
     run_nairu_estimation: bool = False,
     run_merge: bool = False,
+    run_prod_func: bool = False,
 ) -> None:
     """Ejecuta los pipelines seleccionados."""
     logger = setup_logging()
@@ -82,6 +85,14 @@ def run_pipeline(
             from src.pipelines import run_dane_gdp as dane_gdp_pipeline
             dane_gdp_pipeline.run()
 
+        if run_investment:
+            from src.pipelines import run_dane_gdp_expenditure as investment_pipeline
+            investment_pipeline.run()
+
+        if run_income:
+            from src.pipelines import run_dane_gdp_income as income_pipeline
+            income_pipeline.run()
+
         if run_ipc:
             from src.pipelines import run_ipc as ipc_pipeline
             ipc_pipeline.run()
@@ -118,6 +129,10 @@ def run_pipeline(
             from src.pipelines import run_merge as merge_pipeline
             merge_pipeline.run()
 
+        if run_prod_func:
+            from src.pipelines import build_production_function_dataset as prod_func_pipeline
+            prod_func_pipeline.run()
+
         elapsed = time.time() - start_time
         logger.info("=" * 60)
         logger.info("PIPELINE COMPLETADO en %.2f segundos", elapsed)
@@ -148,11 +163,19 @@ def main() -> None:
     )
     parser.add_argument(
         "--pwt", action="store_true",
-        help="Ejecutar solo el pipeline PWT 10.01 (capital stock + capital humano)",
+        help="Ejecutar solo el pipeline PWT 11.0 (capital stock + capital humano)",
     )
     parser.add_argument(
         "--dane-gdp", action="store_true",
         help="Ejecutar pipeline PIB trimestral DANE (Cuentas Nacionales, desestacionalizado)",
+    )
+    parser.add_argument(
+        "--investment", action="store_true",
+        help="Ejecutar pipeline Inversión (FBKF) trimestral DANE (enfoque del gasto, desest.)",
+    )
+    parser.add_argument(
+        "--income", action="store_true",
+        help="Ejecutar pipeline PIB enfoque ingreso DANE (Remuneración/EBE/Ingreso Mixto, corrientes)",
     )
     parser.add_argument(
         "--ipc", action="store_true",
@@ -192,7 +215,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--nairu-estim", action="store_true",
-        help="Estimar NAIRU/NAICU v6 con Data_NAIRU.xlsx (requiere --nairu-dataset previo)",
+        help="Estimar NAIRU/NAICU con Data_NAIRU.xlsx (requiere --nairu-dataset previo)",
+    )
+    parser.add_argument(
+        "--prod-func", action="store_true",
+        help="Construir dataset anual de función de producción Cobb-Douglas (con PTF/A)",
     )
     parser.add_argument(
         "--merge", action="store_true",
@@ -208,15 +235,19 @@ def main() -> None:
     if args.all:
         run_pipeline(
             run_unemployment=True, run_pwt=True,
-            run_informality=True, run_viog=True,
+            run_informality=False,  # excluido: no se usa en el dataset final
+            run_viog=True,
             run_viog_co=True,
             run_dane_gdp=True,
+            run_investment=True,
+            run_income=True,
             run_ipc=True, run_banrep=True,
             run_tes=True, run_brent=True,
-            run_andi=True, andi_reprocess=True,
+            run_andi=True, andi_reprocess=False,  # reprocess solo con --andi-reprocess explícito
             run_nairu_dataset=True,
             run_nairu_estimation=True,
             run_merge=True,
+            run_prod_func=True,
         )
         return
 
@@ -226,11 +257,11 @@ def main() -> None:
     # Si no se pasa ningún flag, ejecutar desempleo por defecto.
     any_selected = (
         args.unemployment or args.pwt or args.informality or args.viog
-        or args.viog_co or args.dane_gdp
+        or args.viog_co or args.dane_gdp or args.investment or args.income
         or args.ipc or args.banrep
         or args.tes or args.brent or use_andi
         or args.andi_reprocess or args.nairu_dataset
-        or args.nairu_estim or args.merge
+        or args.nairu_estim or args.merge or args.prod_func
     )
     if not any_selected:
         run_pipeline(run_unemployment=True)
@@ -244,6 +275,8 @@ def main() -> None:
         run_viog=args.viog,
         run_viog_co=args.viog_co,
         run_dane_gdp=args.dane_gdp,
+        run_investment=args.investment,
+        run_income=args.income,
         run_ipc=args.ipc,
         run_banrep=args.banrep,
         run_tes=args.tes,
@@ -254,6 +287,7 @@ def main() -> None:
         run_nairu_dataset=args.nairu_dataset,
         run_nairu_estimation=args.nairu_estim,
         run_merge=args.merge,
+        run_prod_func=args.prod_func,
     )
 
 

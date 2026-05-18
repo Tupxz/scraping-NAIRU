@@ -98,13 +98,24 @@ def save_csv(df: pd.DataFrame, path: Path) -> Path:
     return path
 
 
-def load_csv(path: Path) -> pd.DataFrame:
-    """Lee un CSV y devuelve un DataFrame.
+def load_csv(
+    path: Path,
+    *,
+    parse_dates: bool = True,
+) -> pd.DataFrame:
+    """Lee un CSV procesado y devuelve un DataFrame.
+
+    Por defecto parsea la columna ``date`` a ``datetime64[ns]`` si
+    existe. Esto evita que cada consumidor (``merge.py``, modelos,
+    notebooks) repita la conversión manualmente.
 
     Parameters
     ----------
     path : Path
         Ruta al archivo CSV.
+    parse_dates : bool
+        Si ``True`` (default), intenta parsear la columna ``date``
+        como ``datetime64`` durante la carga.
 
     Returns
     -------
@@ -118,4 +129,12 @@ def load_csv(path: Path) -> pd.DataFrame:
     """
     if not path.exists():
         raise FileNotFoundError(f"No se encontró el archivo: {path}")
+
+    if parse_dates:
+        # Leer solo la cabecera primero para decidir si "date" existe
+        # (más barato que cargar todo el CSV y reintentar).
+        header = pd.read_csv(path, nrows=0).columns
+        date_cols = ["date"] if "date" in header else None
+        return pd.read_csv(path, parse_dates=date_cols)
+
     return pd.read_csv(path)

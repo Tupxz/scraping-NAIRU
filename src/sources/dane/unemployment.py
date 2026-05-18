@@ -32,6 +32,7 @@ from src.config import (
     RAW_DANE_DIR,
 )
 from src.io_utils import save_csv
+from src.sources.dane.common import MONTH_ABBR_ES, make_dane_session
 
 logger = logging.getLogger("nairu_pipeline.dane.unemployment")
 
@@ -41,12 +42,19 @@ logger = logging.getLogger("nairu_pipeline.dane.unemployment")
 # ═══════════════════════════════════════════════════════════════════════
 
 
-def fetch_geih_page(config: GEIHConfig = GEIH_CONFIG) -> str:
-    """Descarga el HTML de la página temática de empleo del DANE."""
+def fetch_geih_page(
+    config: GEIHConfig = GEIH_CONFIG,
+    session: "requests.Session | None" = None,
+) -> str:
+    """Descarga el HTML de la página temática de empleo del DANE.
+
+    Si ``session`` no se provee, se crea una efímera con retries y
+    keep-alive. Pasar la misma sesión a ``download_geih_excel`` reutiliza
+    el handshake TLS para el segundo request.
+    """
     logger.info("Descargando página GEIH: %s", config.page_url)
-    response = requests.get(
-        config.page_url, headers=config.http_headers, timeout=config.timeout,
-    )
+    sess = session or make_dane_session(headers=config.http_headers)
+    response = sess.get(config.page_url, timeout=config.timeout)
     response.raise_for_status()
     logger.info("Página descargada: %d bytes", len(response.content))
     return response.text
@@ -111,14 +119,9 @@ def parse_period_from_geih_href(href: str) -> tuple[int, int] | None:
     - ``anex-GEIH-Desestacionalizado-ene2026.xlsx`` → ``(2026, 1)``
     - ``anex-GEIH-ene2026.xlsx`` → ``(2026, 1)``
     """
-    month_map = {
-        "ene": 1, "feb": 2, "mar": 3, "abr": 4,
-        "may": 5, "jun": 6, "jul": 7, "ago": 8,
-        "sep": 9, "oct": 10, "nov": 11, "dic": 12,
-    }
     m = re.search(r"([a-z]{3})(\d{4})\.xlsx$", href, re.IGNORECASE)
     if m:
-        month_num = month_map.get(m.group(1).lower())
+        month_num = MONTH_ABBR_ES.get(m.group(1).lower())
         year = int(m.group(2))
         if month_num:
             return (year, month_num)
@@ -147,12 +150,12 @@ def download_geih_excel(
     output_dir: Path = RAW_DANE_DIR,
     filename: str | None = None,
     config: GEIHConfig = GEIH_CONFIG,
+    session: "requests.Session | None" = None,
 ) -> Path:
     """Descarga el archivo Excel del GEIH."""
     logger.info("Descargando Excel GEIH: %s", url)
-    response = requests.get(
-        url, headers=config.http_headers, timeout=config.timeout,
-    )
+    sess = session or make_dane_session(headers=config.http_headers)
+    response = sess.get(url, timeout=config.timeout)
     response.raise_for_status()
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -535,10 +538,13 @@ def clean_geih_data(
     # ── Calcular PET a partir de los tres componentes auxiliares ──
     raw_cols = ("_raw_pop_employed", "_raw_pop_unemployed", "_raw_pop_inactive")
     if all(c in df.columns for c in raw_cols):
+        df["occupied_thousands"]   = df["_raw_pop_employed"].round(1)
+        df["unemployed_thousands"] = df["_raw_pop_unemployed"].round(1)
+        df["inactive_thousands"]   = df["_raw_pop_inactive"].round(1)
         df["pet_thousands"] = (
-            df["_raw_pop_employed"]
-            + df["_raw_pop_unemployed"]
-            + df["_raw_pop_inactive"]
+            df["occupied_thousands"]
+            + df["unemployed_thousands"]
+            + df["inactive_thousands"]
         ).round(1)
         df = df.drop(columns=list(raw_cols))
         logger.info(
@@ -603,9 +609,16 @@ def run_geih_pipeline(
     output_dir: Path = PROCESSED_DIR,
     raw_dir: Path = RAW_DANE_DIR,
 ) -> pd.DataFrame:
-    """Pipeline completo: scraping → descarga → parse → validate → save."""
+    """Pipeline completo: scraping → descarga → parse → validate → save.
+
+    Reutiliza una sola ``requests.Session`` con keep-alive y retries para
+    los dos GETs (página índice + Excel) — evita renegociar TLS contra
+    ``www.dane.gov.co``.
+    """
+    session = make_dane_session(headers=config.http_headers)
+
     # 1. Scraping
-    html = fetch_geih_page(config)
+    html = fetch_geih_page(config, session=session)
     save_html_snapshot(html, output_dir=raw_dir, config=config)
 
     # 2. Seleccionar enlace
@@ -614,7 +627,7 @@ def run_geih_pipeline(
 
     # 3. Descargar Excel
     xlsx_path = download_geih_excel(
-        url=target["url"], output_dir=raw_dir, config=config,
+        url=target["url"], output_dir=raw_dir, config=config, session=session,
     )
 
     # 4. Parsear y limpiar

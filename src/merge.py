@@ -9,9 +9,10 @@ Columnas de salida:
     ipc_index,                                     ← IPC DANE (mensual)
     Inf_Goal, Inf_Rate, Core_Inf,                  ← Inflación BANREP (mensual)
     brent_usd_per_barrel,                          ← Brent FRED/EIA (mensual)
-    capacity_utilization,                          ← ANDI EOIC (mensual)
+    capacity_utilization,                          ← ANDI EOIC (desde 2004-01)
     TES_UVR_1Y, TES_PESOS_1Y,                     ← TES BANREP (mensual)
-    capital_stock_ck, capital_stock_cn,            ← PWT 11.0 (anual → NaN meses)
+    gdp_observed,                                  ← PIB DANE (trimestral → NaN meses intermedios)
+    capital_stock_real, depreciation_rate,         ← PWT 11.0 (anual → NaN meses)
     human_capital                                  ← PWT 11.0 (anual → NaN meses)
 """
 
@@ -38,12 +39,10 @@ ColumnSpec = list[str] | dict[str, str]
 _SOURCES: dict[str, tuple[str, ColumnSpec]] = {
     # ── Mensuales ─────────────────────────────────────────────────
     "unemployment": (
-        "dane_labor_colombia.csv",          # TD + TGP + PET (Fase 2)
-        ["unemployment_rate", "tgp_rate", "pet_thousands"],
-    ),
-    "informality": (
-        "dane_informality_colombia.csv",    # Tasa informalidad 13 ciudades (trim. móvil)
-        ["informality_rate_13c"],
+        "dane_labor_colombia.csv",          # TD + TGP + Ocupados + Desocupados + Inactivos + PET
+        ["unemployment_rate", "tgp_rate",
+         "occupied_thousands", "unemployed_thousands", "inactive_thousands",
+         "pet_thousands"],
     ),
     "ipc": (
         "ipc_colombia.csv",
@@ -65,10 +64,25 @@ _SOURCES: dict[str, tuple[str, ColumnSpec]] = {
         "tes_banrep_colombia.csv",
         ["TES_UVR_1Y", "TES_PESOS_1Y"],
     ),
+    # ── Trimestrales (PIB DANE — aparecerán con NaN en meses no inicio-trimestre) ─
+    "dane_gdp": (
+        "dane_gdp_colombia.csv",
+        ["gdp_observed"],
+    ),
+    # ── Trimestrales (Inversión DANE enfoque gasto) ───────────────
+    "dane_gdp_expenditure": (
+        "dane_gdp_expenditure_colombia.csv",
+        ["investment"],
+    ),
+    # ── Trimestrales (PIB enfoque ingreso — precios corrientes) ───
+    "dane_gdp_income": (
+        "dane_gdp_income_colombia.csv",
+        ["compensation_employees", "gross_operating_surplus", "mixed_income"],
+    ),
     # ── Anuales (PWT 11.0 — aparecerán con NaN en meses sin dato) ─
     "pwt": (
         "pwt_colombia.csv",
-        ["capital_stock_ck", "capital_stock_cn", "human_capital"],
+        ["capital_stock_real", "depreciation_rate", "human_capital"],
     ),
     # ── Trimestrales (VIOG — brecha del producto, dos países) ─────
     # Renombramos para distinguir USA de Colombia en el dataset final.
@@ -92,20 +106,32 @@ MERGED_COLUMNS: list[str] = [
     # ── Mensuales ─────────────────────────────────────────
     "unemployment_rate",        # GEIH - TD
     "tgp_rate",                 # GEIH - TGP
-    "pet_thousands",            # GEIH - PET (calculada)
-    "informality_rate_13c",     # GEIH-EISS - Informalidad 13 ciudades (trim. móvil)
+    "occupied_thousands",       # GEIH - Ocupados (miles)
+    "unemployed_thousands",     # GEIH - Desocupados (miles)
+    "inactive_thousands",       # GEIH - Inactivos/PEI (miles)
+    "pet_thousands",            # GEIH - PET (calculada = O+D+I)
     "ipc_index",                # IPC DANE
     "Inf_Goal",                 # Inflación meta BANREP
     "Inf_Rate",                 # Inflación observada BANREP
     "Core_Inf",                 # Inflación núcleo BANREP
+    "ipc_yoy",                  # IPC variación interanual (derivada de ipc_index)
+    "ipc_mom",                  # IPC variación mensual (derivada de ipc_index)
+    "inflation_gap",            # Inf_Rate - Inf_Goal (BANREP)
     "brent_usd_per_barrel",     # Brent FRED/EIA
     "capacity_utilization",     # ANDI EOIC
     "TES_UVR_1Y",               # TES UVR 1Y BANREP
     "TES_PESOS_1Y",             # TES Pesos 1Y BANREP
+    # ── Trimestrales (NaN en meses intermedios) ───────────────────
+    "gdp_observed",             # DANE - PIB trimestral (miles de millones COP 2017)
+    "investment",               # DANE - Inversión (FBKF) trimestral (miles de mill. COP 2017)
+    # ── Trimestrales enfoque ingreso (precios corrientes, desde 2016) ─
+    "compensation_employees",   # DANE - Remuneración asalariados (miles de mill. COP corrientes)
+    "gross_operating_surplus",  # DANE - Excedente Bruto de Explotación
+    "mixed_income",             # DANE - Ingreso Mixto
     # ── Anuales (NaN en meses sin observación) ────────────
-    "capital_stock_ck",         # PWT 11.0 - Stock capital PPP corrientes
-    "capital_stock_cn",         # PWT 11.0 - Stock capital precios nac. ctes.
-    "human_capital",            # PWT 11.0 - Índice Capital Humano
+    "capital_stock_real",       # PWT 11.0 - rnna (precios nac. const. 2017)
+    "depreciation_rate",        # PWT 11.0 - delta (tasa de depreciación)
+    "human_capital",            # PWT 11.0 - hc (índice)
     # ── Trimestrales VIOG-USA (NaN en meses sin observación) ──────
     "gap_viog_us",              # VIOG-USA - Brecha del producto ponderada (VIOG)
     "gap_inv_viog_us",          # VIOG-USA - Brecha ponderada (1/VIOG)
@@ -186,6 +212,14 @@ def merge_all_sources(
     for name, (filename, data_cols) in _SOURCES.items():
         df = _load_source(name, filename, data_cols, processed_dir)
         if df is not None:
+            # Safeguard: ICU (ANDI) solo tiene datos confiables desde 2004-01-01
+            if name == "andi":
+                before = len(df)
+                df = df[df["date"] >= "2004-01-01"].reset_index(drop=True)
+                if len(df) < before:
+                    logger.warning(
+                        "[merge] ICU: %d filas pre-2004 descartadas", before - len(df)
+                    )
             dfs.append(df)
 
     if not dfs:
@@ -203,6 +237,20 @@ def merge_all_sources(
     merged = merged.sort_values("date").reset_index(drop=True)
     merged["year"] = merged["date"].dt.year
     merged["month"] = merged["date"].dt.month
+
+    # Recortar: conservar solo desde 2004-01-01 en adelante
+    # (inicio de ICU/ANDI, la serie más restrictiva del modelo NAIRU)
+    merged = merged[merged["date"] >= "2004-01-01"].reset_index(drop=True)
+
+    # ── Variables derivadas ─────────────────────────────────────────
+    # Solo se calculan si las columnas base están presentes en el merge.
+    if "ipc_index" in merged.columns:
+        # IPC: variación interanual y mensual reconstruida del propio índice.
+        merged["ipc_yoy"] = merged["ipc_index"].pct_change(12) * 100
+        merged["ipc_mom"] = merged["ipc_index"].pct_change(1) * 100
+    if "Inf_Rate" in merged.columns and "Inf_Goal" in merged.columns:
+        # Brecha de inflación: desviación de la observada vs la meta BANREP.
+        merged["inflation_gap"] = merged["Inf_Rate"] - merged["Inf_Goal"]
 
     # Ordenar columnas: date, year, month, luego datos en orden definido
     present_cols = [c for c in MERGED_COLUMNS if c in merged.columns]

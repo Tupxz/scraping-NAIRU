@@ -20,6 +20,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 
+from src.sources.dane.common import dane_request_kwargs
+
 logger = logging.getLogger("nairu_pipeline.dane.gdp_hist")
 
 _URL_BASE2005 = (
@@ -62,9 +64,7 @@ def _download_zip_extract_xls(
         logger.info("[GDP-hist] Archivo ya existe: %s", output_path)
         return output_path
     logger.info("[GDP-hist] Descargando: %s", url)
-    import urllib3
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    resp = requests.get(url, timeout=timeout, verify=False)
+    resp = requests.get(url, **dane_request_kwargs(timeout=timeout))
     resp.raise_for_status()
     logger.info("[GDP-hist] Descargado: %.1f KB", len(resp.content) / 1024)
     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:

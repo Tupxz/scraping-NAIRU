@@ -16,7 +16,7 @@ ICU                  ← andi_capacidad_instalada.csv   [capacity_utilization]
 El rango temporal del dataset resultante se define por la intersección de
 las fuentes con datos completos (todas las filas con al menos Unemp_Desest,
 Inf_Rate e ICU no nulas).  El archivo final se guarda en
-``data/inputs/Data_NAIRU.xlsx`` para ser leído por ``nairu_estimation_v6.py``.
+``data/inputs/Data_NAIRU.xlsx`` para ser leído por ``src/nairu/estimation.py``.
 """
 
 from __future__ import annotations
@@ -83,6 +83,17 @@ def build_nairu_dataset(
 
     icu = _load("andi_capacidad_instalada.csv")[["capacity_utilization"]]
     icu.columns = ["ICU"]
+    # La EOIC (ANDI) solo tiene datos confiables desde enero 2004.
+    # Cualquier fila anterior se descarta para evitar que fechas mal
+    # parseadas en el CSV procesado contaminen Data_NAIRU.xlsx.
+    icu_start = pd.Timestamp("2004-01-01")
+    pre2004 = (icu.index < icu_start).sum()
+    if pre2004 > 0:
+        logger.warning(
+            "[NAIRU-dataset] ICU: descartando %d filas anteriores a 2004-01-01",
+            pre2004,
+        )
+        icu = icu[icu.index >= icu_start]
 
     # ── Merge por fecha (outer para no perder ningún mes) ─────────────
     df = (
@@ -108,6 +119,16 @@ def build_nairu_dataset(
         "[NAIRU-dataset] Filas antes/después de filtrar nulos clave: %d → %d",
         before, len(df),
     )
+
+    # ── Guard de fecha mínima: nunca antes de 2004-01-01 ─────────────
+    # ICU (ANDI EOIC) es la serie más antigua del modelo y arranca en 2004.
+    before2 = len(df)
+    df = df[df["Date"] >= "2004-01-01"].reset_index(drop=True)
+    if len(df) < before2:
+        logger.warning(
+            "[NAIRU-dataset] Descartadas %d filas anteriores a 2004-01-01",
+            before2 - len(df),
+        )
 
     # ── Guardar ───────────────────────────────────────────────────────
     out.parent.mkdir(parents=True, exist_ok=True)

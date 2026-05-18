@@ -296,6 +296,138 @@ DANE_GDP_PROCESSED_COLUMNS: list[str] = [
     "source", "download_date",
 ]
 
+
+# ── Configuración PIB enfoque del gasto (Inversión) ──────────────────
+
+@dataclass(frozen=True)
+class DANEGDPExpenditureConfig:
+    """Configuración para el anexo PIB enfoque del gasto del DANE.
+
+    El DANE publica ``anex-GastoConstantes-{trim}{YYYY}.xlsx`` en la
+    misma página de PIB información técnica.  Contiene datos originales
+    y desestacionalizados.
+
+    Estructura del Excel (hoja ``Cuadro 2`` — desestacionalizado):
+      - Fila 9  (0-idx) col B='Concepto', col C en adelante = años
+      - Fila 10 (0-idx) = trimestres romanos (I, II, III, IV) en col C+
+      - Concepto en columna B (0-idx 1)
+      - Datos numéricos empiezan en columna C (0-idx 2)
+      - Fila "Formación bruta de capital fijo" = inversión desest.
+    """
+
+    # ── Scraping ──────────────────────────────────────────────────
+    page_url: str = (
+        "https://www.dane.gov.co/index.php/estadisticas-por-tema/"
+        "cuentas-nacionales/cuentas-nacionales-trimestrales/"
+        "pib-informacion-tecnica"
+    )
+    base_url: str = "https://www.dane.gov.co"
+
+    # Patrón regex para el anexo GastoConstantes
+    link_pattern: str = (
+        r"/files/operaciones/PIB/anex-GastoConstantes-"
+        r"(?:I{1,3}|IV)trim\d{4}\.xlsx$"
+    )
+
+    # ── Parsing del Excel ─────────────────────────────────────────
+    sheet_name: str = "Cuadro 2"
+    year_row: int = 9
+    quarter_row: int = 10
+    concept_col: int = 1           # columna B
+    concept_label: str = "Formación bruta de capital fijo"
+    data_start_col: int = 2        # columna C
+
+    source_label: str = "DANE - Cuentas Nacionales Trimestrales (Gasto)"
+
+    # ── Archivos ──────────────────────────────────────────────────
+    raw_xlsx_filename: str = "dane_gdp_gasto_raw.xlsx"
+    processed_filename: str = "dane_gdp_expenditure_colombia.csv"
+
+    # ── HTTP ──────────────────────────────────────────────────────
+    timeout: int = 120
+    http_headers: dict[str, str] = field(
+        default_factory=lambda: {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+        }
+    )
+
+
+DANE_GDP_EXPENDITURE_CONFIG = DANEGDPExpenditureConfig()
+
+DANE_GDP_EXPENDITURE_PROCESSED_COLUMNS: list[str] = [
+    "date", "year", "quarter",
+    "investment",
+    "source", "download_date",
+]
+
+
+# ── Configuración PIB enfoque del ingreso ─────────────────────────────
+
+@dataclass(frozen=True)
+class DANEGDPIncomeConfig:
+    """Configuración para el anexo PIB enfoque del ingreso del DANE.
+
+    Archivo ``anex-PIB-EnfoqueCorriente-{trim}{YYYY}.xlsx``, hoja
+    ``PIB_Ingreso``.  Contiene valores a **precios corrientes** en miles
+    de millones de pesos (base 2015), disponible desde 2016-Q1.
+
+    Estructura:
+      - Fila 10 (0-idx): años (col 4 en adelante)
+      - Fila 11 (0-idx): trimestres romanos (I–IV)
+      - Columna 2 (0-idx): etiqueta del concepto
+      - Datos numéricos desde columna 4 (0-idx)
+    """
+    page_url: str = (
+        "https://www.dane.gov.co/index.php/estadisticas-por-tema/"
+        "cuentas-nacionales/cuentas-nacionales-trimestrales/"
+        "pib-informacion-tecnica"
+    )
+    base_url: str = "https://www.dane.gov.co"
+    link_pattern: str = (
+        r"/files/operaciones/PIB/anex-PIB-EnfoqueCorriente-"
+        r"(?:I{1,3}|IV)trim\d{4}\.xlsx$"
+    )
+
+    sheet_name: str = "PIB_Ingreso"
+    year_row: int = 10
+    quarter_row: int = 11
+    concept_col: int = 2
+    data_start_col: int = 4
+
+    label_compensation: str = "Remuneración de los asalariados"
+    label_gross_surplus: str = "Excedente Bruto de Explotación"
+    label_mixed_income: str = "Ingreso Mixto"
+
+    source_label: str = "DANE - Cuentas Nacionales Trimestrales (Ingreso)"
+    raw_xlsx_filename: str = "dane_pib_ingreso_raw.xlsx"
+    processed_filename: str = "dane_gdp_income_colombia.csv"
+
+    timeout: int = 120
+    http_headers: dict[str, str] = field(
+        default_factory=lambda: {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+        }
+    )
+
+
+DANE_GDP_INCOME_CONFIG = DANEGDPIncomeConfig()
+
+DANE_GDP_INCOME_PROCESSED_COLUMNS: list[str] = [
+    "date", "year", "quarter",
+    "compensation_employees",
+    "gross_operating_surplus",
+    "mixed_income",
+    "source", "download_date",
+]
+
 # Sanity bounds (PIB trimestral en miles de millones de pesos)
 DANE_GDP_MIN: float = 0.0           # No puede ser negativo
 DANE_GDP_MAX: float = 1_000_000.0   # Máximo defensivo (PIB CO ~270k bn COP en 2024)
@@ -650,6 +782,9 @@ PROCESSED_COLUMNS: list[str] = [
     "month",
     "unemployment_rate",
     "tgp_rate",
+    "occupied_thousands",
+    "unemployed_thousands",
+    "inactive_thousands",
     "pet_thousands",
     "source",
     "download_date",
@@ -741,7 +876,7 @@ LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 LOG_FILENAME: str = "pipeline.log"
 
 
-# ── Configuración PWT 10.01 – Stock de Capital y Capital Humano ──────
+# ── Configuración PWT 11.0 – Stock de Capital y Capital Humano ──────
 
 @dataclass(frozen=True)
 class PWTConfig:
@@ -792,18 +927,20 @@ PWT_PROCESSED_COLUMNS: list[str] = [
     "date",
     "year",
     "month",
-    "capital_stock_ck",
-    "capital_stock_cn",
-    "human_capital",
+    "capital_stock_real",   # ← rnna (precios nac. const. 2017, millones COP)
+    "depreciation_rate",    # ← delta (fracción 0–1)
+    "human_capital",        # ← hc (índice)
     "source",
     "download_date",
 ]
 
 # PWT: rangos razonables
-CAPITAL_STOCK_MIN: float = 0.0      # Stock de capital no puede ser negativo
-CAPITAL_STOCK_MAX: float = 5000.0   # Máximo defensivo para Colombia (USD bn)
-HUMAN_CAPITAL_MIN: float = 1.0      # Mínimo teórico del índice PWT
-HUMAN_CAPITAL_MAX: float = 5.0      # Máximo teórico del índice PWT
+CAPITAL_STOCK_MIN: float = 0.0          # Stock de capital no puede ser negativo
+CAPITAL_STOCK_MAX: float = 5_000_000.0  # millones COP 2017 (Colombia ≈ 0.9–2.7M)
+DEPRECIATION_RATE_MIN: float = 0.01     # Tasa de depreciación mínima razonable
+DEPRECIATION_RATE_MAX: float = 0.15     # Tasa de depreciación máxima defensiva
+HUMAN_CAPITAL_MIN: float = 1.0          # Mínimo teórico del índice PWT
+HUMAN_CAPITAL_MAX: float = 5.0          # Máximo teórico del índice PWT
 
 
 # ── Configuración VIOG ───────────────────────────────────────────────

@@ -237,9 +237,10 @@ class TestVIOGColombiaRunner:
     """Tests del orquestador VIOG-Colombia (skip elegante si falta input)."""
 
     def test_run_colombia_skips_when_input_missing(
-        self, tmp_path, monkeypatch, capsys
+        self, tmp_path, monkeypatch, caplog
     ):
         """Si data/inputs/PIB_CO.xlsx no existe, run_colombia() omite el pipeline sin fallar."""
+        import logging
         from src.pipelines import run_viog as viog_pipeline
 
         # Apuntar INPUTS_DIR a un tmp_path vacío para simular ausencia del archivo
@@ -248,11 +249,11 @@ class TestVIOGColombiaRunner:
         monkeypatch.setattr(viog_pipeline, "OUTPUTS_DIR", tmp_path)
 
         # No debe lanzar excepción
-        viog_pipeline.run_colombia()
+        with caplog.at_level(logging.WARNING):
+            viog_pipeline.run_colombia()
 
-        # Debe haber emitido un mensaje informativo
-        captured = capsys.readouterr()
-        assert "PIB_CO.xlsx" in captured.out or "omitido" in captured.out.lower()
+        # Debe haber emitido un mensaje de log informativo
+        assert any("omitido" in r.message.lower() for r in caplog.records)
 
     def test_viog_co_config_distinct_from_us(self):
         """VIOG_CO_CONFIG y VIOG_CONFIG difieren en filename y source label."""

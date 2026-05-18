@@ -69,6 +69,7 @@ nairu = "src.main:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src*"]
+exclude = ["legacy*", "tests*"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
@@ -79,11 +80,12 @@ addopts = [
     "--strict-markers",
     "--tb=short",
 ]
+norecursedirs = ["legacy", ".venv", "data"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["andi_agent", "notebooks"]
+extend-exclude = ["legacy", "notebooks"]
 
 [tool.ruff.lint]
 select = [
