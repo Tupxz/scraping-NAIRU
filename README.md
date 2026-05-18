@@ -1,6 +1,6 @@
 # NAIRU Colombia — Pipeline de Datos Macroeconómicos
 
-[![tests](https://img.shields.io/badge/tests-340%20passing-success.svg)](#6-tests)
+[![tests](https://img.shields.io/badge/tests-396%20passing-success.svg)](#6-tests)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](#3-instalación)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -160,7 +160,7 @@ scraping-NAIRU/
 │   │   └── viog/viog.py       # 5 filtros (HP, BK, CF, Butterworth, Kalman) + VIOG ponderado
 │   ├── nairu/                 # Modelo Kalman biestado para NAIRU/NAICU
 │   └── pipelines/             # run_*.py — un orquestador por fuente + run_all + run_merge
-├── tests/                     # 340 tests offline (CSVs sintéticos, sin red)
+├── tests/                     # 396 tests offline (CSVs sintéticos, sin red)
 ├── data/
 │   ├── raw/                   # Cacheado de descargas (gitignored)
 │   ├── inputs/                # Inputs manuales (PIB_USA.xlsx, PIB_CO.xlsx)
@@ -201,8 +201,9 @@ Todos los tests son **offline**: usan CSVs sintéticos en `tmp_path`, sin llamad
 | `test_brent.py` | 23 | 3 niveles de fallback FRED |
 | `test_informality.py` | 18 | Reconstrucción de trimestres móviles |
 | `test_dane_gdp.py` | 19 | Parseo Cuadro 4, asignación Q→mes |
+| `test_merge_derived.py` | 16 | Variables derivadas ipc_yoy, ipc_mom, inflation_gap |
 | `test_viog.py` | 33 | 5 filtros, pesos VIOG, empalme series Base 1994/2005/2015 |
-| **Total** | **340** | **~ 4 s** |
+| **Total** | **396** | **~ 4 s** |
 
 ---
 
