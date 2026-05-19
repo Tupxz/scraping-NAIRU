@@ -17,6 +17,7 @@ Uso:
     python -m src.main --nairu-estim    # Estimar NAIRU/NAICU (costoso, requiere --nairu-dataset)
     python -m src.main --prod-func      # Dataset anual función de producción Cobb-Douglas (con A)
     python -m src.main --pib-potencial  # PIB Potencial Cobb-Douglas + Excel (requiere --nairu-estim)
+    python -m src.main --export-web     # Exportar CSVs limpios + meta.json a docs/data/ (GitHub Pages)
 """
 
 from __future__ import annotations
@@ -50,6 +51,7 @@ def run_pipeline(
     run_merge: bool = False,
     run_prod_func: bool = False,
     run_pib_potencial: bool = False,
+    run_export_web: bool = False,
 ) -> None:
     """Ejecuta los pipelines seleccionados."""
     logger = setup_logging()
@@ -138,6 +140,10 @@ def run_pipeline(
         if run_pib_potencial:
             from src.pipelines import run_pib_potencial as pib_pot_pipeline
             pib_pot_pipeline.run()
+
+        if run_export_web:
+            from src.pipelines import export_web_data as export_web_pipeline
+            export_web_pipeline.run()
 
         elapsed = time.time() - start_time
         logger.info("=" * 60)
@@ -232,6 +238,10 @@ def main() -> None:
         help="Calcular PIB Potencial Cobb-Douglas y exportar Excel (requiere --nairu-estim previo)",
     )
     parser.add_argument(
+        "--export-web", action="store_true",
+        help="Exportar CSVs limpios y meta.json a docs/data/ para GitHub Pages",
+    )
+    parser.add_argument(
         "--merge", action="store_true",
         help="Unir todas las bases procesadas en nairu_dataset.csv",
     )
@@ -273,7 +283,7 @@ def main() -> None:
         or args.tes or args.brent or use_andi
         or args.andi_reprocess or args.nairu_dataset
         or args.nairu_estim or args.merge or args.prod_func
-        or args.pib_potencial
+        or args.pib_potencial or args.export_web
     )
     if not any_selected:
         run_pipeline(run_unemployment=True)
@@ -301,6 +311,7 @@ def main() -> None:
         run_merge=args.merge,
         run_prod_func=args.prod_func,
         run_pib_potencial=args.pib_potencial,
+        run_export_web=args.export_web,
     )
 
 

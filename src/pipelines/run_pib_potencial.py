@@ -324,9 +324,12 @@ def run(
     # 7. Construir metadatos de descarga
     metadatos = _build_metadatos(processed_dir, nairu_dir)
 
-    # 8. Escribir Excel
-    logger.info("Escribiendo Excel …")
+    # 8. Escribir Excel + CSV (el CSV alimenta la página web)
+    logger.info("Escribiendo Excel y CSV …")
     path = write_pib_potencial_excel(df_out, df_monthly, output_dir, metadatos)
+    csv_path = output_dir / "pib_potencial_colombia.csv"
+    df_out.to_csv(csv_path, index=False)
+    logger.info("CSV: %s", csv_path)
 
     logger.info(
         "══ PIB Potencial listo: %d trimestres | %s → %s ══",

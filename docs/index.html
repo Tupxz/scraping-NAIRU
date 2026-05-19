@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NAIRU &amp; PIB Potencial — Colombia</title>
+
+  <!-- Plotly.js -->
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+
+  <style>
+    /* ── Reset & base ───────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #f7f8fc;
+      --surface:   #ffffff;
+      --border:    #e2e5ef;
+      --primary:   #1a3a6b;
+      --accent:    #e84e0f;
+      --text:      #1c2333;
+      --muted:     #6b7490;
+      --radius:    10px;
+      --shadow:    0 2px 12px rgba(0,0,0,.08);
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    header {
+      background: var(--primary);
+      color: #fff;
+      padding: 2rem 2.5rem 1.6rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 1rem;
+    }
+    header .titles { flex: 1 1 300px; }
+    header h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -.3px; }
+    header p.subtitle { font-size: .95rem; opacity: .82; margin-top: .25rem; }
+
+    .meta-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .5rem;
+      align-items: center;
+    }
+    .pill {
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 20px;
+      padding: .25rem .75rem;
+      font-size: .8rem;
+      white-space: nowrap;
+    }
+    .pill span { font-weight: 600; }
+
+    /* ── KPI strip ──────────────────────────────────────── */
+    .kpi-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1px;
+      background: var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .kpi {
+      background: var(--surface);
+      flex: 1 1 140px;
+      padding: .9rem 1.4rem;
+      text-align: center;
+    }
+    .kpi .value { font-size: 1.6rem; font-weight: 700; color: var(--primary); }
+    .kpi .label { font-size: .75rem; color: var(--muted); margin-top: .15rem; text-transform: uppercase; letter-spacing: .05em; }
+
+    /* ── Layout ─────────────────────────────────────────── */
+    main {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 3rem;
+    }
+
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--primary);
+      margin: 2rem 0 .75rem;
+      padding-bottom: .4rem;
+      border-bottom: 2px solid var(--accent);
+      display: inline-block;
+    }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .chart-card .card-header {
+      padding: .8rem 1.2rem .5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .chart-card .card-title {
+      font-size: .95rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .chart-card .card-desc {
+      font-size: .78rem;
+      color: var(--muted);
+      margin-top: .1rem;
+    }
+    .chart-card .plotly-container {
+      width: 100%;
+      height: 340px;
+    }
+
+    /* ── Loading / error states ─────────────────────────── */
+    .state-msg {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--muted);
+      font-size: .88rem;
+      gap: .5rem;
+    }
+
+    /* ── Footer ─────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 1.5rem 1rem;
+      font-size: .78rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+    footer a { color: var(--primary); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ── Responsive ─────────────────────────────────────── */
+    @media (max-width: 680px) {
+      header { padding: 1.5rem 1rem 1.2rem; }
+      header h1 { font-size: 1.3rem; }
+      .charts-grid { grid-template-columns: 1fr; }
+      .chart-card .plotly-container { height: 280px; }
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- ══════════════════ HEADER ══════════════════ -->
+<header>
+  <div class="titles">
+    <h1>NAIRU &amp; PIB Potencial — Colombia</h1>
+    <p class="subtitle">
+      Estimación Kalman bi-estado MLE · Función de Producción Cobb-Douglas ·
+      EAFIT Coyuntura Económica
+    </p>
+  </div>
+  <div class="meta-pills" id="metaPills">
+    <div class="pill">Cargando datos…</div>
+  </div>
+</header>
+
+<!-- ══════════════════ KPI STRIP ══════════════════ -->
+<div class="kpi-strip" id="kpiStrip">
+  <div class="kpi"><div class="value" id="kpi-nairu">—</div><div class="label">NAIRU estimado (%)</div></div>
+  <div class="kpi"><div class="value" id="kpi-td">—</div><div class="label">Desempleo observado (%)</div></div>
+  <div class="kpi"><div class="value" id="kpi-naicu">—</div><div class="label">NAICU estimado (%)</div></div>
+  <div class="kpi"><div class="value" id="kpi-uci">—</div><div class="label">UCI observada (%)</div></div>
+  <div class="kpi"><div class="value" id="kpi-brecha-lab">—</div><div class="label">Brecha laboral (pp)</div></div>
+  <div class="kpi"><div class="value" id="kpi-brecha-cd">—</div><div class="label">Brecha PIB C-D (%)</div></div>
+</div>
+
+<!-- ══════════════════ CHARTS ══════════════════ -->
+<main>
+
+  <div class="section-title">Mercado Laboral</div>
+  <div class="charts-grid">
+
+    <!-- Chart 1: NAIRU vs TD -->
+    <div class="chart-card">
+      <div class="card-header">
+        <div class="card-title">NAIRU vs Tasa de Desempleo</div>
+        <div class="card-desc">Estimación Kalman-MLE con banda de confianza al 90%</div>
+      </div>
+      <div class="plotly-container" id="chart-nairu"></div>
+    </div>
+
+    <!-- Chart 2: NAICU vs UCI -->
+    <div class="chart-card">
+      <div class="card-header">
+        <div class="card-title">NAICU vs Utilización de Capacidad Instalada</div>
+        <div class="card-desc">Estimación Kalman-MLE con banda de confianza al 90%</div>
+      </div>
+      <div class="plotly-container" id="chart-naicu"></div>
+    </div>
+
+  </div>
+
+  <div class="section-title">Brechas de Actividad</div>
+  <div class="charts-grid">
+
+    <!-- Chart 3: Brechas mensuales -->
+    <div class="chart-card">
+      <div class="card-header">
+        <div class="card-title">Brechas Mensuales (laboral, UCI, inflación)</div>
+        <div class="card-desc">Diferencia entre valor observado y estimado estructural</div>
+      </div>
+      <div class="plotly-container" id="chart-brechas-m"></div>
+    </div>
+
+    <!-- Chart 4: Brechas PIB trimestrales -->
+    <div class="chart-card">
+      <div class="card-header">
+        <div class="card-title">Brecha del Producto — PIB Potencial (trimestral)</div>
+        <div class="card-desc">Cobb-Douglas (C-D) y Hodrick-Prescott (HP) · % del PIB potencial</div>
+      </div>
+      <div class="plotly-container" id="chart-brechas-q"></div>
+    </div>
+
+  </div>
+
+  <div class="section-title">PIB Potencial</div>
+  <div class="charts-grid">
+
+    <!-- Chart 5: PIB niveles -->
+    <div class="chart-card">
+      <div class="card-header">
+        <div class="card-title">PIB Observado vs PIB Potencial (índice 2005 = 100)</div>
+        <div class="card-desc">Función de producción Cobb-Douglas y tendencia HP</div>
+      </div>
+      <div class="plotly-container" id="chart-pib"></div>
+    </div>
+
+    <!-- Chart 6: PTF y Alpha -->
+    <div class="chart-card">
+      <div class="card-header">
+        <div class="card-title">PTF Observada y Potencial · Share del Capital (α)</div>
+        <div class="card-desc">Productividad Total de los Factores y participación estimada</div>
+      </div>
+      <div class="plotly-container" id="chart-ptf"></div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ══════════════════ FOOTER ══════════════════ -->
+<footer>
+  Datos actualizados automáticamente cada mes vía
+  <a href="https://github.com/features/actions" target="_blank">GitHub Actions</a>.
+  Fuentes: DANE, BanRep, ANDI, PWT 11.0, FRED/EIA.
+  Metodología: Kalman bi-estado MLE + Cobb-Douglas HP (λ=1600).
+  <br>
+  <a href="data/nairu_monthly.csv">⬇ nairu_monthly.csv</a> ·
+  <a href="data/pib_trimestral.csv">⬇ pib_trimestral.csv</a> ·
+  <a href="data/meta.json">⬇ meta.json</a>
+</footer>
+
+<!-- ══════════════════ JAVASCRIPT ══════════════════ -->
+<script>
+"use strict";
+
+/* ─── Utilidades ──────────────────────────────────────────── */
+
+/** Parsea un CSV texto → array de objetos {col: valor} */
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim());
+  return lines.slice(1).map(line => {
+    const vals = line.split(',');
+    const obj = {};
+    headers.forEach((h, i) => {
+      const v = vals[i] !== undefined ? vals[i].trim() : '';
+      obj[h] = v === '' || v === 'nan' ? null : v;
+    });
+    return obj;
+  });
+}
+
+function toNum(rows, col) {
+  return rows.map(r => r[col] !== null ? +r[col] : null);
+}
+
+function fmt(v, dec = 2) {
+  if (v === null || v === undefined || isNaN(v)) return '—';
+  return (+v).toFixed(dec);
+}
+
+/* Plotly layout base */
+function baseLayout(opts = {}) {
+  return {
+    margin: { t: 10, r: 18, b: 48, l: 52 },
+    legend: { orientation: 'h', y: -0.18, x: 0.5, xanchor: 'center', font: { size: 11 } },
+    xaxis: { showgrid: false, zeroline: false, tickfont: { size: 11 } },
+    yaxis: { gridcolor: '#e8eaf0', zeroline: false, tickfont: { size: 11 } },
+    plot_bgcolor: '#ffffff',
+    paper_bgcolor: '#ffffff',
+    hovermode: 'x unified',
+    font: { family: "'Segoe UI', system-ui, sans-serif", size: 12 },
+    ...opts,
+  };
+}
+
+const CONF = { responsive: true, displayModeBar: false };
+
+/* ─── Fetch & render ──────────────────────────────────────── */
+
+async function loadAll() {
+  try {
+    const [nairu_text, meta_text, pib_text] = await Promise.all([
+      fetch('data/nairu_monthly.csv').then(r => r.ok ? r.text() : Promise.reject('nairu_monthly.csv no encontrado')),
+      fetch('data/meta.json').then(r => r.ok ? r.json() : {}),
+      fetch('data/pib_trimestral.csv').then(r => r.ok ? r.text() : null).catch(() => null),
+    ]);
+
+    const nairu = parseCSV(nairu_text);
+    const pib   = pib_text ? parseCSV(pib_text) : null;
+
+    renderMeta(meta_text);
+    renderKPIs(meta_text);
+    renderNAIRU(nairu);
+    renderNAICU(nairu);
+    renderBrechasM(nairu);
+    if (pib) {
+      renderBrechasQ(pib);
+      renderPIB(pib);
+      renderPTF(pib);
+    } else {
+      ['chart-brechas-q', 'chart-pib', 'chart-ptf'].forEach(id => {
+        document.getElementById(id).innerHTML =
+          '<div class="state-msg">ℹ️ Datos PIB no disponibles aún — ejecuta --pib-potencial</div>';
+      });
+    }
+  } catch(err) {
+    console.error(err);
+    document.getElementById('metaPills').innerHTML =
+      `<div class="pill">⚠️ Error cargando datos: ${err}</div>`;
+  }
+}
+
+/* ─── Meta pills ──────────────────────────────────────────── */
+function renderMeta(meta) {
+  const updated = meta.last_updated || '—';
+  const lastN   = meta.last_obs_nairu || '—';
+  const lastP   = meta.last_obs_pib || '—';
+  document.getElementById('metaPills').innerHTML = `
+    <div class="pill">Actualizado: <span>${updated}</span></div>
+    <div class="pill">Último dato NAIRU: <span>${lastN}</span></div>
+    ${lastP !== '—' ? `<div class="pill">Último dato PIB: <span>${lastP}</span></div>` : ''}
+  `;
+}
+
+/* ─── KPIs ────────────────────────────────────────────────── */
+function renderKPIs(meta) {
+  document.getElementById('kpi-nairu').textContent      = fmt(meta.latest_nairu);
+  document.getElementById('kpi-td').textContent         = fmt(meta.latest_td);
+  document.getElementById('kpi-naicu').textContent      = fmt(meta.latest_naicu);
+  document.getElementById('kpi-uci').textContent        = fmt(meta.latest_uci);
+  document.getElementById('kpi-brecha-lab').textContent = fmt(meta.latest_brecha_laboral);
+  document.getElementById('kpi-brecha-cd').textContent  = fmt(meta.latest_brecha_cd);
+}
+
+/* ─── Chart 1: NAIRU vs TD ────────────────────────────────── */
+function renderNAIRU(rows) {
+  const x      = rows.map(r => r.fecha);
+  const td     = toNum(rows, 'td_obs');
+  const nairu  = toNum(rows, 'nairu');
+  const lo90   = toNum(rows, 'nairu_lo90');
+  const hi90   = toNum(rows, 'nairu_hi90');
+
+  const traces = [
+    // Banda de confianza (relleno)
+    { x, y: hi90, name: 'IC 90% sup', mode: 'lines', line: { color: 'transparent' },
+      showlegend: false, hoverinfo: 'skip' },
+    { x, y: lo90, name: 'IC 90%', fill: 'tonexty',
+      fillcolor: 'rgba(26,58,107,.12)', mode: 'lines',
+      line: { color: 'transparent' }, showlegend: true, hoverinfo: 'skip' },
+    // Series principales
+    { x, y: td,    name: 'Tasa de desempleo (obs.)',
+      mode: 'lines', line: { color: '#e84e0f', width: 1.8 } },
+    { x, y: nairu, name: 'NAIRU estimado',
+      mode: 'lines', line: { color: '#1a3a6b', width: 2.5 } },
+  ];
+
+  Plotly.newPlot('chart-nairu', traces,
+    baseLayout({ yaxis: { ticksuffix: '%' } }), CONF);
+}
+
+/* ─── Chart 2: NAICU vs UCI ───────────────────────────────── */
+function renderNAICU(rows) {
+  const x     = rows.map(r => r.fecha);
+  const uci   = toNum(rows, 'uci_obs');
+  const naicu = toNum(rows, 'naicu');
+  const lo90  = toNum(rows, 'naicu_lo90');
+  const hi90  = toNum(rows, 'naicu_hi90');
+
+  const traces = [
+    { x, y: hi90, name: 'IC 90% sup', mode: 'lines',
+      line: { color: 'transparent' }, showlegend: false, hoverinfo: 'skip' },
+    { x, y: lo90, name: 'IC 90%', fill: 'tonexty',
+      fillcolor: 'rgba(56,142,60,.12)', mode: 'lines',
+      line: { color: 'transparent' }, showlegend: true, hoverinfo: 'skip' },
+    { x, y: uci,   name: 'UCI observada',
+      mode: 'lines', line: { color: '#e84e0f', width: 1.8 } },
+    { x, y: naicu, name: 'NAICU estimado',
+      mode: 'lines', line: { color: '#2e7d32', width: 2.5 } },
+  ];
+
+  Plotly.newPlot('chart-naicu', traces,
+    baseLayout({ yaxis: { ticksuffix: '%' } }), CONF);
+}
+
+/* ─── Chart 3: Brechas mensuales ─────────────────────────── */
+function renderBrechasM(rows) {
+  const x           = rows.map(r => r.fecha);
+  const bLaboral    = toNum(rows, 'brecha_laboral');
+  const bUci        = toNum(rows, 'brecha_uci');
+  const bInf        = toNum(rows, 'brecha_inf');
+
+  const zero = x.map(() => 0);
+
+  const traces = [
+    { x, y: zero, name: '', mode: 'lines',
+      line: { color: '#888', width: 1, dash: 'dot' },
+      showlegend: false, hoverinfo: 'skip' },
+    { x, y: bLaboral, name: 'Brecha laboral (TD - NAIRU)',
+      mode: 'lines', line: { color: '#1a3a6b', width: 2 } },
+    { x, y: bUci,     name: 'Brecha UCI (UCI - NAICU)',
+      mode: 'lines', line: { color: '#2e7d32', width: 2 } },
+  ];
+  if (bInf.some(v => v !== null)) {
+    traces.push({ x, y: bInf, name: 'Brecha inflación',
+      mode: 'lines', line: { color: '#e84e0f', width: 2, dash: 'dot' } });
+  }
+
+  Plotly.newPlot('chart-brechas-m', traces,
+    baseLayout({ yaxis: { ticksuffix: ' pp' } }), CONF);
+}
+
+/* ─── Chart 4: Brechas PIB trimestrales ──────────────────── */
+function renderBrechasQ(rows) {
+  const x     = rows.map(r => r.fecha);
+  const bCD   = toNum(rows, 'brecha_cd');
+  const bHP   = toNum(rows, 'brecha_hp');
+  const zero  = x.map(() => 0);
+
+  const fillColor = v => v >= 0 ? 'rgba(26,58,107,.18)' : 'rgba(232,78,15,.18)';
+
+  // Brecha C-D como barras
+  const tracesBar = [{
+    x, y: bCD,
+    name: 'Brecha C-D',
+    type: 'bar',
+    marker: { color: bCD.map(v => v >= 0 ? 'rgba(26,58,107,.7)' : 'rgba(232,78,15,.7)') },
+  }];
+
+  const tracesLine = [
+    { x, y: zero, mode: 'lines', line: { color: '#555', width: 1, dash: 'dot' },
+      showlegend: false, hoverinfo: 'skip' },
+    { x, y: bHP, name: 'Brecha HP',
+      mode: 'lines', line: { color: '#555', width: 1.8, dash: 'dash' } },
+  ];
+
+  Plotly.newPlot('chart-brechas-q', [...tracesBar, ...tracesLine],
+    baseLayout({
+      barmode: 'overlay',
+      yaxis: { ticksuffix: '%' },
+    }), CONF);
+}
+
+/* ─── Chart 5: PIB niveles ────────────────────────────────── */
+function renderPIB(rows) {
+  const x    = rows.map(r => r.fecha);
+  const obs  = toNum(rows, 'pib_obs_idx');
+  const pot  = toNum(rows, 'pib_pot_idx');
+  const hp   = toNum(rows, 'pib_hp_idx');
+
+  // fallback si no hay columna _idx
+  const obsF  = obs.some(v => v !== null) ? obs  : toNum(rows, 'pib_obs');
+  const potF  = pot.some(v => v !== null) ? pot  : toNum(rows, 'pib_pot');
+  const hpF   = hp.some(v => v !== null)  ? hp   : toNum(rows, 'pib_hp');
+
+  const traces = [
+    { x, y: obsF, name: 'PIB observado',
+      mode: 'lines', line: { color: '#e84e0f', width: 2 } },
+    { x, y: potF, name: 'PIB potencial (C-D)',
+      mode: 'lines', line: { color: '#1a3a6b', width: 2.5 } },
+    { x, y: hpF,  name: 'Tendencia HP',
+      mode: 'lines', line: { color: '#888', width: 1.5, dash: 'dash' } },
+  ];
+
+  const suffix = obs.some(v => v !== null) ? '' : ' (billones COP)';
+  Plotly.newPlot('chart-pib', traces,
+    baseLayout({ yaxis: { ticksuffix: suffix } }), CONF);
+}
+
+/* ─── Chart 6: PTF y Alpha ────────────────────────────────── */
+function renderPTF(rows) {
+  const x      = rows.map(r => r.fecha);
+  const ptfObs = toNum(rows, 'ptf_obs');
+  const ptfPot = toNum(rows, 'ptf_pot');
+  const alpha  = toNum(rows, 'alpha');
+
+  const traces = [
+    { x, y: ptfObs, name: 'PTF observada',
+      mode: 'lines', line: { color: '#e84e0f', width: 2 } },
+    { x, y: ptfPot, name: 'PTF potencial (HP)',
+      mode: 'lines', line: { color: '#1a3a6b', width: 2.5 } },
+    { x, y: alpha,  name: 'α (share capital)',
+      mode: 'lines', line: { color: '#2e7d32', width: 1.8 },
+      yaxis: 'y2' },
+  ];
+
+  const layout = baseLayout({
+    yaxis2: {
+      overlaying: 'y',
+      side: 'right',
+      showgrid: false,
+      zeroline: false,
+      tickfont: { size: 11 },
+      title: { text: 'α', font: { size: 11 } },
+    },
+    legend: { orientation: 'h', y: -0.22, x: 0.5, xanchor: 'center', font: { size: 11 } },
+  });
+
+  Plotly.newPlot('chart-ptf', traces, layout, CONF);
+}
+
+/* ─── Arrancar ────────────────────────────────────────────── */
+loadAll();
+</script>
+</body>
+</html>
