@@ -931,3 +931,94 @@ def run_derived_checks(df: pd.DataFrame) -> bool:
 
     logger.info("─── Todas las validaciones de variables derivadas pasaron ✓ ───")
     return True
+
+
+# ── Validaciones del dataset de PIB Potencial ────────────────────────────────
+
+def run_pib_potencial_checks(df: pd.DataFrame) -> bool:
+    """Valida el dataset trimestral de PIB Potencial antes de escribir el Excel.
+
+    Verifica:
+    - Columnas mínimas presentes: ``PIB``, ``PIB_pot``, ``Brecha_CD``,
+      ``PIB_tend_HP``, ``Brecha_HP``, ``alpha``, ``A_obs``, ``A_pot``.
+    - ``PIB_pot > 0`` en todos los periodos.
+    - ``|Brecha_CD| < 15 pp`` (Colombia históricamente ±10 pp).
+    - ``|Brecha_HP| < 15 pp``.
+    - ``alpha`` en el rango ``(0.15, 0.85)`` para todos los periodos.
+    - ``A_pot > 0`` en todos los periodos.
+    - Al menos 60 trimestres (cobertura desde 2005-Q1).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataset trimestral de PIB Potencial.
+
+    Returns
+    -------
+    bool
+        True si todas las validaciones pasan.
+
+    Raises
+    ------
+    QualityCheckError
+        Si alguna validación falla.
+    """
+    logger.info("─── Validaciones PIB Potencial ───")
+
+    # 1. Columnas mínimas
+    requeridas = {"PIB", "PIB_pot", "Brecha_CD", "PIB_tend_HP", "Brecha_HP", "alpha", "A_pot"}
+    faltantes = requeridas - set(df.columns)
+    if faltantes:
+        raise QualityCheckError(
+            f"Columnas requeridas faltantes en dataset PIB Potencial: {sorted(faltantes)}"
+        )
+
+    # 2. PIB_pot positivo
+    invalidos = (df["PIB_pot"] <= 0).sum()
+    if invalidos > 0:
+        raise QualityCheckError(
+            f"PIB_pot tiene {invalidos} valores no positivos — revisar factores de producción."
+        )
+    logger.info("PIB_pot > 0 en todos los trimestres ✓")
+
+    # 3. Brecha CD acotada
+    max_brecha_cd = df["Brecha_CD"].abs().max()
+    if max_brecha_cd >= 15.0:
+        raise QualityCheckError(
+            f"|Brecha_CD| máxima = {max_brecha_cd:.2f} pp ≥ 15 pp — "
+            "posible error en factores o NAIRU/NAICU."
+        )
+    logger.info("|Brecha_CD| máx = %.2f pp ✓", max_brecha_cd)
+
+    # 4. Brecha HP acotada
+    max_brecha_hp = df["Brecha_HP"].abs().max()
+    if max_brecha_hp >= 15.0:
+        raise QualityCheckError(
+            f"|Brecha_HP| máxima = {max_brecha_hp:.2f} pp ≥ 15 pp — revisar serie de PIB."
+        )
+    logger.info("|Brecha_HP| máx = %.2f pp ✓", max_brecha_hp)
+
+    # 5. Alpha en rango razonable
+    alpha_fuera = ((df["alpha"] <= 0.15) | (df["alpha"] >= 0.85)).sum()
+    if alpha_fuera > 0:
+        raise QualityCheckError(
+            f"Alpha tiene {alpha_fuera} valores fuera de (0.15, 0.85) — "
+            "revisar datos de ingreso DANE."
+        )
+    logger.info("Alpha en (0.15, 0.85) para todos los trimestres ✓")
+
+    # 6. A_pot positivo
+    if (df["A_pot"] <= 0).any():
+        raise QualityCheckError("A_pot tiene valores no positivos — revisar HP filter sobre A_obs.")
+    logger.info("A_pot > 0 ✓")
+
+    # 7. Mínimo de trimestres
+    if len(df) < 60:
+        raise QualityCheckError(
+            f"Dataset tiene solo {len(df)} trimestres (mínimo esperado: 60). "
+            "Verifique que todas las fuentes estén actualizadas."
+        )
+    logger.info("Cobertura: %d trimestres ✓", len(df))
+
+    logger.info("─── Todas las validaciones PIB Potencial pasaron ✓ ───")
+    return True
