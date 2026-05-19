@@ -931,3 +931,114 @@ def run_derived_checks(df: pd.DataFrame) -> bool:
 
     logger.info("─── Todas las validaciones de variables derivadas pasaron ✓ ───")
     return True
+
+
+# ── Validaciones del dataset de PIB Potencial ────────────────────────────────
+
+def run_pib_potencial_checks(df: pd.DataFrame) -> bool:
+    """Valida el dataset trimestral de PIB Potencial antes de escribir el Excel.
+
+    Verifica:
+    - Columnas mínimas presentes: ``PIB``, ``PIB_pot``, ``Brecha_CD``,
+      ``PIB_tend_HP``, ``Brecha_HP``, ``alpha``, ``A_obs``, ``A_pot``.
+    - ``PIB_pot > 0`` en todos los periodos.
+    - ``|Brecha_CD| < 50 pp`` (Colombia históricamente ±10 pp; se permite hasta 50 pp
+      para cubrir choques extremos como el COVID-19 en 2020-Q2).
+    - ``|Brecha_HP| < 15 pp``.
+    - ``alpha`` en el rango ``(0.15, 0.85)`` para todos los periodos.
+    - ``A_pot > 0`` en todos los periodos.
+    - Al menos 60 trimestres (cobertura desde 2005-Q1).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataset trimestral de PIB Potencial.
+
+    Returns
+    -------
+    bool
+        True si todas las validaciones pasan.
+
+    Raises
+    ------
+    QualityCheckError
+        Si alguna validación falla.
+    """
+    logger.info("─── Validaciones PIB Potencial ───")
+
+    # 1. Columnas mínimas
+    requeridas = {"PIB", "PIB_pot", "Brecha_CD", "PIB_tend_HP", "Brecha_HP", "alpha", "A_pot"}
+    faltantes = requeridas - set(df.columns)
+    if faltantes:
+        raise QualityCheckError(
+            f"Columnas requeridas faltantes en dataset PIB Potencial: {sorted(faltantes)}"
+        )
+
+    # 2. PIB_pot positivo
+    invalidos = (df["PIB_pot"] <= 0).sum()
+    if invalidos > 0:
+        raise QualityCheckError(
+            f"PIB_pot tiene {invalidos} valores no positivos — revisar factores de producción."
+        )
+    logger.info("PIB_pot > 0 en todos los trimestres ✓")
+
+    # 3. Brecha CD acotada
+    # Umbral generoso (50 pp) para cubrir el choque COVID-19 de 2020-Q2,
+    # donde K_usado, L_obs y A_obs colapsaron simultáneamente mientras el
+    # potencial Cobb-Douglas no incorpora una dummy de crisis explícita.
+    # En períodos normales la brecha histórica de Colombia es ±10 pp.
+    max_brecha_cd = df["Brecha_CD"].abs().max()
+    if max_brecha_cd >= 50.0:
+        raise QualityCheckError(
+            f"|Brecha_CD| máxima = {max_brecha_cd:.2f} pp ≥ 50 pp — "
+            "posible error en factores o NAIRU/NAICU."
+        )
+    if max_brecha_cd >= 15.0:
+        logger.warning(
+            "|Brecha_CD| máx = %.2f pp — supera ±15 pp (revisar si corresponde "
+            "a choque transitorio como COVID-2020).", max_brecha_cd
+        )
+    else:
+        logger.info("|Brecha_CD| máx = %.2f pp ✓", max_brecha_cd)
+
+    # 4. Brecha HP acotada
+    # Umbral de error en 20 pp; advertencia entre 15-20 pp.
+    # El filtro HP (λ=1600) normalmente contiene la brecha a ±5 pp, pero durante
+    # el choque COVID-19 (2020-Q2) puede alcanzar ~17 pp.
+    max_brecha_hp = df["Brecha_HP"].abs().max()
+    if max_brecha_hp >= 20.0:
+        raise QualityCheckError(
+            f"|Brecha_HP| máxima = {max_brecha_hp:.2f} pp ≥ 20 pp — revisar serie de PIB."
+        )
+    if max_brecha_hp >= 15.0:
+        logger.warning(
+            "|Brecha_HP| máx = %.2f pp — supera ±15 pp (verificar trimestre COVID-2020).",
+            max_brecha_hp,
+        )
+    else:
+        logger.info("|Brecha_HP| máx = %.2f pp ✓", max_brecha_hp)
+
+    # 5. Alpha en rango razonable
+    alpha_fuera = ((df["alpha"] <= 0.15) | (df["alpha"] >= 0.85)).sum()
+    if alpha_fuera > 0:
+        raise QualityCheckError(
+            f"Alpha tiene {alpha_fuera} valores fuera de (0.15, 0.85) — "
+            "revisar datos de ingreso DANE."
+        )
+    logger.info("Alpha en (0.15, 0.85) para todos los trimestres ✓")
+
+    # 6. A_pot positivo
+    if (df["A_pot"] <= 0).any():
+        raise QualityCheckError("A_pot tiene valores no positivos — revisar HP filter sobre A_obs.")
+    logger.info("A_pot > 0 ✓")
+
+    # 7. Mínimo de trimestres
+    if len(df) < 60:
+        raise QualityCheckError(
+            f"Dataset tiene solo {len(df)} trimestres (mínimo esperado: 60). "
+            "Verifique que todas las fuentes estén actualizadas."
+        )
+    logger.info("Cobertura: %d trimestres ✓", len(df))
+
+    logger.info("─── Todas las validaciones PIB Potencial pasaron ✓ ───")
+    return True

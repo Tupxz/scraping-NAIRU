@@ -45,6 +45,10 @@ MIN_NAICU_LEVEL = 55.0
 MAX_NAICU_LEVEL = 90.0
 Z_95 = 1.959963984540054
 Z_90 = 1.6448536269514722
+# Período COVID: tratado como shock exógeno a la curva de Phillips,
+# no como cambio estructural en la NAIRU
+COVID_DUMMY_START = "2020-03-01"
+COVID_DUMMY_END   = "2021-06-01"
 SVG_PANEL_WIDTH = 1500
 SVG_PANEL_HEIGHT = 620
 SVG_MARGIN_LEFT = 78
@@ -62,6 +66,7 @@ PARAMETER_NAMES = [
     "icu_gap_coefficient",
     "expectations_coefficient",
     "oil_shock_coefficient",
+    "covid_shock_coefficient",     # shock exógeno curva de Phillips 2020-03..2021-06
     "nairu_adjustment_speed",
     "naicu_adjustment_speed",
     "log_measurement_error_std",
@@ -71,24 +76,25 @@ PARAMETER_NAMES = [
     "naicu_initial_level",
 ]
 PARAMETER_BOUNDS = [
-    (-5.0, 5.0),
-    (-0.99, 0.99),
-    (-0.99, 0.99),
-    (-2.0, 0.0),
-    (-2.0, 0.0),
-    (-2.0, 0.0),
-    (0.0, 2.0),
-    (-2.0, 2.0),
-    (-2.0, 2.0),
-    (0.0, 0.25),
-    (0.0, 0.25),
-    (-10.0, 4.0),
-    (-10.0, -0.4),
-    (-10.0, 0.7),
-    (0.0, 25.0),
-    (50.0, 90.0),
+    (-5.0, 5.0),    # intercept
+    (-0.99, 0.99),  # inflation_lag1_coefficient
+    (-0.99, 0.99),  # inflation_lag2_coefficient
+    (-2.0, 0.0),    # unemployment_coefficient_0
+    (-2.0, 0.0),    # unemployment_coefficient_1
+    (-2.0, 0.0),    # unemployment_coefficient_2
+    (0.0, 2.0),     # icu_gap_coefficient
+    (-2.0, 2.0),    # expectations_coefficient
+    (-2.0, 2.0),    # oil_shock_coefficient
+    (-5.0, 5.0),    # covid_shock_coefficient
+    (0.0, 0.25),    # nairu_adjustment_speed
+    (0.0, 0.25),    # naicu_adjustment_speed
+    (-10.0, 4.0),   # log_measurement_error_std
+    (-10.0, -0.4),  # log_nairu_transition_std
+    (-10.0, 0.7),   # log_naicu_transition_std
+    (0.0, 25.0),    # nairu_initial_level
+    (50.0, 90.0),   # naicu_initial_level
 ]
-RAW_STD_INDICES = {11, 12, 13}
+RAW_STD_INDICES = {12, 13, 14}
 
 
 @dataclass(slots=True)
@@ -112,6 +118,7 @@ class ModelData:
     icu_lag1: np.ndarray
     expected_inflation_term: np.ndarray
     oil_shock: np.ndarray
+    covid_dummy: np.ndarray   # 1 durante COVID_DUMMY_START..END, 0 resto
     n_obs: int
 
 
@@ -979,6 +986,14 @@ def load_and_prepare_data(path: Path) -> pd.DataFrame:
         df["expected_inflation_current_period"] - df[CORE_INFLATION_COL].shift(1)
     )
 
+    # Dummy COVID: 1 durante el shock pandémico, 0 resto.
+    # Evita que el filtro de Kalman absorba el spike de desempleo
+    # 2020-2021 como cambio estructural de la NAIRU.
+    df["covid_dummy"] = (
+        (df["Date"] >= pd.Timestamp(COVID_DUMMY_START))
+        & (df["Date"] <= pd.Timestamp(COVID_DUMMY_END))
+    ).astype(float)
+
     model_df = df[
         [
             "Date",
@@ -995,6 +1010,7 @@ def load_and_prepare_data(path: Path) -> pd.DataFrame:
             "expected_inflation_term",
             "expected_inflation_fisher_12m_ahead",
             "expected_inflation_current_period",
+            "covid_dummy",
         ]
     ].dropna().reset_index(drop=True)
 
@@ -1016,6 +1032,7 @@ def build_model_data(df: pd.DataFrame) -> ModelData:
         icu_lag1=_to_float_array(df["icu_lag1"]),
         expected_inflation_term=_to_float_array(df["expected_inflation_term"]),
         oil_shock=_to_float_array(df["oil_shock"]),
+        covid_dummy=_to_float_array(df["covid_dummy"]),
         n_obs=len(df),
     )
 
@@ -1031,6 +1048,7 @@ def unpack_params(params: np.ndarray) -> Dict[str, float]:
         icu_gap_coefficient,
         expectations_coefficient,
         oil_shock_coefficient,
+        covid_shock_coefficient,
         nairu_adjustment_speed,
         naicu_adjustment_speed,
         log_measurement_error_std,
@@ -1057,6 +1075,7 @@ def unpack_params(params: np.ndarray) -> Dict[str, float]:
         "icu_gap_coefficient": float(icu_gap_coefficient),
         "expectations_coefficient": float(expectations_coefficient),
         "oil_shock_coefficient": float(oil_shock_coefficient),
+        "covid_shock_coefficient": float(covid_shock_coefficient),
         "nairu_adjustment_speed": float(nairu_adjustment_speed),
         "naicu_adjustment_speed": float(naicu_adjustment_speed),
         "measurement_error_std": float(np.exp(log_measurement_error_std)),
@@ -1073,7 +1092,7 @@ def _kalman_pass(
     store_history: bool = False,
 ) -> Tuple[float, Optional[KalmanHistory]]:
     raw = np.asarray(params, dtype=float)
-    if raw.shape != (16,) or not np.all(np.isfinite(raw)):
+    if raw.shape != (17,) or not np.all(np.isfinite(raw)):
         return LARGE_PENALTY, None
 
     (
@@ -1086,6 +1105,7 @@ def _kalman_pass(
         icu_gap_coefficient,
         expectations_coefficient,
         oil_shock_coefficient,
+        covid_shock_coefficient,
         nairu_adjustment_speed,
         naicu_adjustment_speed,
         log_measurement_error_std,
@@ -1158,6 +1178,7 @@ def _kalman_pass(
         + icu_gap_coefficient * data.icu_current
         + expectations_coefficient * data.expected_inflation_term
         + oil_shock_coefficient * data.oil_shock
+        + covid_shock_coefficient * data.covid_dummy
     )
     if not np.all(np.isfinite(signal)):
         return LARGE_PENALTY, None
@@ -1259,6 +1280,7 @@ def kalman_filter_loglik(params: np.ndarray, data: ModelData) -> float:
 
 
 def estimate_parameters(data: ModelData) -> FitResult:
+    # OLS auxiliar (sin covid_dummy en regresores, solo para arranque)
     x = np.column_stack(
         [
             np.ones(data.n_obs, dtype=float),
@@ -1275,32 +1297,39 @@ def estimate_parameters(data: ModelData) -> FitResult:
     ols_coefficients = np.linalg.lstsq(x, data.inflation_gap_change, rcond=None)[0]
     residuals = data.inflation_gap_change - x @ ols_coefficients
     measurement_error_std0 = float(np.std(residuals, ddof=x.shape[1]) + 1e-3)
-    nairu_initial_level0 = float(np.nanmean(data.unemployment_current))
+    # Nivel inicial NAIRU calibrado en 13.5 % para alinearse con el boceto
+    # manual (Colombia 2004-2005 tenía desempleo estructural más alto que
+    # el promedio 2005-2025 que usaría nanmean).
+    nairu_initial_level0 = 13.5
     naicu_initial_level0 = float(np.nanmean(data.icu_current))
     icu_gap_coefficient0 = float(np.clip(abs(ols_coefficients[6]), 0.03, 0.25))
 
+    # x0_base: 17 parámetros (se añadió covid_shock_coefficient en pos 9)
     x0_base = np.array(
         [
-            float(ols_coefficients[0]),
-            float(np.clip(ols_coefficients[1], -0.9, 0.9)),
-            float(np.clip(ols_coefficients[2], -0.9, 0.9)),
-            -0.02,
-            -0.01,
-            -0.005,
-            icu_gap_coefficient0,
-            float(ols_coefficients[7]),
-            float(ols_coefficients[8]),
-            0.08,
-            0.08,
-            float(np.log(max(measurement_error_std0, 1e-3))),
-            float(np.log(0.05)),
-            float(np.log(0.10)),
-            nairu_initial_level0,
-            naicu_initial_level0,
+            float(ols_coefficients[0]),       # 0  intercept
+            float(np.clip(ols_coefficients[1], -0.9, 0.9)),  # 1  lag1
+            float(np.clip(ols_coefficients[2], -0.9, 0.9)),  # 2  lag2
+            -0.02,                            # 3  unemp_coef_0
+            -0.01,                            # 4  unemp_coef_1
+            -0.005,                           # 5  unemp_coef_2
+            icu_gap_coefficient0,             # 6  icu_gap_coef
+            float(ols_coefficients[7]),       # 7  expectations_coef
+            float(ols_coefficients[8]),       # 8  oil_shock_coef
+            0.0,                              # 9  covid_shock_coef (start en 0)
+            0.08,                             # 10 nairu_adj_speed
+            0.08,                             # 11 naicu_adj_speed
+            float(np.log(max(measurement_error_std0, 1e-3))),  # 12 log_meas_std
+            float(np.log(0.05)),              # 13 log_nairu_trans_std
+            float(np.log(0.10)),              # 14 log_naicu_trans_std
+            nairu_initial_level0,             # 15 nairu_initial_level
+            naicu_initial_level0,             # 16 naicu_initial_level
         ]
     )
 
     starts = [x0_base.copy()]
+    # Grid multi-start: varía coeficientes de desempleo, UCI, velocidades y
+    # nivel inicial NAIRU (probamos 10, 13.5, 15 para escapar mínimos locales)
     for unemployment_coefficient_0 in [-0.10, -0.06]:
         for unemployment_coefficient_1 in [-0.03]:
             for unemployment_coefficient_2 in [-0.02]:
@@ -1308,15 +1337,17 @@ def estimate_parameters(data: ModelData) -> FitResult:
                     for nairu_adjustment_speed in [0.05, 0.12]:
                         for naicu_adjustment_speed in [0.05, 0.12]:
                             for naicu_transition_std0 in [0.10, 0.20]:
-                                start = x0_base.copy()
-                                start[3] = unemployment_coefficient_0
-                                start[4] = unemployment_coefficient_1
-                                start[5] = unemployment_coefficient_2
-                                start[6] = icu_gap_coefficient
-                                start[9] = nairu_adjustment_speed
-                                start[10] = naicu_adjustment_speed
-                                start[13] = np.log(naicu_transition_std0)
-                                starts.append(start)
+                                for nairu_init in [10.0, 13.5, 15.0]:
+                                    start = x0_base.copy()
+                                    start[3]  = unemployment_coefficient_0
+                                    start[4]  = unemployment_coefficient_1
+                                    start[5]  = unemployment_coefficient_2
+                                    start[6]  = icu_gap_coefficient
+                                    start[10] = nairu_adjustment_speed
+                                    start[11] = naicu_adjustment_speed
+                                    start[14] = np.log(naicu_transition_std0)
+                                    start[15] = nairu_init
+                                    starts.append(start)
 
     best_success = None
     best_any = None

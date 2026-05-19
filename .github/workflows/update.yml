@@ -1,0 +1,90 @@
+name: Actualizar NAIRU & PIB Potencial
+
+# ── Triggers ─────────────────────────────────────────────────────────────────
+on:
+  # Ejecución mensual automática: primer día de cada mes a las 06:00 UTC
+  schedule:
+    - cron: "0 6 1 * *"
+
+  # Ejecución manual desde la pestaña Actions de GitHub
+  workflow_dispatch:
+    inputs:
+      force_reestimate:
+        description: "Forzar re-estimación aunque los datos no cambien"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+
+# ── Permisos ──────────────────────────────────────────────────────────────────
+permissions:
+  contents: write   # para hacer git push con los CSV actualizados
+
+# ── Jobs ─────────────────────────────────────────────────────────────────────
+jobs:
+  update:
+    name: Pipeline completo NAIRU + PIB Potencial
+    runs-on: ubuntu-latest
+    timeout-minutes: 60   # la estimación MLE puede tomar ~5 min
+
+    steps:
+      # 1. Clonar el repositorio (incluye data/processed/ ya que no está en .gitignore)
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # historial completo para el push
+
+      # 2. Python 3.11
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # 3. Dependencias
+      - name: Instalar dependencias
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 4. Pipeline de datos (no hace scraping real — lee desde data/processed/)
+      - name: Construir Data_NAIRU.xlsx
+        run: python -m src.main --nairu-dataset
+
+      # 5. Estimación NAIRU/NAICU (puede saltarse si los datos no cambiaron,
+      #    a menos que se haya activado force_reestimate)
+      - name: Estimar NAIRU / NAICU
+        env:
+          FORCE_REESTIMATE: ${{ github.event.inputs.force_reestimate || 'false' }}
+        run: |
+          if [ "$FORCE_REESTIMATE" = "true" ]; then
+            # Borrar CSV anterior para forzar re-estimación
+            rm -f outputs/nairu/nairu_colombia.csv
+          fi
+          python -m src.main --nairu-estim
+
+      # 6. PIB Potencial Cobb-Douglas
+      - name: Calcular PIB Potencial
+        run: python -m src.main --pib-potencial
+
+      # 7. Exportar CSVs limpios a docs/data/
+      - name: Exportar datos web
+        run: python -m src.main --export-web
+
+      # 8. Commit & push solo si hay cambios en docs/data/
+      - name: Commit y push docs/data/
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add docs/data/nairu_monthly.csv \
+                  docs/data/pib_trimestral.csv \
+                  docs/data/meta.json
+
+          if git diff --cached --quiet; then
+            echo "Sin cambios en docs/data/ — nada que hacer."
+          else
+            FECHA=$(date -u +"%Y-%m-%d %H:%M UTC")
+            git commit -m "chore(data): actualización automática ${FECHA} [skip ci]"
+            git push
+          fi

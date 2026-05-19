@@ -1,0 +1,14 @@
+{
+  "last_updated": "2026-05-19 05:23",
+  "last_obs_nairu": "2025-12-01",
+  "n_obs_monthly": 250,
+  "n_obs_quarterly": 76,
+  "latest_nairu": 9.46,
+  "latest_td": 8.36,
+  "latest_naicu": 79.05,
+  "latest_uci": 77.47,
+  "latest_brecha_laboral": -1.1,
+  "latest_brecha_cd": 12.68,
+  "latest_brecha_hp": -0.64,
+  "last_obs_pib": "2023-10-01"
+}
