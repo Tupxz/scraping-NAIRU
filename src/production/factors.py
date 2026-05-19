@@ -197,7 +197,9 @@ def alpha_dinamico(df: pd.DataFrame) -> pd.DataFrame:
 
     if USE_CONSTANT_ALPHA:
         # Usar la media del período con datos DANE (2016+) como constante uniforme.
-        alpha_mean = float(alpha_serie.dropna().mean())
+        # Si todos los valores son NaN (sin datos de ingreso), usar ALPHA_FALLBACK.
+        alpha_mean_raw = alpha_serie.dropna().mean()
+        alpha_mean = ALPHA_FALLBACK if pd.isna(alpha_mean_raw) else float(alpha_mean_raw)
         df["alpha"] = alpha_mean
         logger.info(
             "Alpha CONSTANTE = %.4f (media de %d trimestres DANE 2016+)",
