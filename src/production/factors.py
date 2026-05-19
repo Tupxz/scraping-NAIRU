@@ -26,8 +26,18 @@ import pandas as pd
 logger = logging.getLogger("nairu_pipeline.production.factors")
 
 # Alpha de respaldo cuando no hay datos de ingreso DANE (antes de 2016-Q1).
-# Calibrado en el Boceto manual: participación del capital ≈ 40 %.
+# Sólo se usa si ALPHA_FIXED es None y USE_CONSTANT_ALPHA = False.
 ALPHA_FALLBACK: float = 0.40
+
+# Si se define un valor (float), se usa ese alpha fijo para TODO el período,
+# ignorando los datos de ingreso DANE y USE_CONSTANT_ALPHA.
+# Calibración estándar para Colombia en la literatura: 0.30–0.35.
+ALPHA_FIXED: float | None = 0.33
+
+# Si True y ALPHA_FIXED es None: calcula la media de alpha desde los datos
+# DANE (2016+) y la aplica uniformemente (elimina quiebre 2016).
+# Si False y ALPHA_FIXED es None: usa ALPHA_FALLBACK pre-2016 (comportamiento original).
+USE_CONSTANT_ALPHA: bool = True
 
 
 # ── Factor Trabajo ────────────────────────────────────────────────────────────
@@ -158,6 +168,13 @@ def alpha_dinamico(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
+    # ── Prioridad 1: ALPHA_FIXED definido por el usuario ─────────────────
+    if ALPHA_FIXED is not None:
+        df["alpha"] = ALPHA_FIXED
+        logger.info("Alpha FIJO = %.4f (calibración manual)", ALPHA_FIXED)
+        return df
+
+    # ── Prioridad 2: calcular desde datos de ingreso DANE ─────────────────
     cols_ingreso = ["compensation_employees", "gross_operating_surplus", "mixed_income"]
     tiene_ingreso = all(c in df.columns for c in cols_ingreso)
 
@@ -174,31 +191,28 @@ def alpha_dinamico(df: pd.DataFrame) -> pd.DataFrame:
     im  = df["mixed_income"]
 
     ingreso_total = ra + ebe + im
-    # participación del TRABAJO = RA / ingreso_total → alpha (capital) = 1 − eso
-    # Nota: la convención Cobb-Douglas en el Boceto usa alpha = participación capital
-    # Los datos de ingreso DANE miden la parte del TRABAJO (RA) y el capital (EBE+IM).
     # α = (EBE + IM) / (RA + EBE + IM)  ← participación del capital
-    alpha_dinamico_series = (ebe + im) / ingreso_total
+    alpha_serie = (ebe + im) / ingreso_total
+    alpha_serie = alpha_serie.clip(0.20, 0.80)
 
-    # Reemplazar NaN (antes de 2016-Q1) con el valor de respaldo
-    alpha_dinamico_series = alpha_dinamico_series.where(
-        alpha_dinamico_series.notna(), other=ALPHA_FALLBACK
-    )
+    if USE_CONSTANT_ALPHA:
+        # Usar la media del período con datos DANE (2016+) como constante uniforme.
+        alpha_mean = float(alpha_serie.dropna().mean())
+        df["alpha"] = alpha_mean
+        logger.info(
+            "Alpha CONSTANTE = %.4f (media de %d trimestres DANE 2016+)",
+            alpha_mean, alpha_serie.notna().sum(),
+        )
+    else:
+        # Comportamiento dinámico: reemplaza NaN pre-2016 con ALPHA_FALLBACK
+        alpha_serie = alpha_serie.where(alpha_serie.notna(), other=ALPHA_FALLBACK)
+        df["alpha"] = alpha_serie
+        logger.debug(
+            "Alpha DINÁMICO: media=%.3f, min=%.3f, max=%.3f (fallback=%.2f para %d trim.)",
+            df["alpha"].mean(), df["alpha"].min(), df["alpha"].max(),
+            ALPHA_FALLBACK, df["alpha"].isna().sum(),
+        )
 
-    # Clamping de seguridad: alpha debe estar en (0.2, 0.8)
-    alpha_dinamico_series = alpha_dinamico_series.clip(0.20, 0.80)
-
-    df["alpha"] = alpha_dinamico_series
-
-    n_dinamico = alpha_dinamico_series.notna().sum() - (ingreso_total.isna()).sum()
-    logger.debug(
-        "Alpha: media=%.3f, min=%.3f, max=%.3f (fallback=%.2f para %d trimestres)",
-        df["alpha"].mean(),
-        df["alpha"].min(),
-        df["alpha"].max(),
-        ALPHA_FALLBACK,
-        df["alpha"].isna().sum(),
-    )
     return df
 
 
