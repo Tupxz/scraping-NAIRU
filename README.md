@@ -173,7 +173,7 @@ scraping-NAIRU/
 │   ├── nairu/                 # Modelo Kalman biestado para NAIRU/NAICU
 │   ├── production/            # Cobb-Douglas: factors.py, tfp.py, pib_potencial.py, excel_writer.py
 │   └── pipelines/             # run_*.py — un orquestador por fuente + run_all + run_merge
-├── tests/                     # 448 tests offline (CSVs sintéticos, sin red)
+├── tests/                     # 490 tests offline (CSVs sintéticos, sin red)
 ├── data/
 │   ├── raw/                   # Cacheado de descargas (gitignored)
 │   ├── inputs/                # Inputs manuales (PIB_USA.xlsx, PIB_CO.xlsx)
@@ -290,6 +290,7 @@ El dataset consolidado va a `data/final/nairu_dataset.csv`, no a `outputs/`. `ou
 - Gómez & Julio (2000). *Transmission Mechanisms and Inflation Targeting: the Case of Colombia*.
 - *2022-04-28 PIB tendencial.pdf* (ver `docs/bib/`). Método del profesor Álvaro.
 - Penn World Tables 11.0 — [www.rug.nl/ggdc/productivity/pwt](https://www.rug.nl/ggdc/productivity/pwt/).
+- Phillips, P.C.B. & Shi, Z. (2021). *Boosting: Why You Can Use the HP Filter*. International Economic Review, 62(2), 521–570. — Base del filtro BHP implementado en `src/production/tfp.py`.
 - DANE — Gran Encuesta Integrada de Hogares (GEIH), Cuentas Nacionales, IPC.
 
 ---
