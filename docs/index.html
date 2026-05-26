@@ -304,7 +304,7 @@
     <div class="chart-card">
       <div class="card-header">
         <div class="card-title">Brecha del Producto — PIB Potencial (trimestral)</div>
-        <div class="card-desc">Cobb-Douglas (C-D) y Hodrick-Prescott (HP) · % del PIB potencial</div>
+        <div class="card-desc">Cobb-Douglas (C-D) y Boosted Hodrick-Prescott (BHP) · % del PIB potencial</div>
       </div>
       <div class="plotly-container" id="chart-brechas-q"></div>
     </div>
@@ -318,7 +318,7 @@
     <div class="chart-card">
       <div class="card-header">
         <div class="card-title">PIB Observado vs PIB Potencial (índice 2005 = 100)</div>
-        <div class="card-desc">Función de producción Cobb-Douglas y tendencia HP</div>
+        <div class="card-desc">Función de producción Cobb-Douglas y tendencia BHP</div>
       </div>
       <div class="plotly-container" id="chart-pib"></div>
     </div>
@@ -599,7 +599,7 @@ function renderBrechasM(rows) {
 function renderBrechasQ(rows) {
   const x     = rows.map(r => r.fecha);
   const bCD   = toNum(rows, 'brecha_cd');
-  const bHP   = toNum(rows, 'brecha_hp');
+  const bHP   = toNum(rows, 'brecha_bhp');
   const zero  = x.map(() => 0);
 
   const fillColor = v => v >= 0 ? 'rgba(26,58,107,.18)' : 'rgba(232,78,15,.18)';
@@ -615,7 +615,7 @@ function renderBrechasQ(rows) {
   const tracesLine = [
     { x, y: zero, mode: 'lines', line: { color: '#555', width: 1, dash: 'dot' },
       showlegend: false, hoverinfo: 'skip' },
-    { x, y: bHP, name: 'Brecha HP',
+    { x, y: bHP, name: 'Brecha BHP',
       mode: 'lines', line: { color: '#555', width: 1.8, dash: 'dash' } },
   ];
 
@@ -631,19 +631,19 @@ function renderPIB(rows) {
   const x    = rows.map(r => r.fecha);
   const obs  = toNum(rows, 'pib_obs_idx');
   const pot  = toNum(rows, 'pib_pot_idx');
-  const hp   = toNum(rows, 'pib_hp_idx');
+  const hp   = toNum(rows, 'pib_bhp_idx');
 
   // fallback si no hay columna _idx
   const obsF  = obs.some(v => v !== null) ? obs  : toNum(rows, 'pib_obs');
   const potF  = pot.some(v => v !== null) ? pot  : toNum(rows, 'pib_pot');
-  const hpF   = hp.some(v => v !== null)  ? hp   : toNum(rows, 'pib_hp');
+  const hpF   = hp.some(v => v !== null)  ? hp   : toNum(rows, 'pib_bhp');
 
   const traces = [
     { x, y: obsF, name: 'PIB observado',
       mode: 'lines', line: { color: '#e84e0f', width: 2 } },
     { x, y: potF, name: 'PIB potencial (C-D)',
       mode: 'lines', line: { color: '#1a3a6b', width: 2.5 } },
-    { x, y: hpF,  name: 'Tendencia HP',
+    { x, y: hpF,  name: 'Tendencia BHP',
       mode: 'lines', line: { color: '#888', width: 1.5, dash: 'dash' } },
   ];
 

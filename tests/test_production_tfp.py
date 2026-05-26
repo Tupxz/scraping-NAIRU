@@ -7,7 +7,9 @@ import pandas as pd
 import pytest
 
 from src.production.tfp import (
+    BHP_ITERATIONS,
     HP_LAMBDA_QUARTERLY,
+    boosted_hp_filter,
     compute_tfp,
     compute_tfp_observed,
     compute_tfp_trend,
@@ -93,6 +95,77 @@ class TestHpFilter:
         pd.testing.assert_series_equal(
             reconstruido, s, check_names=False, rtol=1e-6,
         )
+
+
+# ── boosted_hp_filter ────────────────────────────────────────────────────────
+
+class TestBoostedHpFilter:
+    def test_retorna_cycle_y_trend(self):
+        s = _serie_sintetica()
+        cycle, trend = boosted_hp_filter(s)
+        assert len(cycle) == len(s)
+        assert len(trend) == len(s)
+
+    def test_cycle_mas_trend_igual_serie(self):
+        """cycle + trend debe reconstruir la serie original."""
+        s = _serie_sintetica(50)
+        cycle, trend = boosted_hp_filter(s)
+        reconstruido = cycle + trend
+        pd.testing.assert_series_equal(
+            reconstruido, s, check_names=False, rtol=1e-6,
+        )
+
+    def test_ciclo_bhp_menor_que_hp(self):
+        """Con iter>1, el ciclo BHP es más pequeño que el ciclo HP simple.
+
+        Cada iteración aplica HP sobre el ciclo residual, extrayendo
+        componentes de alta frecuencia sucesivos; el ciclo final es menor.
+        """
+        s = _serie_sintetica(60)
+        cycle_hp,  _ = hp_filter(s)
+        cycle_bhp, _ = boosted_hp_filter(s, iterations=3)
+        assert cycle_bhp.std() < cycle_hp.std()
+
+    def test_trend_bhp_mas_cercana_a_serie(self):
+        """La tendencia BHP (iter>1) tiene mayor varianza que la tendencia HP.
+
+        Como el ciclo BHP es más pequeño, la tendencia = serie − ciclo
+        retiene más varianza de la serie original.
+        """
+        s = _serie_sintetica(60)
+        _, trend_hp  = hp_filter(s)
+        _, trend_bhp = boosted_hp_filter(s, iterations=3)
+        assert trend_bhp.std() >= trend_hp.std()
+
+    def test_maneja_nan_al_inicio(self):
+        s = _serie_sintetica(60)
+        s.iloc[:12] = np.nan
+        cycle, trend = boosted_hp_filter(s)
+        assert cycle.iloc[:12].isna().all()
+        assert trend.iloc[:12].isna().all()
+        assert trend.iloc[12:].notna().all()
+
+    def test_error_con_pocos_datos(self):
+        s = pd.Series([1.0, 2.0, 3.0])
+        with pytest.raises(ValueError, match="8 observaciones"):
+            boosted_hp_filter(s)
+
+    def test_indice_preservado(self):
+        s = _serie_sintetica(40)
+        cycle, trend = boosted_hp_filter(s)
+        assert list(cycle.index) == list(s.index)
+        assert list(trend.index) == list(s.index)
+
+    def test_iteraciones_1_equivale_hp(self):
+        """Con iterations=1 el resultado debe ser igual al HP estándar."""
+        s = _serie_sintetica(50)
+        cycle_hp,  trend_hp  = hp_filter(s)
+        cycle_bhp, trend_bhp = boosted_hp_filter(s, iterations=1)
+        pd.testing.assert_series_equal(trend_bhp, trend_hp, check_names=False, rtol=1e-6)
+        pd.testing.assert_series_equal(cycle_bhp, cycle_hp, check_names=False, rtol=1e-6)
+
+    def test_constante_bhp_iterations(self):
+        assert BHP_ITERATIONS == 3
 
 
 # ── compute_tfp_observed ──────────────────────────────────────────────────────

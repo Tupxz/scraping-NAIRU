@@ -58,9 +58,9 @@ PIB_EXPORT_COLS = {
     "quarter":       "trimestre",
     "PIB":           "pib_obs",
     "PIB_pot":       "pib_pot",
-    "PIB_tend_HP":   "pib_hp",
+    "PIB_tend_BHP":  "pib_bhp",
     "Brecha_CD":     "brecha_cd",
-    "Brecha_HP":     "brecha_hp",
+    "Brecha_BHP":    "brecha_bhp",
     "alpha":         "alpha",
     "A_obs":         "ptf_obs",
     "A_pot":         "ptf_pot",
@@ -115,7 +115,7 @@ def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
         # Índice 2005=100 para el gráfico de niveles
         base = pib.loc[pib["anio"] == 2005, "pib_obs"].mean()
         if base and base > 0:
-            for col in ["pib_obs", "pib_pot", "pib_hp"]:
+            for col in ["pib_obs", "pib_pot", "pib_bhp"]:
                 if col in pib.columns:
                     pib[f"{col}_idx"] = (pib[col] / base * 100).round(2)
         pib = _round_floats(pib)
@@ -146,7 +146,7 @@ def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
     if pib is not None and len(pib):
         last_pib = pib.iloc[-1]
         meta["latest_brecha_cd"] = round(float(last_pib.get("brecha_cd", 0)), 2)
-        meta["latest_brecha_hp"] = round(float(last_pib.get("brecha_hp", 0)), 2)
+        meta["latest_brecha_bhp"] = round(float(last_pib.get("brecha_bhp", 0)), 2)
         meta["last_obs_pib"]     = str(pib["fecha"].max())[:10]
 
     out_meta = docs_data_dir / "meta.json"

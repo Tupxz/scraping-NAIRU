@@ -56,7 +56,7 @@ def _df_completo(n: int = 60) -> pd.DataFrame:
 class TestComputePibPotencial:
     def test_produce_cuatro_columnas(self):
         df = compute_pib_potencial(_df_completo())
-        for col in ("PIB_pot", "Brecha_CD", "PIB_tend_HP", "Brecha_HP"):
+        for col in ("PIB_pot", "Brecha_CD", "PIB_tend_BHP", "Brecha_BHP"):
             assert col in df.columns, f"Falta columna: {col}"
 
     def test_pib_pot_positivo(self):
@@ -70,7 +70,7 @@ class TestComputePibPotencial:
 
     def test_brecha_hp_razonable(self):
         df = compute_pib_potencial(_df_completo())
-        assert df["Brecha_HP"].abs().max() < 20.0
+        assert df["Brecha_BHP"].abs().max() < 20.0
 
     def test_brecha_cero_cuando_pib_igual_potencial(self):
         """Si PIB == PIB_pot, la brecha CD debe ser 0."""
@@ -96,10 +96,10 @@ class TestComputePibPotencial:
         compute_pib_potencial(df)
         assert set(df.columns) == cols_antes
 
-    def test_pib_tend_hp_mas_suave_que_pib(self):
-        """La tendencia HP del PIB debe ser más suave que el PIB observado."""
+    def test_pib_tend_bhp_mas_suave_que_pib(self):
+        """La tendencia BHP del PIB debe ser más suave que el PIB observado."""
         df = compute_pib_potencial(_df_completo())
-        assert df["PIB_tend_HP"].std() <= df["PIB"].std()
+        assert df["PIB_tend_BHP"].std() <= df["PIB"].std()
 
 
 # ── Pipeline integrado (factors → tfp → pib_potencial) ───────────────────────
@@ -136,7 +136,7 @@ class TestPipelineIntegrado:
         df = compute_all_factors(df)
         df = compute_tfp(df)
         df = compute_pib_potencial(df)
-        for col in ("PIB_pot", "Brecha_CD", "PIB_tend_HP", "Brecha_HP"):
+        for col in ("PIB_pot", "Brecha_CD", "PIB_tend_BHP", "Brecha_BHP"):
             assert col in df.columns
             assert df[col].notna().any(), f"Columna {col} todo NaN"
 
@@ -146,8 +146,8 @@ class TestPipelineIntegrado:
         df = compute_all_factors(df)
         df = compute_tfp(df)
         df = compute_pib_potencial(df)
-        # La brecha HP tiene media estructuralmente cercana a 0 por construcción del HP
-        assert abs(df["Brecha_HP"].mean()) < 3.0
+        # La brecha BHP tiene media estructuralmente cercana a 0 por construcción del BHP
+        assert abs(df["Brecha_BHP"].mean()) < 3.0
 
 
 # ── QUARTERLY_OUTPUT_COLS ─────────────────────────────────────────────────────
@@ -160,5 +160,5 @@ class TestQuarterlyOutputCols:
         assert QUARTERLY_OUTPUT_COLS[0] == "date"
 
     def test_columnas_resultado_presentes(self):
-        for col in ("PIB_pot", "Brecha_CD", "PIB_tend_HP", "Brecha_HP"):
+        for col in ("PIB_pot", "Brecha_CD", "PIB_tend_BHP", "Brecha_BHP"):
             assert col in QUARTERLY_OUTPUT_COLS
