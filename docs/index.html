@@ -138,6 +138,82 @@
       gap: .5rem;
     }
 
+    /* ── Download section ───────────────────────────────── */
+    .download-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1.4rem 1.6rem 1.6rem;
+      margin-top: .5rem;
+    }
+    .download-section .section-title {
+      margin: 0 0 1rem;
+    }
+    .download-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: .85rem;
+    }
+    .dl-btn {
+      display: flex;
+      align-items: center;
+      gap: .85rem;
+      padding: .85rem 1.1rem;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      background: #f9fafd;
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color .18s, background .18s, box-shadow .18s, transform .12s;
+      cursor: pointer;
+    }
+    .dl-btn:hover {
+      border-color: var(--primary);
+      background: #fff;
+      box-shadow: 0 4px 16px rgba(26,58,107,.12);
+      transform: translateY(-2px);
+    }
+    .dl-btn:active {
+      transform: translateY(0);
+      box-shadow: none;
+    }
+    .dl-btn .dl-icon {
+      flex-shrink: 0;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .dl-btn .dl-icon.csv  { background: rgba(26,58,107,.1);  color: var(--primary); }
+    .dl-btn .dl-icon.json { background: rgba(232,78,15,.1);  color: var(--accent); }
+    .dl-btn .dl-info { flex: 1; min-width: 0; }
+    .dl-btn .dl-name {
+      font-size: .88rem;
+      font-weight: 600;
+      color: var(--primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dl-btn .dl-desc {
+      font-size: .75rem;
+      color: var(--muted);
+      margin-top: .1rem;
+      line-height: 1.3;
+    }
+    .dl-btn .dl-arrow {
+      flex-shrink: 0;
+      color: var(--muted);
+      transition: color .18s, transform .18s;
+    }
+    .dl-btn:hover .dl-arrow {
+      color: var(--primary);
+      transform: translateY(2px);
+    }
+
     /* ── Footer ─────────────────────────────────────────── */
     footer {
       text-align: center;
@@ -257,6 +333,77 @@
     </div>
 
   </div>
+  <!-- ══ DOWNLOAD SECTION ══ -->
+  <div class="section-title">Descargar Datos</div>
+  <div class="download-section">
+    <div class="download-grid">
+
+      <a class="dl-btn" href="data/nairu_monthly.csv" download="nairu_monthly.csv">
+        <div class="dl-icon csv">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="8" y1="13" x2="16" y2="13"/>
+            <line x1="8" y1="17" x2="16" y2="17"/>
+            <line x1="8" y1="9" x2="10" y2="9"/>
+          </svg>
+        </div>
+        <div class="dl-info">
+          <div class="dl-name">nairu_monthly.csv</div>
+          <div class="dl-desc">NAIRU, NAICU, brechas y variables mensuales</div>
+        </div>
+        <div class="dl-arrow">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+          </svg>
+        </div>
+      </a>
+
+      <a class="dl-btn" href="data/pib_trimestral.csv" download="pib_trimestral.csv">
+        <div class="dl-icon csv">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="8" y1="13" x2="16" y2="13"/>
+            <line x1="8" y1="17" x2="16" y2="17"/>
+            <line x1="8" y1="9" x2="10" y2="9"/>
+          </svg>
+        </div>
+        <div class="dl-info">
+          <div class="dl-name">pib_trimestral.csv</div>
+          <div class="dl-desc">PIB potencial, PTF y brecha del producto trimestral</div>
+        </div>
+        <div class="dl-arrow">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+          </svg>
+        </div>
+      </a>
+
+      <a class="dl-btn" href="data/meta.json" download="meta.json">
+        <div class="dl-icon json">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <polyline points="10 13 8 13 8 17 10 17"/>
+            <polyline points="14 13 16 13 16 17 14 17"/>
+            <line x1="12" y1="13" x2="12" y2="17"/>
+          </svg>
+        </div>
+        <div class="dl-info">
+          <div class="dl-name">meta.json</div>
+          <div class="dl-desc">Metadatos: última actualización y valores KPI</div>
+        </div>
+        <div class="dl-arrow">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+          </svg>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
 </main>
 
 <!-- ══════════════════ FOOTER ══════════════════ -->
@@ -265,10 +412,6 @@
   <a href="https://github.com/features/actions" target="_blank">GitHub Actions</a>.
   Fuentes: DANE, BanRep, ANDI, PWT 11.0, FRED/EIA.
   Metodología: Kalman bi-estado MLE + Cobb-Douglas HP (λ=1600).
-  <br>
-  <a href="data/nairu_monthly.csv">⬇ nairu_monthly.csv</a> ·
-  <a href="data/pib_trimestral.csv">⬇ pib_trimestral.csv</a> ·
-  <a href="data/meta.json">⬇ meta.json</a>
 </footer>
 
 <!-- ══════════════════ JAVASCRIPT ══════════════════ -->
