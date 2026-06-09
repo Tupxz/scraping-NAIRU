@@ -90,12 +90,6 @@ VIOG_EXPORT_COLS = {
 }
 VIOG_GAP_COLS = ["viog", "viog_inv", "bhp", "cf", "bk", "bw", "kalman"]
 VIOG_START = "2005-01-01"
-# El filtro Kalman (UCM) de VIOG-Colombia arranca en 2005 y tiene un transitorio
-# de inicialización (~2-3 años) con brechas implausibles (203% en 2005-Q1) que
-# contamina el compuesto. Se ocultan Kalman y compuesto hasta que converge; los
-# otros 4 filtros (BK/CF/BW/BHP) son estables y se muestran desde VIOG_START.
-KALMAN_BURNIN = "2008-01-01"
-VIOG_BURNIN_COLS = ["kalman", "viog", "viog_inv"]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -162,11 +156,6 @@ def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
         for col in VIOG_GAP_COLS:
             if col in viog.columns:
                 viog[col] = viog[col] * 100.0
-        # Ocultar el burn-in del Kalman (y los compuestos que contamina) hasta converger
-        _burnin = viog["fecha"] < pd.Timestamp(KALMAN_BURNIN)
-        for col in VIOG_BURNIN_COLS:
-            if col in viog.columns:
-                viog.loc[_burnin, col] = float("nan")
         viog["fecha"] = viog["fecha"].dt.strftime("%Y-%m-%d")
         viog = _round_floats(viog)
         out_viog = docs_data_dir / "viog_trimestral.csv"

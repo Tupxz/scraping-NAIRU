@@ -79,7 +79,10 @@ jobs:
           scrape --banrep         # BANREP inflación (SUAMECA)
           scrape --tes            # BANREP TES Cero Cupón
           scrape --brent          # FRED Brent
-          scrape --viog-co        # brecha VIOG Colombia (depende de --dane-gdp)
+          # NOTA: --viog-co NO se corre en automático. El filtro Kalman (UCM) de
+          # VIOG-Colombia puede diverger con datos nuevos (dio un transitorio de
+          # ~200% en 2005-Q1 al recomputar). El VIOG se mantiene estable desde su
+          # CSV committeado (como PWT) y se regenera a mano + verificando.
 
       # ── 5. MODELO (sobre datos frescos o cacheados) ──────────────────
       # Estos pasos SÍ deben tener éxito: si el modelo falla no se publica
