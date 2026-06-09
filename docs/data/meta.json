@@ -1,14 +1,14 @@
 {
-  "last_updated": "2026-05-19 13:02",
+  "last_updated": "2026-06-09 02:05",
   "last_obs_nairu": "2025-12-01",
   "n_obs_monthly": 250,
-  "n_obs_quarterly": 76,
+  "n_obs_quarterly": 84,
   "latest_nairu": 9.46,
   "latest_td": 8.36,
   "latest_naicu": 79.05,
   "latest_uci": 77.47,
   "latest_brecha_laboral": -1.1,
-  "latest_brecha_cd": -0.96,
-  "latest_brecha_hp": -0.64,
-  "last_obs_pib": "2023-10-01"
+  "latest_brecha_cd": 0.5,
+  "latest_brecha_bhp": -0.4,
+  "last_obs_pib": "2025-10-01"
 }
