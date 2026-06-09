@@ -237,6 +237,18 @@ Todos los tests son **offline**: usan CSVs sintéticos en `tmp_path`, sin llamad
 
 ## 8. Historial de mejoras y siguientes pasos
 
+### Ciclo 2026-06-09
+
+| # | Mejora | Archivos afectados |
+|---|---|---|
+| A | **α fijado en 0.4** (antes 0.33) — alineado con el Boceto / Función de Producción de los profesores; unifica las dos rutas de producción. | `src/production/factors.py` |
+| B | **Capital humano H incorporado** al término de trabajo: `Y = A·K^α·(H·L)^(1−α)` (confirmado contra la celda B7 de `FUNCION DE PRODUCCION.xlsx`). | `tfp.py`, `pib_potencial.py`, `build_production_function_dataset.py`, +3 tests |
+| C | **Capital por inventario permanente con FBKF DANE** — reemplaza la K anual de PWT (cortaba en 2023); el PIB potencial y las brechas llegan al trimestre corriente. De PWT solo se usa δ (promedio) y H. | `src/pipelines/run_pib_potencial.py` |
+| D | **Vista VIOG en el tablero** — gráfica "Brecha del Producto — VIOG (5 filtros)" + `docs/data/viog_trimestral.csv` + botón de descarga. Dos lecturas del PIB potencial (función de producción + VIOG). | `export_web_data.py`, `docs/index.html`, `update.yml` |
+| E | **Workflow mensual que scrapea de verdad** — `update.yml` descarga cada fuente automatizable de forma resiliente (si una falla → warning + dato cacheado). NO scrapea PWT (anual + bloquea bots) ni PIB_USA (muestra). | `.github/workflows/update.yml` |
+| F | **Fix chequeo de coherencia IPC** — `run_derived_checks` compara `ipc_yoy` contra la suma móvil de 12 meses (antes `ipc_mom×12`, que amplificaba la volatilidad estacional). Desbloquea `--merge` / `--all`. | `src/quality_checks.py` |
+| G | **Limpieza** — eliminados `agent_llm.py` (Ollama) y `pyproject.toml.xlsx` (duplicado); quitada la gráfica PTF/α del tablero. | varios |
+
 ### Ciclo 2026-05-26
 
 | # | Mejora | Archivos afectados |
@@ -261,7 +273,7 @@ Todos los tests son **offline**: usan CSVs sintéticos en `tmp_path`, sin llamad
 | 10 | `notebooks/exploration.ipynb` vacío | ⚠️ Pendiente | Borrar manualmente: `rm notebooks/exploration.ipynb` |
 | 11 | Pipelines secuenciales en `run_all` | 🔮 Futuro | Paralelizar fuentes independientes con `concurrent.futures` (cuidado con APIs del DANE) |
 | 12 | ANDI EOIC procesa PDFs secuencialmente | 🔮 Futuro | `ProcessPoolExecutor` para parseo de N PDFs (CPU-bound) |
-| 13 | Falta CI/CD (GitHub Actions) | 🔮 Futuro | Workflow básico `pip install -e ".[dev]" && pytest` |
+| 13 | Falta CI/CD (GitHub Actions) | ✅ Resuelto | `tests.yml` (matriz 3.11/3.12 + lint) y `update.yml` (scraping mensual resiliente + publicación del tablero) |
 
 ---
 

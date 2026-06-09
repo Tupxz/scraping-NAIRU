@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.4.0] — 2026-06-09
+
+### Agregado
+- **Vista VIOG en el tablero** — `docs/data/viog_trimestral.csv` (compuesto + 5 filtros) y
+  gráfica "Brecha del Producto — VIOG (5 filtros)" en `docs/index.html`, con botón de
+  descarga. El tablero muestra ahora las **dos lecturas** del PIB potencial (función de
+  producción + VIOG).
+- **Capital por inventario permanente con FBKF DANE** (`run_pib_potencial._build_capital_quarterly`):
+  el PIB potencial y las brechas llegan al trimestre corriente (antes cortaban en 2023, el
+  último año de PWT). De PWT solo se usa δ (promedio) y el capital humano H. K continuo, sin
+  empalmes.
+- **Capital humano H** en la función de producción: `Y = A·K^α·(H·L)^(1−α)` (confirmado
+  contra `FUNCION DE PRODUCCION.xlsx`; 3 tests nuevos).
+- **Scraping mensual real** en `.github/workflows/update.yml`: descarga cada fuente
+  automatizable de forma resiliente (si una falla → warning + dato cacheado). NO scrapea PWT
+  (anual + bloquea bots) ni PIB_USA (muestra).
+
+### Cambiado
+- **α fijado en 0.4** (`factors.ALPHA_FIXED`, antes 0.33), alineado con el Boceto y la
+  Función de Producción de los profesores. Unifica las dos rutas de producción.
+- `run_derived_checks` (`quality_checks.py`): la coherencia del IPC se valida con la suma
+  móvil de 12 meses (`Σ ipc_mom ≈ ipc_yoy`) en vez de `ipc_mom × 12` (incorrecto: amplificaba
+  la volatilidad estacional). Desbloquea `--merge` y `--all`.
+- Badge de tests del README: 490 → 493.
+
+### Removido
+- `andi_agent/agent_llm.py` (experimento con Ollama; el ANDI canónico vive en
+  `src/sources/andi/eoic.py`).
+- `data/inputs/pyproject.toml.xlsx` (duplicado byte-idéntico del Boceto).
+- Gráfica "PTF Observada y Potencial · Share del Capital (α)" del tablero.
+
 ## [0.3.0] — 2026-05-18
 
 ### Agregado
