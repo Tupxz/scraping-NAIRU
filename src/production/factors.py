@@ -31,8 +31,9 @@ ALPHA_FALLBACK: float = 0.40
 
 # Si se define un valor (float), se usa ese alpha fijo para TODO el período,
 # ignorando los datos de ingreso DANE y USE_CONSTANT_ALPHA.
-# Calibración estándar para Colombia en la literatura: 0.30–0.35.
-ALPHA_FIXED: float | None = 0.33
+# Fuente de verdad = Boceto / Función de Producción de los profesores (Alpha K = 0.4).
+# Debe coincidir con ALPHA en build_production_function_dataset.py.
+ALPHA_FIXED: float | None = 0.4
 
 # Si True y ALPHA_FIXED es None: calcula la media de alpha desde los datos
 # DANE (2016+) y la aplica uniformemente (elimina quiebre 2016).
@@ -142,7 +143,7 @@ def alpha_dinamico(df: pd.DataFrame) -> pd.DataFrame:
 
     Fórmula
     -------
-    α_t = RA_t / (RA_t + EBE_t + IM_t)
+    α_t = (EBE_t + IM_t) / (RA_t + EBE_t + IM_t)   ← participación del capital
 
     donde:
         RA  = Remuneración de los Asalariados (compensation_employees)
@@ -150,7 +151,10 @@ def alpha_dinamico(df: pd.DataFrame) -> pd.DataFrame:
         IM  = Ingreso Mixto                    (mixed_income)
 
     El denominador es el Ingreso Nacional aproximado a precios corrientes.
-    ``1 − α`` es la participación del trabajo.
+    ``1 − α = RA / (RA+EBE+IM)`` es la participación del trabajo.
+
+    Nota: por defecto el pipeline usa ``ALPHA_FIXED = 0.4`` (calibración de los
+    profesores), por lo que esta rama dinámica queda disponible pero inactiva.
 
     Para periodos anteriores a 2016-Q1 (inicio de la serie de ingreso DANE),
     se usa ``ALPHA_FALLBACK = 0.40`` como calibración de respaldo.

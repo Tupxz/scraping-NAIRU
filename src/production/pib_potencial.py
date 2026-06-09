@@ -4,7 +4,7 @@ Implementa dos metodologías complementarias:
 
 1. **Cobb-Douglas (CD):** usa la PTF tendencial y los factores potenciales.
 
-       PIB_pot   = A_pot × K_pot^alpha × L_pot^(1 − alpha)
+       PIB_pot   = A_pot × K_pot^alpha × (H · L_pot)^(1 − alpha)
        Brecha_CD = (PIB − PIB_pot) / PIB_pot × 100
 
 2. **Boosted Hodrick-Prescott (BHP):** tendencia estadística del PIB observado
@@ -50,6 +50,7 @@ def compute_pib_potencial(
     ----------
     df : pd.DataFrame
         Requiere columnas: ``PIB``, ``A_pot``, ``K_pot``, ``L_pot``, ``alpha``.
+        Opcional: ``H`` (capital humano; si falta se asume H = 1).
     lamb : float
         Lambda del filtro BHP para la brecha estadística. Default: 1600.
     iterations : int
@@ -81,7 +82,12 @@ def compute_pib_potencial(
     l_pot = df["L_pot"].where(df["L_pot"] > 0)
     alpha = df["alpha"]
 
-    df["PIB_pot"] = df["A_pot"] * (k_pot ** alpha) * (l_pot ** (1.0 - alpha))
+    # Trabajo potencial efectivo: H · L_pot (mismo capital humano que en A_obs,
+    # para que la PTF y el PIB potencial sean consistentes). H = 1 si no existe.
+    h = df["H"] if "H" in df.columns else 1.0
+    l_pot_ef = h * l_pot
+
+    df["PIB_pot"] = df["A_pot"] * (k_pot ** alpha) * (l_pot_ef ** (1.0 - alpha))
 
     # ── 2. Brecha CD ──────────────────────────────────────────────────────
     df["Brecha_CD"] = (df["PIB"] - df["PIB_pot"]) / df["PIB_pot"] * 100.0
@@ -110,7 +116,7 @@ QUARTERLY_OUTPUT_COLS: list[str] = [
     "year", "quarter",
     # Insumos macroeconómicos
     "PIB",
-    "K", "UCI", "NAICU_q",
+    "K", "UCI", "NAICU_q", "H",
     "TD", "TGP", "PET", "NAIRU_q",
     "compensation_employees", "gross_operating_surplus", "mixed_income",
     # Factores calculados

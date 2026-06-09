@@ -1,6 +1,6 @@
 # NAIRU Colombia — Pipeline de Datos Macroeconómicos
 
-[![tests](https://img.shields.io/badge/tests-490%20passing-success.svg)](#6-tests)
+[![tests](https://img.shields.io/badge/tests-493%20passing-success.svg)](#6-tests)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](#3-instalación)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -218,9 +218,9 @@ Todos los tests son **offline**: usan CSVs sintéticos en `tmp_path`, sin llamad
 | `test_merge_derived.py` | 16 | Variables derivadas ipc_yoy, ipc_mom, inflation_gap |
 | `test_viog.py` | 33 | 5 filtros (BHP/BK/CF/BW/Kalman LLT), pesos VIOG, empalme 1994/2005/2015 |
 | `test_production_factors.py` | 21 | L, K, α dinámico, fallbacks NAIRU/NAICU |
-| `test_production_tfp.py` | 27 | `hp_filter`, `boosted_hp_filter` (9 casos), PTF observada y tendencial BHP |
+| `test_production_tfp.py` | 30 | `hp_filter`, `boosted_hp_filter` (9 casos), PTF observada y tendencial BHP, capital humano H |
 | `test_production_pib_potencial.py` | 13 | PIB*, brechas CD y BHP, pipeline integrado |
-| **Total** | **490** | **~ 8 s** |
+| **Total** | **493** | **~ 8 s** |
 
 ---
 

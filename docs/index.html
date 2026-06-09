@@ -323,15 +323,6 @@
       <div class="plotly-container" id="chart-pib"></div>
     </div>
 
-    <!-- Chart 6: PTF y Alpha -->
-    <div class="chart-card">
-      <div class="card-header">
-        <div class="card-title">PTF Observada y Potencial · Share del Capital (α)</div>
-        <div class="card-desc">Productividad Total de los Factores y participación estimada</div>
-      </div>
-      <div class="plotly-container" id="chart-ptf"></div>
-    </div>
-
   </div>
   <!-- ══ DOWNLOAD SECTION ══ -->
   <div class="section-title">Descargar Datos</div>
@@ -371,7 +362,7 @@
         </div>
         <div class="dl-info">
           <div class="dl-name">pib_trimestral.csv</div>
-          <div class="dl-desc">PIB potencial, PTF y brecha del producto trimestral</div>
+          <div class="dl-desc">PIB potencial y brecha del producto trimestral</div>
         </div>
         <div class="dl-arrow">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -482,9 +473,8 @@ async function loadAll() {
     if (pib) {
       renderBrechasQ(pib);
       renderPIB(pib);
-      renderPTF(pib);
     } else {
-      ['chart-brechas-q', 'chart-pib', 'chart-ptf'].forEach(id => {
+      ['chart-brechas-q', 'chart-pib'].forEach(id => {
         document.getElementById(id).innerHTML =
           '<div class="state-msg">ℹ️ Datos PIB no disponibles aún — ejecuta --pib-potencial</div>';
       });
@@ -650,38 +640,6 @@ function renderPIB(rows) {
   const suffix = obs.some(v => v !== null) ? '' : ' (billones COP)';
   Plotly.newPlot('chart-pib', traces,
     baseLayout({ yaxis: { ticksuffix: suffix } }), CONF);
-}
-
-/* ─── Chart 6: PTF y Alpha ────────────────────────────────── */
-function renderPTF(rows) {
-  const x      = rows.map(r => r.fecha);
-  const ptfObs = toNum(rows, 'ptf_obs');
-  const ptfPot = toNum(rows, 'ptf_pot');
-  const alpha  = toNum(rows, 'alpha');
-
-  const traces = [
-    { x, y: ptfObs, name: 'PTF observada',
-      mode: 'lines', line: { color: '#e84e0f', width: 2 } },
-    { x, y: ptfPot, name: 'PTF potencial (HP)',
-      mode: 'lines', line: { color: '#1a3a6b', width: 2.5 } },
-    { x, y: alpha,  name: 'α (share capital)',
-      mode: 'lines', line: { color: '#2e7d32', width: 1.8 },
-      yaxis: 'y2' },
-  ];
-
-  const layout = baseLayout({
-    yaxis2: {
-      overlaying: 'y',
-      side: 'right',
-      showgrid: false,
-      zeroline: false,
-      tickfont: { size: 11 },
-      title: { text: 'α', font: { size: 11 } },
-    },
-    legend: { orientation: 'h', y: -0.22, x: 0.5, xanchor: 'center', font: { size: 11 } },
-  });
-
-  Plotly.newPlot('chart-ptf', traces, layout, CONF);
 }
 
 /* ─── Arrancar ────────────────────────────────────────────── */

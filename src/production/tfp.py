@@ -2,7 +2,9 @@
 
 La PTF (también llamada A o Residuo de Solow) se calcula como:
 
-    A_obs = PIB / (K_usado^alpha × L_obs^(1 − alpha))
+    A_obs = PIB / (K_usado^alpha × (H · L_obs)^(1 − alpha))
+
+donde H es el índice de capital humano (PWT hc), dentro del término de trabajo.
 
 La tendencia de la PTF se obtiene con el filtro Boosted Hodrick-Prescott (BHP):
 
@@ -147,12 +149,16 @@ def compute_tfp_observed(df: pd.DataFrame) -> pd.DataFrame:
 
     Fórmula
     -------
-    A_obs = PIB / (K_usado^alpha × L_obs^(1 − alpha))
+    A_obs = PIB / (K_usado^alpha × (H · L_obs)^(1 − alpha))
+
+    donde ``H`` es el índice de capital humano (PWT hc). Si la columna ``H`` no
+    está presente, se asume ``H = 1`` (trabajo en personas, sin ajuste).
 
     Parameters
     ----------
     df : pd.DataFrame
         Requiere columnas: ``PIB``, ``K_usado``, ``L_obs``, ``alpha``.
+        Opcional: ``H`` (capital humano).
 
     Returns
     -------
@@ -168,7 +174,13 @@ def compute_tfp_observed(df: pd.DataFrame) -> pd.DataFrame:
     pib = df["PIB"].where(df["PIB"] > 0)
     alpha = df["alpha"]
 
-    df["A_obs"] = pib / (k ** alpha * l ** (1.0 - alpha))
+    # Trabajo efectivo en unidades de eficiencia: L_ef = H · L (capital humano
+    # dentro del término de trabajo, como en la Función de Producción de los
+    # profesores). H = índice PWT hc; si la columna no existe, H = 1 (sin efecto).
+    h = df["H"] if "H" in df.columns else 1.0
+    l_ef = h * l
+
+    df["A_obs"] = pib / (k ** alpha * l_ef ** (1.0 - alpha))
 
     n_nulo = df["A_obs"].isna().sum()
     if n_nulo > 0:

@@ -240,3 +240,33 @@ class TestComputeTfp:
         cols_antes = set(df.columns)
         compute_tfp(df)
         assert set(df.columns) == cols_antes
+
+
+# ── Capital humano H en el término de trabajo ─────────────────────────────────
+
+class TestCapitalHumano:
+    """A_obs = PIB / (K^alpha · (H · L_obs)^(1−alpha)) — H = 1 si la columna falta."""
+
+    def test_h_ausente_equivale_a_h_uno(self):
+        """Sin columna H, A_obs es idéntico a pasar H = 1 (compatibilidad hacia atrás)."""
+        df = _base_df()
+        a_sin = compute_tfp_observed(df)["A_obs"]
+        a_h1 = compute_tfp_observed(df.assign(H=1.0))["A_obs"]
+        pd.testing.assert_series_equal(a_sin, a_h1, check_names=False)
+
+    def test_h_mayor_reduce_la_ptf(self):
+        """Con H > 1 el trabajo efectivo sube → A_obs baja para el mismo PIB."""
+        df = _base_df()
+        a_base = compute_tfp_observed(df.assign(H=1.0))["A_obs"]
+        a_h = compute_tfp_observed(df.assign(H=3.0))["A_obs"]
+        assert (a_h < a_base).all()
+
+    def test_formula_h_explicita(self):
+        """Verifica la fórmula exacta con H presente."""
+        df = _base_df().assign(H=2.5)
+        out = compute_tfp_observed(df)
+        esperado = df["PIB"] / (
+            df["K_usado"] ** df["alpha"]
+            * (df["H"] * df["L_obs"]) ** (1.0 - df["alpha"])
+        )
+        pd.testing.assert_series_equal(out["A_obs"], esperado, check_names=False)

@@ -161,7 +161,9 @@ def build_production_function_dataset(
 
     # ── 6. Derivar L y A ─────────────────────────────────────────
     df["L"] = (df["TGP"] / 100.0) * df["PET"] * (1.0 - df["TD"] / 100.0)
-    df["A"] = df["PIB"] / (df["K"] ** ALPHA * df["L"] ** BETA)
+    # Trabajo efectivo = H · L (capital humano dentro del término de trabajo,
+    # como en la Función de Producción de los profesores: Y = A·K^α·(H·L)^(1−α)).
+    df["A"] = df["PIB"] / (df["K"] ** ALPHA * (df["H"] * df["L"]) ** BETA)
 
     # ── 7. Variaciones porcentuales (trim-a-trim) ─────────────────
     var_cols = ["PIB", "UCI", "K", "PET", "TGP", "TD", "H", "delta", "L", "A"]
