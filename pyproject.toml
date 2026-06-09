@@ -28,6 +28,7 @@ dependencies = [
     "requests>=2.31,<3.0",
     # Lectura/escritura de archivos
     "openpyxl>=3.1,<4.0",          # Excels del DANE
+    "xlrd>=2.0,<3.0",              # Empalme PIB_CO: bases .xls (2005 y 1994)
     "beautifulsoup4>=4.12,<5.0",   # Scraping HTML
     "lxml>=5.0,<6.0",              # Parser HTML rápido
     "pdfplumber>=0.11,<1.0",       # Extracción de PDFs (ANDI EOIC)
