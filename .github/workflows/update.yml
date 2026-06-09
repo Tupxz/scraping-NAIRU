@@ -79,6 +79,7 @@ jobs:
 
           git add docs/data/nairu_monthly.csv \
                   docs/data/pib_trimestral.csv \
+                  docs/data/viog_trimestral.csv \
                   docs/data/meta.json
 
           if git diff --cached --quiet; then

@@ -309,6 +309,15 @@
       <div class="plotly-container" id="chart-brechas-q"></div>
     </div>
 
+    <!-- Chart VIOG: Brecha del producto por filtros -->
+    <div class="chart-card">
+      <div class="card-header">
+        <div class="card-title">Brecha del Producto — VIOG (5 filtros)</div>
+        <div class="card-desc">Compuesto VIOG y los 5 filtros (B-K, C-F, Butterworth, BHP, Kalman) · % del PIB</div>
+      </div>
+      <div class="plotly-container" id="chart-viog"></div>
+    </div>
+
   </div>
 
   <div class="section-title">PIB Potencial</div>
@@ -363,6 +372,27 @@
         <div class="dl-info">
           <div class="dl-name">pib_trimestral.csv</div>
           <div class="dl-desc">PIB potencial y brecha del producto trimestral</div>
+        </div>
+        <div class="dl-arrow">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+          </svg>
+        </div>
+      </a>
+
+      <a class="dl-btn" href="data/viog_trimestral.csv" download="viog_trimestral.csv">
+        <div class="dl-icon csv">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="8" y1="13" x2="16" y2="13"/>
+            <line x1="8" y1="17" x2="16" y2="17"/>
+            <line x1="8" y1="9" x2="10" y2="9"/>
+          </svg>
+        </div>
+        <div class="dl-info">
+          <div class="dl-name">viog_trimestral.csv</div>
+          <div class="dl-desc">Brecha del producto VIOG: compuesto + 5 filtros</div>
         </div>
         <div class="dl-arrow">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -456,14 +486,16 @@ const CONF = { responsive: true, displayModeBar: false };
 
 async function loadAll() {
   try {
-    const [nairu_text, meta_text, pib_text] = await Promise.all([
+    const [nairu_text, meta_text, pib_text, viog_text] = await Promise.all([
       fetch('data/nairu_monthly.csv').then(r => r.ok ? r.text() : Promise.reject('nairu_monthly.csv no encontrado')),
       fetch('data/meta.json').then(r => r.ok ? r.json() : {}),
       fetch('data/pib_trimestral.csv').then(r => r.ok ? r.text() : null).catch(() => null),
+      fetch('data/viog_trimestral.csv').then(r => r.ok ? r.text() : null).catch(() => null),
     ]);
 
     const nairu = parseCSV(nairu_text);
     const pib   = pib_text ? parseCSV(pib_text) : null;
+    const viog  = viog_text ? parseCSV(viog_text) : null;
 
     renderMeta(meta_text);
     renderKPIs(meta_text);
@@ -478,6 +510,13 @@ async function loadAll() {
         document.getElementById(id).innerHTML =
           '<div class="state-msg">ℹ️ Datos PIB no disponibles aún — ejecuta --pib-potencial</div>';
       });
+    }
+    if (viog) {
+      renderVIOG(viog);
+    } else {
+      const el = document.getElementById('chart-viog');
+      if (el) el.innerHTML =
+        '<div class="state-msg">ℹ️ Datos VIOG no disponibles aún — ejecuta --viog-co</div>';
     }
   } catch(err) {
     console.error(err);
@@ -614,6 +653,38 @@ function renderBrechasQ(rows) {
       barmode: 'overlay',
       yaxis: { ticksuffix: '%' },
     }), CONF);
+}
+
+/* ─── Chart VIOG: brecha del producto por filtros ─────────── */
+function renderVIOG(rows) {
+  const x    = rows.map(r => r.fecha);
+  const zero = x.map(() => 0);
+
+  // Los 5 filtros que componen el VIOG (líneas tenues = dispersión)
+  const filtros = [
+    ['bk',     'B-K',         '#8e44ad'],
+    ['cf',     'C-F',         '#2e7d32'],
+    ['bw',     'Butterworth', '#00897b'],
+    ['bhp',    'BHP',         '#e8902f'],
+    ['kalman', 'Kalman',      '#c0392b'],
+  ];
+  const tracesFiltros = filtros.map(([col, name, color]) => ({
+    x, y: toNum(rows, col), name,
+    mode: 'lines', line: { color, width: 1.2 }, opacity: 0.55,
+    connectgaps: false,
+  }));
+
+  const traces = [
+    { x, y: zero, mode: 'lines', line: { color: '#555', width: 1, dash: 'dot' },
+      showlegend: false, hoverinfo: 'skip' },
+    ...tracesFiltros,
+    // Compuesto VIOG: línea principal
+    { x, y: toNum(rows, 'viog'), name: 'VIOG (compuesto)',
+      mode: 'lines', line: { color: '#1a3a6b', width: 2.8 } },
+  ];
+
+  Plotly.newPlot('chart-viog', traces,
+    baseLayout({ yaxis: { ticksuffix: '%' } }), CONF);
 }
 
 /* ─── Chart 5: PIB niveles ────────────────────────────────── */

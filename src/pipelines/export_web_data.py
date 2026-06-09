@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.config import OUTPUTS_DIR
+from src.config import OUTPUTS_DIR, PROCESSED_DIR
 from src.pipelines.run_pib_potencial import _build_monthly  # reutiliza builder
 
 logger = logging.getLogger("nairu_pipeline.export_web")
@@ -30,6 +30,7 @@ DOCS_DATA_DIR = Path(__file__).resolve().parents[2] / "docs" / "data"
 
 NAIRU_CSV   = OUTPUTS_DIR / "nairu" / "nairu_colombia.csv"
 PIB_CSV     = OUTPUTS_DIR / "pib_potencial" / "pib_potencial_colombia.csv"
+VIOG_CSV    = PROCESSED_DIR / "viog_colombia.csv"
 MONTHLY_CSV = OUTPUTS_DIR / "pib_potencial" / "mensual_web.csv"  # generado aquí
 
 
@@ -73,6 +74,22 @@ PIB_EXPORT_COLS = {
     "TD":            "td",
     "NAIRU_q":       "nairu_q",
 }
+
+# VIOG: brecha del producto por filtros (las brechas vienen en fracción log → ×100 = %)
+VIOG_EXPORT_COLS = {
+    "date":         "fecha",
+    "year":         "anio",
+    "quarter":      "trimestre",
+    "gap_viog":     "viog",       # compuesto (pesos por varianza de revisión)
+    "gap_inv_viog": "viog_inv",   # compuesto (pesos inversos de revisión)
+    "gap_bhp":      "bhp",        # Boosted Hodrick-Prescott
+    "gap_cf":       "cf",         # Christiano-Fitzgerald
+    "gap_bk":       "bk",         # Baxter-King
+    "gap_bw":       "bw",         # Butterworth
+    "gap_kalman":   "kalman",     # Kalman (UCM)
+}
+VIOG_GAP_COLS = ["viog", "viog_inv", "bhp", "cf", "bk", "bw", "kalman"]
+VIOG_START = "2005-01-01"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -129,7 +146,28 @@ def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
         )
         pib = None
 
-    # ── 3. meta.json ──────────────────────────────────────────────────
+    # ── 3. VIOG trimestral (5 filtros + compuesto) ────────────────────
+    viog = None
+    if VIOG_CSV.exists():
+        viog = _read_and_rename(VIOG_CSV, VIOG_EXPORT_COLS)
+        viog["fecha"] = pd.to_datetime(viog["fecha"])
+        viog = viog[viog["fecha"] >= VIOG_START].reset_index(drop=True)
+        # Brechas en fracción log → porcentaje
+        for col in VIOG_GAP_COLS:
+            if col in viog.columns:
+                viog[col] = viog[col] * 100.0
+        viog["fecha"] = viog["fecha"].dt.strftime("%Y-%m-%d")
+        viog = _round_floats(viog)
+        out_viog = docs_data_dir / "viog_trimestral.csv"
+        viog.to_csv(out_viog, index=False)
+        logger.info("[export-web] %s (%d filas)", out_viog.name, len(viog))
+    else:
+        warnings.warn(
+            f"{VIOG_CSV} no encontrado — ejecuta --viog-co primero.",
+            stacklevel=2,
+        )
+
+    # ── 4. meta.json ──────────────────────────────────────────────────
     last_nairu = nairu["fecha"].max() if len(nairu) else "—"
     latest = nairu.iloc[-1] if len(nairu) else {}
     meta = {
@@ -148,6 +186,9 @@ def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
         meta["latest_brecha_cd"] = round(float(last_pib.get("brecha_cd", 0)), 2)
         meta["latest_brecha_bhp"] = round(float(last_pib.get("brecha_bhp", 0)), 2)
         meta["last_obs_pib"]     = str(pib["fecha"].max())[:10]
+    if viog is not None and len(viog):
+        meta["latest_brecha_viog"] = round(float(viog.iloc[-1].get("viog", 0)), 2)
+        meta["last_obs_viog"]      = str(viog["fecha"].max())[:10]
 
     out_meta = docs_data_dir / "meta.json"
     out_meta.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
