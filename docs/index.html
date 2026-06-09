@@ -488,7 +488,10 @@ async function loadAll() {
   try {
     const [nairu_text, meta_text, pib_text, viog_text] = await Promise.all([
       fetch('data/nairu_monthly.csv').then(r => r.ok ? r.text() : Promise.reject('nairu_monthly.csv no encontrado')),
-      fetch('data/meta.json').then(r => r.ok ? r.json() : {}),
+      fetch('data/meta.json')
+        .then(r => r.ok ? r.text() : '{}')
+        .then(t => { try { return JSON.parse(t.replace(/\bNaN\b/g, 'null')); } catch (e) { return {}; } })
+        .catch(() => ({})),
       fetch('data/pib_trimestral.csv').then(r => r.ok ? r.text() : null).catch(() => null),
       fetch('data/viog_trimestral.csv').then(r => r.ok ? r.text() : null).catch(() => null),
     ]);

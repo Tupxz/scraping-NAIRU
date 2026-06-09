@@ -168,6 +168,18 @@ def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
         )
 
     # ── 4. meta.json ──────────────────────────────────────────────────
+    def _num(row, key):
+        """Valor numérico seguro para JSON: NaN o ausente → None (→ ``null``).
+
+        Evita que ``json.dumps`` escriba el literal ``NaN`` (JSON inválido), que
+        rompería el ``JSON.parse`` del tablero por completo.
+        """
+        try:
+            v = float(row.get(key))
+        except (TypeError, ValueError):
+            return None
+        return round(v, 2) if pd.notna(v) else None
+
     last_nairu = nairu["fecha"].max() if len(nairu) else "—"
     latest = nairu.iloc[-1] if len(nairu) else {}
     meta = {
@@ -175,19 +187,19 @@ def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
         "last_obs_nairu":  str(last_nairu)[:10],
         "n_obs_monthly":   len(nairu),
         "n_obs_quarterly": len(pib) if pib is not None else 0,
-        "latest_nairu":    round(float(latest.get("nairu", 0)), 2),
-        "latest_td":       round(float(latest.get("td_obs", 0)), 2),
-        "latest_naicu":    round(float(latest.get("naicu", 0)), 2),
-        "latest_uci":      round(float(latest.get("uci_obs", 0)), 2),
-        "latest_brecha_laboral": round(float(latest.get("brecha_laboral", 0)), 2),
+        "latest_nairu":    _num(latest, "nairu"),
+        "latest_td":       _num(latest, "td_obs"),
+        "latest_naicu":    _num(latest, "naicu"),
+        "latest_uci":      _num(latest, "uci_obs"),
+        "latest_brecha_laboral": _num(latest, "brecha_laboral"),
     }
     if pib is not None and len(pib):
         last_pib = pib.iloc[-1]
-        meta["latest_brecha_cd"] = round(float(last_pib.get("brecha_cd", 0)), 2)
-        meta["latest_brecha_bhp"] = round(float(last_pib.get("brecha_bhp", 0)), 2)
-        meta["last_obs_pib"]     = str(pib["fecha"].max())[:10]
+        meta["latest_brecha_cd"]  = _num(last_pib, "brecha_cd")
+        meta["latest_brecha_bhp"] = _num(last_pib, "brecha_bhp")
+        meta["last_obs_pib"]      = str(pib["fecha"].max())[:10]
     if viog is not None and len(viog):
-        meta["latest_brecha_viog"] = round(float(viog.iloc[-1].get("viog", 0)), 2)
+        meta["latest_brecha_viog"] = _num(viog.iloc[-1], "viog")
         meta["last_obs_viog"]      = str(viog["fecha"].max())[:10]
 
     out_meta = docs_data_dir / "meta.json"
