@@ -120,9 +120,17 @@ jobs:
           else
             FECHA=$(date -u +"%Y-%m-%d %H:%M UTC")
             git commit -m "chore(data): actualización automática ${FECHA} [skip ci]"
-            # Integrar cambios que hayan llegado a la rama durante la corrida
-            # (evita el rechazo "fetch first" si alguien pusheó mientras tanto).
-            # ${GITHUB_REF_NAME} = rama actual → branch-agnóstico (sirve en sandbox y main).
-            git pull --rebase origin "${GITHUB_REF_NAME}"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
+
+            # El árbol queda con archivos intermedios regenerados que NO se commitean
+            # (Data_NAIRU.xlsx, PIB_CO.xlsx); se descartan para que un eventual rebase
+            # no falle por "unstaged changes".
+            git checkout -- . || true
+
+            # Push directo; si la rama avanzó en el remoto durante la corrida, integrar
+            # (rebase) y reintentar. ${GITHUB_REF_NAME} = rama actual (sandbox o main).
+            git push origin "HEAD:${GITHUB_REF_NAME}" || {
+              echo "push rechazado — integrando cambios remotos y reintentando…"
+              git pull --rebase origin "${GITHUB_REF_NAME}"
+              git push origin "HEAD:${GITHUB_REF_NAME}"
+            }
           fi
