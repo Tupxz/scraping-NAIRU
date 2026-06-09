@@ -5,7 +5,7 @@ Por defecto opera sobre PIB_USA.xlsx con columnas PIB / Potential_PIB.
 
 Pasos:
   1. load_series      — Carga Excel, construye PeriodIndex trimestral.
-  2. apply_filters    — BK, CF, Butterworth, HP, Kalman/UCM.
+  2. apply_filters    — BK, CF, Butterworth, BHP, Kalman/UCM.
   3. compute_gaps     — Logaritmos y brechas (ln serie − ln tendencia).
   4. compute_viog_weights — Ponderadores VIOG y 1/VIOG por error acumulado.
   5. compute_weighted_gap — Potencial ponderado y brecha final.
@@ -14,8 +14,9 @@ Pasos:
 Notas:
   - Baxter-King recorta K=12 trimestres de cada extremo → NaN en extremos para gap_bk.
   - El divisor N usa len(df) (generalización del notebook original).
-  - Kalman usa UnobservedComponents(level="random walk with drift", cycle=True,
-    damped_cycle=True, stochastic_cycle=True, cycle_period_bounds=[0.3, 40]).
+  - BHP (Boosted Hodrick-Prescott) usa iterations=3 y lambda=cfg.hp_lambda (1600).
+  - Kalman usa UnobservedComponents(level="local linear trend", drift=True, cycle=True).
+    Pendiente estocástica (slope varía en el tiempo). Se ajusta en niveles.
     El nivel suavizado (result.level.smoothed) es la tendencia/potencial.
 """
 
@@ -31,13 +32,13 @@ import pandas as pd
 
 logger = logging.getLogger("nairu_pipeline.viog")
 
-_GAP_VARS_WITH_REF    = ["bk", "cf", "bw", "hp", "kalman", "ref"]
-_GAP_VARS_WITHOUT_REF = ["bk", "cf", "bw", "hp", "kalman"]
+_GAP_VARS_WITH_REF    = ["bk", "cf", "bw", "bhp", "kalman", "ref"]
+_GAP_VARS_WITHOUT_REF = ["bk", "cf", "bw", "bhp", "kalman"]
 _FILTER_LABELS = {
     "bk":     "Baxter-King",
     "cf":     "Christiano-Fitzgerald",
     "bw":     "Butterworth",
-    "hp":     "Hodrick-Prescott",
+    "bhp":    "Boosted Hodrick-Prescott",
     "kalman": "Kalman/UCM",
     "ref":    "Referencia",
 }
@@ -90,8 +91,9 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     from scipy.signal import butter, filtfilt
     from statsmodels.tsa.filters.bk_filter import bkfilter
     from statsmodels.tsa.filters.cf_filter import cffilter
-    from statsmodels.tsa.filters.hp_filter import hpfilter
     from statsmodels.tsa.statespace.structural import UnobservedComponents
+
+    from src.production.tfp import BHP_ITERATIONS, boosted_hp_filter
 
     if cfg is None:
         from src.config import VIOG_CONFIG
@@ -113,28 +115,25 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     b, a = butter(N=cfg.bw_order, Wn=cfg.bw_cutoff, btype="low")
     df["trend_bw"] = filtfilt(b, a, y.values)
 
-    # Hodrick-Prescott
-    _, hp_trend = hpfilter(y, lamb=cfg.hp_lambda)
-    df["trend_hp"] = hp_trend.values
+    # Boosted Hodrick-Prescott (Phillips & Shi, 2021)
+    y_series = pd.Series(y.values, index=df.index, name="Y")
+    _, bhp_trend = boosted_hp_filter(y_series, lamb=cfg.hp_lambda, iterations=BHP_ITERATIONS)
+    df["trend_bhp"] = bhp_trend.values
 
-    # Kalman / UCM — random walk with drift + ciclo estocástico amortiguado
-    # Se ajusta sobre ln(Y) para que el MLE sea invariante a la escala/moneda.
-    # La tendencia en log se convierte de vuelta a niveles con exp().
-    logger.info("[VIOG] Ajustando Kalman UCM (random walk with drift + cycle)...")
+    # Kalman / UCM — local linear trend con ciclo determinístico
+    # Se ajusta sobre niveles de Y. La pendiente de la tendencia es estocástica
+    # (local linear trend), lo que la hace más adaptable que random walk with drift.
+    logger.info("[VIOG] Ajustando Kalman UCM (local linear trend + cycle)...")
     import warnings as _warnings
-    ln_y = np.log(y)
     ucm = UnobservedComponents(
-        endog=ln_y,
-        level="random walk with drift",
+        endog=y,
+        level="local linear trend",  # slope estocástico incorpora el drift
         cycle=True,
-        damped_cycle=True,
-        stochastic_cycle=True,
-        cycle_period_bounds=list(cfg.kalman_cycle_period_bounds),
     )
     with _warnings.catch_warnings():
         _warnings.simplefilter("ignore")
         result = ucm.fit(disp=False)
-    df["trend_kalman"] = np.exp(result.level.smoothed)
+    df["trend_kalman"] = result.level.smoothed
 
     return df
 
@@ -148,7 +147,7 @@ def compute_gaps(df: pd.DataFrame) -> pd.DataFrame:
     ``gap_ref`` y ``ln_Y_ref``.
     """
     df["ln_Y"] = np.log(df["Y"])
-    for tag in ["bk", "cf", "bw", "hp", "kalman"]:
+    for tag in ["bk", "cf", "bw", "bhp", "kalman"]:
         df[f"ln_trend_{tag}"] = np.log(df[f"trend_{tag}"])
         df[f"gap_{tag}"]      = df["ln_Y"] - df[f"ln_trend_{tag}"]
     if "Y_ref" in df.columns:
@@ -197,7 +196,7 @@ def compute_weighted_gap(df: pd.DataFrame) -> pd.DataFrame:
     """Calcula el potencial ponderado y las brechas VIOG finales."""
     _trend_ln = {
         "bk": "ln_trend_bk", "cf": "ln_trend_cf", "bw": "ln_trend_bw",
-        "hp": "ln_trend_hp", "kalman": "ln_trend_kalman", "ref": "ln_Y_ref",
+        "bhp": "ln_trend_bhp", "kalman": "ln_trend_kalman", "ref": "ln_Y_ref",
     }
     # Determinar filtros activos (guardados en compute_viog_weights)
     import ast
@@ -229,7 +228,7 @@ def plot_filters(
       2. viog_02_filter_bk.png      — Filtro Baxter-King (niveles)
       3. viog_03_filter_cf.png      — Filtro Christiano-Fitzgerald
       4. viog_04_filter_bw.png      — Filtro Butterworth
-      5. viog_05_filter_hp.png      — Filtro Hodrick-Prescott
+      5. viog_05_filter_bhp.png     — Filtro Boosted Hodrick-Prescott
       6. viog_06_filter_kalman.png  — Filtro Kalman/UCM
       7. viog_07_gaps.png           — Todas las brechas (ln)
       8. viog_08_ln_levels.png      — ln PIB vs ln Potencial (vline 2020Q2)
@@ -239,7 +238,7 @@ def plot_filters(
      12. viog_12_viog_potential.png — ln PIB vs potencial VIOG y 1/VIOG
      13. viog_13_viog_gap.png       — Crecimiento vs brecha VIOG y 1/VIOG
      14. viog_14_kalman_gap.png     — Brecha Kalman únicamente
-     15. viog_15_hp_gap.png         — Brecha Hodrick-Prescott únicamente
+     15. viog_15_bhp_gap.png        — Brecha Boosted Hodrick-Prescott únicamente
 
     Parameters
     ----------
@@ -272,15 +271,15 @@ def plot_filters(
 
     # ── Gráficas 2-6: Cada filtro en niveles ─────────────────────────
     _filters = [
-        ("bk",     "trend_bk",     "Filtro Baxter-King",            "02"),
-        ("cf",     "trend_cf",     "Filtro Christiano-Fitzgerald",   "03"),
-        ("bw",     "trend_bw",     "Filtro Butterworth",             "04"),
-        ("hp",     "trend_hp",     "Filtro Hodrick-Prescott",        "05"),
-        ("kalman", "trend_kalman", "Filtro Kalman / UCM",            "06"),
+        ("bk",     "trend_bk",     "Filtro Baxter-King",                    "02"),
+        ("cf",     "trend_cf",     "Filtro Christiano-Fitzgerald",           "03"),
+        ("bw",     "trend_bw",     "Filtro Butterworth",                     "04"),
+        ("bhp",    "trend_bhp",    "Filtro Boosted Hodrick-Prescott",        "05"),
+        ("kalman", "trend_kalman", "Filtro Kalman / UCM",                    "06"),
     ]
     _trend_col_name = {
         "bk": "bkt_PIB", "cf": "cft_PIB", "bw": "bwt_PIB",
-        "hp": "hpt_PIB", "kalman": "kalmant_PIB",
+        "bhp": "bhpt_PIB", "kalman": "kalmant_PIB",
     }
     for tag, trend_col, title, num in _filters:
         fig, ax = plt.subplots(figsize=(10, 5))
@@ -298,7 +297,7 @@ def plot_filters(
     ax.plot(x, df["gap_bk"],    label="gap_bk")
     ax.plot(x, df["gap_cf"],    label="gap_cf")
     ax.plot(x, df["gap_bw"],    label="gap_bw")
-    ax.plot(x, df["gap_hp"],    label="gap_hp")
+    ax.plot(x, df["gap_bhp"],   label="gap_bhp")
     ax.plot(x, df["gap_kalman"], label="gap_kalman")
     if has_ref:
         ax.plot(x, df["gap_ref"], label="gap_potential")
@@ -336,7 +335,7 @@ def plot_filters(
     ax.plot(x, df["ln_trend_bk"],    label="Baxter and King")
     ax.plot(x, df["ln_trend_cf"],    label="Christiano and Fitzgerald")
     ax.plot(x, df["ln_trend_bw"],    label="Butterworth")
-    ax.plot(x, df["ln_trend_hp"],    label="Hodrick and Prescott")
+    ax.plot(x, df["ln_trend_bhp"],   label="Boosted Hodrick-Prescott")
     ax.plot(x, df["ln_trend_kalman"], label="Kalman")
     ax.set_title("Potential GDP")
     ax.legend(loc="center right", fontsize="small")
@@ -350,7 +349,7 @@ def plot_filters(
     ax.plot(x, df["gap_bk"],     label="Baxter and King")
     ax.plot(x, df["gap_cf"],     label="Christiano and Fitzgerald")
     ax.plot(x, df["gap_bw"],     label="Butterworth")
-    ax.plot(x, df["gap_hp"],     label="Hodrick and Prescott")
+    ax.plot(x, df["gap_bhp"],    label="Boosted Hodrick-Prescott")
     ax.plot(x, df["gap_kalman"], label="Kalman")
     ax.set_title("GDP gap")
     ax.legend(loc="lower center", ncol=2, fontsize="small")
@@ -391,15 +390,15 @@ def plot_filters(
     ax.grid(True)
     _save_show(fig, "viog_14_kalman_gap.png")
 
-    # ── Gráfica 15: Brecha Hodrick-Prescott únicamente ────────────────
+    # ── Gráfica 15: Brecha Boosted Hodrick-Prescott únicamente ───────────
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(x, df["gap_hp"], color="darkorange", label="gap_hp")
+    ax.plot(x, df["gap_bhp"], color="darkorange", label="gap_bhp")
     ax.axhline(0, linestyle="--", color="black", linewidth=0.8)
-    ax.set_title("Brecha del producto — Filtro Hodrick-Prescott")
+    ax.set_title("Brecha del producto — Filtro Boosted Hodrick-Prescott")
     ax.set_ylabel("Brecha (log)")
     ax.legend()
     ax.grid(True)
-    _save_show(fig, "viog_15_hp_gap.png")
+    _save_show(fig, "viog_15_bhp_gap.png")
 
 
 # ── API de alto nivel ─────────────────────────────────────────────────
@@ -444,7 +443,7 @@ def compute_viog(
     DataFrame con columnas:
         date, year, quarter,
         gap_viog, gap_inv_viog,
-        gap_hp, gap_cf, gap_bk, gap_bw, gap_kalman,
+        gap_bhp, gap_cf, gap_bk, gap_bw, gap_kalman,
         [gap_ref]  ← solo si se pasó ref_col
     """
     df = df.copy()
@@ -490,7 +489,7 @@ def compute_viog(
         "quarter":      df.index.quarter,
         "gap_viog":     df["gap_viog"],
         "gap_inv_viog": df["gap_inv_viog"],
-        "gap_hp":       df["gap_hp"],
+        "gap_bhp":      df["gap_bhp"],
         "gap_cf":       df["gap_cf"],
         "gap_bk":       df["gap_bk"],
         "gap_bw":       df["gap_bw"],
@@ -545,7 +544,7 @@ def run_viog_pipeline(
         "quarter":      df.index.quarter,
         "gap_viog":     df["gap_viog"],
         "gap_inv_viog": df["gap_inv_viog"],
-        "gap_hp":       df["gap_hp"],
+        "gap_bhp":      df["gap_bhp"],
         "gap_cf":       df["gap_cf"],
         "gap_bk":       df["gap_bk"],
         "gap_bw":       df["gap_bw"],

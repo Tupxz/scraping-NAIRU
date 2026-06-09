@@ -30,7 +30,6 @@ import logging
 import warnings
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from src.config import FINAL_DIR, OUTPUTS_DIR, PROCESSED_DIR
@@ -77,32 +76,64 @@ def _resample_last(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     return df[cols].resample("QS").last()
 
 
-def _load_pwt_quarterly(processed_dir: Path) -> pd.DataFrame:
-    """Reutiliza la lógica de ley de acumulación de capital de build_production_function_dataset."""
+def _build_capital_quarterly(processed_dir: Path) -> pd.DataFrame:
+    """Construye el stock de capital trimestral por inventario permanente (PIM).
+
+    Parsimonia (decisión 2026-06-08): el capital se arma SOLO con datos del DANE
+    —la FBKF real trimestral, disponible hasta el presente— en vez de empalmar la
+    serie anual de PWT (que corta en 2023). De PWT se toma un único número: la
+    depreciación promedio.
+
+        K_t = K_{t-1} · (1 − δ_q) + I_t          (inventario permanente)
+
+    - I_t : FBKF real DANE (``dane_gdp_expenditure_colombia.csv``, col. ``investment``)
+    - δ   : promedio de la depreciación PWT  →  δ_q = 1 − (1 − δ)^(1/4)
+    - K_0 : estado estacionario  K_0 = I_0 / (g_q + δ_q)  (Harberger 1978),
+            con I_0 = FBKF media del primer año y g_q = crecimiento trim. medio.
+            Se estima con el propio DANE; su influencia decae con la depreciación.
+    - H   : capital humano PWT (hc), trimestralizado por arrastre y constante desde
+            el último año PWT hasta el presente (índice muy suave; sin análogo DANE).
+
+    Devuelve un DataFrame indexado por fecha con columnas ``K``, ``delta``, ``H``,
+    cubriendo todo el rango de la FBKF DANE (2005-Q1 → presente).
+    """
+    # ── Flujo de inversión: FBKF real DANE (único insumo del nivel de capital) ──
+    inv = _load_csv("dane_gdp_expenditure_colombia.csv", processed_dir)
+    inv_q = inv["investment"].resample("QS").last().dropna()
+
+    # ── Depreciación: un solo número desde PWT (promedio de su serie) ──
     pwt = _load_csv("pwt_colombia.csv", processed_dir)
-    ann = pwt[["capital_stock_real", "depreciation_rate", "human_capital"]].copy()
+    delta_annual = float(pwt["depreciation_rate"].mean())
+    delta_q = 1.0 - (1.0 - delta_annual) ** 0.25
 
-    K = ann["capital_stock_real"].values
-    d = ann["depreciation_rate"].values
-    I_ann = np.empty(len(K))
-    I_ann[:-1] = K[1:] - K[:-1] * (1 - d[:-1])
-    I_ann[-1]  = I_ann[-2]
+    # ── Capital inicial en estado estacionario (estimado con DANE) ──
+    g_q = max(float(inv_q.pct_change().mean()), 0.0)
+    i0 = float(inv_q.iloc[:4].mean())
+    k0 = i0 / (g_q + delta_q)
 
-    rows = []
-    for i, (date, row) in enumerate(ann.iterrows()):
-        delta_q = 1 - (1 - row["depreciation_rate"]) ** 0.25
-        I_q = I_ann[i] / 4
-        K_q = row["capital_stock_real"]
-        for q in range(4):
-            rows.append({
-                "date":  date + pd.DateOffset(months=3 * q),
-                "K":     K_q,
-                "delta": row["depreciation_rate"],
-                "H":     row["human_capital"],
-            })
-            K_q = K_q * (1 - delta_q) + I_q
+    # ── Recursión del inventario permanente ──
+    k_vals: list[float] = []
+    k = k0
+    for i_t in inv_q.to_numpy():
+        k = k * (1.0 - delta_q) + float(i_t)
+        k_vals.append(k)
+    k_series = pd.Series(k_vals, index=inv_q.index, name="K")
 
-    return pd.DataFrame(rows).set_index("date").sort_index()
+    # ── Capital humano PWT → trimestral por arrastre, constante tras el último año ──
+    h_q = (
+        pwt["human_capital"]
+        .resample("QS").ffill()
+        .reindex(inv_q.index, method="ffill")
+    )
+
+    out = pd.DataFrame({"K": k_series, "delta": delta_annual, "H": h_q})
+    out.index.name = "date"
+    logger.info(
+        "Capital PIM (FBKF DANE): K_0=%.0f, delta=%.4f, %d trimestres %s -> %s",
+        k0, delta_annual, len(out),
+        str(out.index[0])[:10], str(out.index[-1])[:10],
+    )
+    return out
 
 
 def _load_nairu(nairu_dir: Path) -> pd.DataFrame | None:
@@ -158,8 +189,8 @@ def load_and_align_sources(
         "pet_thousands":     "PET",
     })
 
-    # ── 4. PWT (anual → trimestral vía acumulación) ────────────────────
-    pwt_q = _load_pwt_quarterly(processed_dir)
+    # ── 4. Capital (inventario permanente con FBKF DANE; δ y H desde PWT) ──
+    pwt_q = _build_capital_quarterly(processed_dir)
 
     # ── 5. Ingreso DANE (trimestral, desde 2016-Q1) ────────────────────
     income_path = processed_dir / "dane_gdp_income_colombia.csv"

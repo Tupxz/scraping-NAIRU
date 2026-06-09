@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import src.production.factors as factors_module
 from src.production.factors import (
     ALPHA_FALLBACK,
     alpha_dinamico,
@@ -149,14 +150,17 @@ class TestAlphaDinamico:
         assert (df["alpha"] > 0).all()
         assert (df["alpha"] < 1).all()
 
-    def test_fallback_sin_columnas_ingreso(self):
+    def test_fallback_sin_columnas_ingreso(self, monkeypatch):
+        # Con ALPHA_FIXED=None se activa la lógica de respaldo
+        monkeypatch.setattr(factors_module, "ALPHA_FIXED", None)
         df = _base_df().drop(
             columns=["compensation_employees", "gross_operating_surplus", "mixed_income"]
         )
         df = alpha_dinamico(df)
         assert (df["alpha"] == ALPHA_FALLBACK).all()
 
-    def test_fallback_para_nan(self):
+    def test_fallback_para_nan(self, monkeypatch):
+        monkeypatch.setattr(factors_module, "ALPHA_FIXED", None)
         df = _base_df()
         df.loc[:, "compensation_employees"] = np.nan
         df.loc[:, "gross_operating_surplus"] = np.nan
@@ -164,8 +168,9 @@ class TestAlphaDinamico:
         df = alpha_dinamico(df)
         assert (df["alpha"] == ALPHA_FALLBACK).all()
 
-    def test_formula_correcta(self):
+    def test_formula_correcta(self, monkeypatch):
         """alpha = (EBE + IM) / (RA + EBE + IM)."""
+        monkeypatch.setattr(factors_module, "ALPHA_FIXED", None)
         df = _base_df(1)
         df["compensation_employees"] = 60_000.0   # RA
         df["gross_operating_surplus"] = 70_000.0  # EBE
@@ -174,8 +179,9 @@ class TestAlphaDinamico:
         # alpha = (70_000 + 30_000) / (60_000 + 70_000 + 30_000) = 100_000/160_000 ≈ 0.625
         assert abs(df["alpha"].iloc[0] - 100_000 / 160_000) < 1e-6
 
-    def test_clamping(self):
+    def test_clamping(self, monkeypatch):
         """alpha se clipa a [0.20, 0.80]."""
+        monkeypatch.setattr(factors_module, "ALPHA_FIXED", None)
         df = _base_df(1)
         df["compensation_employees"] = 100.0
         df["gross_operating_surplus"] = 1.0

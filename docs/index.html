@@ -138,6 +138,82 @@
       gap: .5rem;
     }
 
+    /* ── Download section ───────────────────────────────── */
+    .download-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1.4rem 1.6rem 1.6rem;
+      margin-top: .5rem;
+    }
+    .download-section .section-title {
+      margin: 0 0 1rem;
+    }
+    .download-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: .85rem;
+    }
+    .dl-btn {
+      display: flex;
+      align-items: center;
+      gap: .85rem;
+      padding: .85rem 1.1rem;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      background: #f9fafd;
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color .18s, background .18s, box-shadow .18s, transform .12s;
+      cursor: pointer;
+    }
+    .dl-btn:hover {
+      border-color: var(--primary);
+      background: #fff;
+      box-shadow: 0 4px 16px rgba(26,58,107,.12);
+      transform: translateY(-2px);
+    }
+    .dl-btn:active {
+      transform: translateY(0);
+      box-shadow: none;
+    }
+    .dl-btn .dl-icon {
+      flex-shrink: 0;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .dl-btn .dl-icon.csv  { background: rgba(26,58,107,.1);  color: var(--primary); }
+    .dl-btn .dl-icon.json { background: rgba(232,78,15,.1);  color: var(--accent); }
+    .dl-btn .dl-info { flex: 1; min-width: 0; }
+    .dl-btn .dl-name {
+      font-size: .88rem;
+      font-weight: 600;
+      color: var(--primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dl-btn .dl-desc {
+      font-size: .75rem;
+      color: var(--muted);
+      margin-top: .1rem;
+      line-height: 1.3;
+    }
+    .dl-btn .dl-arrow {
+      flex-shrink: 0;
+      color: var(--muted);
+      transition: color .18s, transform .18s;
+    }
+    .dl-btn:hover .dl-arrow {
+      color: var(--primary);
+      transform: translateY(2px);
+    }
+
     /* ── Footer ─────────────────────────────────────────── */
     footer {
       text-align: center;
@@ -228,9 +304,18 @@
     <div class="chart-card">
       <div class="card-header">
         <div class="card-title">Brecha del Producto — PIB Potencial (trimestral)</div>
-        <div class="card-desc">Cobb-Douglas (C-D) y Hodrick-Prescott (HP) · % del PIB potencial</div>
+        <div class="card-desc">Cobb-Douglas (C-D) y Boosted Hodrick-Prescott (BHP) · % del PIB potencial</div>
       </div>
       <div class="plotly-container" id="chart-brechas-q"></div>
+    </div>
+
+    <!-- Chart VIOG: Brecha del producto por filtros -->
+    <div class="chart-card">
+      <div class="card-header">
+        <div class="card-title">Brecha del Producto — VIOG (5 filtros)</div>
+        <div class="card-desc">Compuesto VIOG y los 5 filtros (B-K, C-F, Butterworth, BHP, Kalman) · % del PIB</div>
+      </div>
+      <div class="plotly-container" id="chart-viog"></div>
     </div>
 
   </div>
@@ -242,21 +327,104 @@
     <div class="chart-card">
       <div class="card-header">
         <div class="card-title">PIB Observado vs PIB Potencial (índice 2005 = 100)</div>
-        <div class="card-desc">Función de producción Cobb-Douglas y tendencia HP</div>
+        <div class="card-desc">Función de producción Cobb-Douglas y tendencia BHP</div>
       </div>
       <div class="plotly-container" id="chart-pib"></div>
     </div>
 
-    <!-- Chart 6: PTF y Alpha -->
-    <div class="chart-card">
-      <div class="card-header">
-        <div class="card-title">PTF Observada y Potencial · Share del Capital (α)</div>
-        <div class="card-desc">Productividad Total de los Factores y participación estimada</div>
-      </div>
-      <div class="plotly-container" id="chart-ptf"></div>
-    </div>
-
   </div>
+  <!-- ══ DOWNLOAD SECTION ══ -->
+  <div class="section-title">Descargar Datos</div>
+  <div class="download-section">
+    <div class="download-grid">
+
+      <a class="dl-btn" href="data/nairu_monthly.csv" download="nairu_monthly.csv">
+        <div class="dl-icon csv">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="8" y1="13" x2="16" y2="13"/>
+            <line x1="8" y1="17" x2="16" y2="17"/>
+            <line x1="8" y1="9" x2="10" y2="9"/>
+          </svg>
+        </div>
+        <div class="dl-info">
+          <div class="dl-name">nairu_monthly.csv</div>
+          <div class="dl-desc">NAIRU, NAICU, brechas y variables mensuales</div>
+        </div>
+        <div class="dl-arrow">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+          </svg>
+        </div>
+      </a>
+
+      <a class="dl-btn" href="data/pib_trimestral.csv" download="pib_trimestral.csv">
+        <div class="dl-icon csv">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="8" y1="13" x2="16" y2="13"/>
+            <line x1="8" y1="17" x2="16" y2="17"/>
+            <line x1="8" y1="9" x2="10" y2="9"/>
+          </svg>
+        </div>
+        <div class="dl-info">
+          <div class="dl-name">pib_trimestral.csv</div>
+          <div class="dl-desc">PIB potencial y brecha del producto trimestral</div>
+        </div>
+        <div class="dl-arrow">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+          </svg>
+        </div>
+      </a>
+
+      <a class="dl-btn" href="data/viog_trimestral.csv" download="viog_trimestral.csv">
+        <div class="dl-icon csv">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="8" y1="13" x2="16" y2="13"/>
+            <line x1="8" y1="17" x2="16" y2="17"/>
+            <line x1="8" y1="9" x2="10" y2="9"/>
+          </svg>
+        </div>
+        <div class="dl-info">
+          <div class="dl-name">viog_trimestral.csv</div>
+          <div class="dl-desc">Brecha del producto VIOG: compuesto + 5 filtros</div>
+        </div>
+        <div class="dl-arrow">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+          </svg>
+        </div>
+      </a>
+
+      <a class="dl-btn" href="data/meta.json" download="meta.json">
+        <div class="dl-icon json">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <polyline points="10 13 8 13 8 17 10 17"/>
+            <polyline points="14 13 16 13 16 17 14 17"/>
+            <line x1="12" y1="13" x2="12" y2="17"/>
+          </svg>
+        </div>
+        <div class="dl-info">
+          <div class="dl-name">meta.json</div>
+          <div class="dl-desc">Metadatos: última actualización y valores KPI</div>
+        </div>
+        <div class="dl-arrow">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+          </svg>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
 </main>
 
 <!-- ══════════════════ FOOTER ══════════════════ -->
@@ -265,10 +433,6 @@
   <a href="https://github.com/features/actions" target="_blank">GitHub Actions</a>.
   Fuentes: DANE, BanRep, ANDI, PWT 11.0, FRED/EIA.
   Metodología: Kalman bi-estado MLE + Cobb-Douglas HP (λ=1600).
-  <br>
-  <a href="data/nairu_monthly.csv">⬇ nairu_monthly.csv</a> ·
-  <a href="data/pib_trimestral.csv">⬇ pib_trimestral.csv</a> ·
-  <a href="data/meta.json">⬇ meta.json</a>
 </footer>
 
 <!-- ══════════════════ JAVASCRIPT ══════════════════ -->
@@ -322,14 +486,16 @@ const CONF = { responsive: true, displayModeBar: false };
 
 async function loadAll() {
   try {
-    const [nairu_text, meta_text, pib_text] = await Promise.all([
+    const [nairu_text, meta_text, pib_text, viog_text] = await Promise.all([
       fetch('data/nairu_monthly.csv').then(r => r.ok ? r.text() : Promise.reject('nairu_monthly.csv no encontrado')),
       fetch('data/meta.json').then(r => r.ok ? r.json() : {}),
       fetch('data/pib_trimestral.csv').then(r => r.ok ? r.text() : null).catch(() => null),
+      fetch('data/viog_trimestral.csv').then(r => r.ok ? r.text() : null).catch(() => null),
     ]);
 
     const nairu = parseCSV(nairu_text);
     const pib   = pib_text ? parseCSV(pib_text) : null;
+    const viog  = viog_text ? parseCSV(viog_text) : null;
 
     renderMeta(meta_text);
     renderKPIs(meta_text);
@@ -339,12 +505,18 @@ async function loadAll() {
     if (pib) {
       renderBrechasQ(pib);
       renderPIB(pib);
-      renderPTF(pib);
     } else {
-      ['chart-brechas-q', 'chart-pib', 'chart-ptf'].forEach(id => {
+      ['chart-brechas-q', 'chart-pib'].forEach(id => {
         document.getElementById(id).innerHTML =
           '<div class="state-msg">ℹ️ Datos PIB no disponibles aún — ejecuta --pib-potencial</div>';
       });
+    }
+    if (viog) {
+      renderVIOG(viog);
+    } else {
+      const el = document.getElementById('chart-viog');
+      if (el) el.innerHTML =
+        '<div class="state-msg">ℹ️ Datos VIOG no disponibles aún — ejecuta --viog-co</div>';
     }
   } catch(err) {
     console.error(err);
@@ -456,7 +628,7 @@ function renderBrechasM(rows) {
 function renderBrechasQ(rows) {
   const x     = rows.map(r => r.fecha);
   const bCD   = toNum(rows, 'brecha_cd');
-  const bHP   = toNum(rows, 'brecha_hp');
+  const bHP   = toNum(rows, 'brecha_bhp');
   const zero  = x.map(() => 0);
 
   const fillColor = v => v >= 0 ? 'rgba(26,58,107,.18)' : 'rgba(232,78,15,.18)';
@@ -472,7 +644,7 @@ function renderBrechasQ(rows) {
   const tracesLine = [
     { x, y: zero, mode: 'lines', line: { color: '#555', width: 1, dash: 'dot' },
       showlegend: false, hoverinfo: 'skip' },
-    { x, y: bHP, name: 'Brecha HP',
+    { x, y: bHP, name: 'Brecha BHP',
       mode: 'lines', line: { color: '#555', width: 1.8, dash: 'dash' } },
   ];
 
@@ -483,62 +655,62 @@ function renderBrechasQ(rows) {
     }), CONF);
 }
 
+/* ─── Chart VIOG: brecha del producto por filtros ─────────── */
+function renderVIOG(rows) {
+  const x    = rows.map(r => r.fecha);
+  const zero = x.map(() => 0);
+
+  // Los 5 filtros que componen el VIOG (líneas tenues = dispersión)
+  const filtros = [
+    ['bk',     'B-K',         '#8e44ad'],
+    ['cf',     'C-F',         '#2e7d32'],
+    ['bw',     'Butterworth', '#00897b'],
+    ['bhp',    'BHP',         '#e8902f'],
+    ['kalman', 'Kalman',      '#c0392b'],
+  ];
+  const tracesFiltros = filtros.map(([col, name, color]) => ({
+    x, y: toNum(rows, col), name,
+    mode: 'lines', line: { color, width: 1.2 }, opacity: 0.55,
+    connectgaps: false,
+  }));
+
+  const traces = [
+    { x, y: zero, mode: 'lines', line: { color: '#555', width: 1, dash: 'dot' },
+      showlegend: false, hoverinfo: 'skip' },
+    ...tracesFiltros,
+    // Compuesto VIOG: línea principal
+    { x, y: toNum(rows, 'viog'), name: 'VIOG (compuesto)',
+      mode: 'lines', line: { color: '#1a3a6b', width: 2.8 } },
+  ];
+
+  Plotly.newPlot('chart-viog', traces,
+    baseLayout({ yaxis: { ticksuffix: '%' } }), CONF);
+}
+
 /* ─── Chart 5: PIB niveles ────────────────────────────────── */
 function renderPIB(rows) {
   const x    = rows.map(r => r.fecha);
   const obs  = toNum(rows, 'pib_obs_idx');
   const pot  = toNum(rows, 'pib_pot_idx');
-  const hp   = toNum(rows, 'pib_hp_idx');
+  const hp   = toNum(rows, 'pib_bhp_idx');
 
   // fallback si no hay columna _idx
   const obsF  = obs.some(v => v !== null) ? obs  : toNum(rows, 'pib_obs');
   const potF  = pot.some(v => v !== null) ? pot  : toNum(rows, 'pib_pot');
-  const hpF   = hp.some(v => v !== null)  ? hp   : toNum(rows, 'pib_hp');
+  const hpF   = hp.some(v => v !== null)  ? hp   : toNum(rows, 'pib_bhp');
 
   const traces = [
     { x, y: obsF, name: 'PIB observado',
       mode: 'lines', line: { color: '#e84e0f', width: 2 } },
     { x, y: potF, name: 'PIB potencial (C-D)',
       mode: 'lines', line: { color: '#1a3a6b', width: 2.5 } },
-    { x, y: hpF,  name: 'Tendencia HP',
+    { x, y: hpF,  name: 'Tendencia BHP',
       mode: 'lines', line: { color: '#888', width: 1.5, dash: 'dash' } },
   ];
 
   const suffix = obs.some(v => v !== null) ? '' : ' (billones COP)';
   Plotly.newPlot('chart-pib', traces,
     baseLayout({ yaxis: { ticksuffix: suffix } }), CONF);
-}
-
-/* ─── Chart 6: PTF y Alpha ────────────────────────────────── */
-function renderPTF(rows) {
-  const x      = rows.map(r => r.fecha);
-  const ptfObs = toNum(rows, 'ptf_obs');
-  const ptfPot = toNum(rows, 'ptf_pot');
-  const alpha  = toNum(rows, 'alpha');
-
-  const traces = [
-    { x, y: ptfObs, name: 'PTF observada',
-      mode: 'lines', line: { color: '#e84e0f', width: 2 } },
-    { x, y: ptfPot, name: 'PTF potencial (HP)',
-      mode: 'lines', line: { color: '#1a3a6b', width: 2.5 } },
-    { x, y: alpha,  name: 'α (share capital)',
-      mode: 'lines', line: { color: '#2e7d32', width: 1.8 },
-      yaxis: 'y2' },
-  ];
-
-  const layout = baseLayout({
-    yaxis2: {
-      overlaying: 'y',
-      side: 'right',
-      showgrid: false,
-      zeroline: false,
-      tickfont: { size: 11 },
-      title: { text: 'α', font: { size: 11 } },
-    },
-    legend: { orientation: 'h', y: -0.22, x: 0.5, xanchor: 'center', font: { size: 11 } },
-  });
-
-  Plotly.newPlot('chart-ptf', traces, layout, CONF);
 }
 
 /* ─── Arrancar ────────────────────────────────────────────── */

@@ -1,13 +1,13 @@
 # NAIRU Colombia — Pipeline de Datos Macroeconómicos
 
-[![tests](https://img.shields.io/badge/tests-448%20passing-success.svg)](#6-tests)
+[![tests](https://img.shields.io/badge/tests-493%20passing-success.svg)](#6-tests)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](#3-instalación)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 Pipeline reproducible que descarga, limpia, valida y consolida series macroeconómicas oficiales de Colombia para alimentar dos modelos:
 
 1. **NAIRU/NAICU** — Tasa de desempleo (y de capacidad instalada) consistente con inflación estable. Filtro de Kalman biestado en `src/nairu/`.
-2. **PIB potencial vía Cobb-Douglas** — Y\* = A\*·Kᵅ·(H·L\*)^(1−α) con α = 0.4. Reemplaza el cálculo manual en Excel del profesor Álvaro.
+2. **PIB potencial vía Cobb-Douglas** — Y\* = A\*·Kᵅ·(H·L\*)^(1−α) con α = 0.4. PTF tendencial y brecha estadística via filtro Boosted Hodrick-Prescott (BHP, Phillips & Shi 2021).
 
 Todas las fuentes se actualizan ejecutando un solo comando; el resultado es un CSV mensual de **21 columnas × ~270 meses (2004-01-01 → presente)**.
 
@@ -145,7 +145,7 @@ python -m src.main --pib-potencial   # PIB Potencial + Excel (requiere --nairu-e
 ```
 
 Genera `outputs/pib_potencial/PIB_Potencial_Colombia.xlsx` con 4 hojas:
-- **Trimestral** — Y\*, brechas CD y HP, factores L, K, α, PTF
+- **Trimestral** — Y\*, brechas CD y BHP, factores L, K, α, PTF
 - **Mensual** — TD, UCI, NAIRU\*, NAICU\*, inflación
 - **Supuestos** — parámetros del modelo
 - **Metadatos** — fechas de descarga por fuente
@@ -169,11 +169,11 @@ scraping-NAIRU/
 │   │   │   └── common.py      # MONTH_ABBR_ES, MONTH_FULL_ES, make_dane_session()
 │   │   ├── fred/brent.py      # Brent (3 niveles de fallback: curl/requests/urllib)
 │   │   ├── pwt/pwt.py         # PWT 11.0 (formato wide/largo auto-detectado)
-│   │   └── viog/viog.py       # 5 filtros (HP, BK, CF, Butterworth, Kalman) + VIOG ponderado
+│   │   └── viog/viog.py       # 5 filtros (BHP, BK, CF, Butterworth, Kalman LLT) + VIOG ponderado
 │   ├── nairu/                 # Modelo Kalman biestado para NAIRU/NAICU
 │   ├── production/            # Cobb-Douglas: factors.py, tfp.py, pib_potencial.py, excel_writer.py
 │   └── pipelines/             # run_*.py — un orquestador por fuente + run_all + run_merge
-├── tests/                     # 448 tests offline (CSVs sintéticos, sin red)
+├── tests/                     # 490 tests offline (CSVs sintéticos, sin red)
 ├── data/
 │   ├── raw/                   # Cacheado de descargas (gitignored)
 │   ├── inputs/                # Inputs manuales (PIB_USA.xlsx, PIB_CO.xlsx)
@@ -206,20 +206,21 @@ Todos los tests son **offline**: usan CSVs sintéticos en `tmp_path`, sin llamad
 |---|---:|---|
 | `test_merge.py` | 35 | Outer-merge, MERGED_COLUMNS, renombrado VIOG-US/CO |
 | `test_pipeline.py` | 14 | Smoke test del CLI |
-| `test_geih.py` | 49 | Scraping HTML, parsing Excel pivoteado, series TD+TGP+PET |
-| `test_pwt.py` | 31 | Parseo wide/largo, filtro country, validaciones PWT 11.0 |
-| `test_ipc.py` | 27 | Selección de archivo, melt, rangos del índice |
-| `test_banrep_*.py` | 35 | API SUAMECA, agregación diaria→mensual (TES) |
-| `test_andi.py` | 56 | Extracción de PDFs con fuzzy matching |
-| `test_brent.py` | 23 | 3 niveles de fallback FRED |
-| `test_informality.py` | 18 | Reconstrucción de trimestres móviles |
-| `test_dane_gdp.py` | 19 | Parseo Cuadro 4, asignación Q→mes |
+| `test_geih.py` | 43 | Scraping HTML, parsing Excel pivoteado, series TD+TGP+PET |
+| `test_pwt.py` | 37 | Parseo wide/largo, filtro country, validaciones PWT 11.0 |
+| `test_ipc.py` | 23 | Selección de archivo, melt, rangos del índice |
+| `test_banrep_inflation.py` | 29 | API SUAMECA, inflación meta/observada/núcleo |
+| `test_banrep_tes.py` | 40 | SUAMECA TES Cero Cupón, agregación diaria→mensual |
+| `test_andi.py` | 63 | Extracción de PDFs con fuzzy matching |
+| `test_brent.py` | 38 | 3 niveles de fallback FRED |
+| `test_informality.py` | 30 | Reconstrucción de trimestres móviles |
+| `test_dane_gdp.py` | 28 | Parseo Cuadro 4, asignación Q→mes |
 | `test_merge_derived.py` | 16 | Variables derivadas ipc_yoy, ipc_mom, inflation_gap |
-| `test_viog.py` | 33 | 5 filtros, pesos VIOG, empalme series Base 1994/2005/2015 |
+| `test_viog.py` | 33 | 5 filtros (BHP/BK/CF/BW/Kalman LLT), pesos VIOG, empalme 1994/2005/2015 |
 | `test_production_factors.py` | 21 | L, K, α dinámico, fallbacks NAIRU/NAICU |
-| `test_production_tfp.py` | 18 | HP filter, PTF observada y tendencial |
-| `test_production_pib_potencial.py` | 13 | PIB*, brechas CD y HP, pipeline integrado |
-| **Total** | **448** | **~ 4 s** |
+| `test_production_tfp.py` | 30 | `hp_filter`, `boosted_hp_filter` (9 casos), PTF observada y tendencial BHP, capital humano H |
+| `test_production_pib_potencial.py` | 13 | PIB*, brechas CD y BHP, pipeline integrado |
+| **Total** | **493** | **~ 8 s** |
 
 ---
 
@@ -234,9 +235,29 @@ Todos los tests son **offline**: usan CSVs sintéticos en `tmp_path`, sin llamad
 
 ---
 
-## 8. Cuellos de botella resueltos y siguientes pasos
+## 8. Historial de mejoras y siguientes pasos
 
-Identificados y corregidos en el ciclo de limpieza 2026-05-12:
+### Ciclo 2026-06-09
+
+| # | Mejora | Archivos afectados |
+|---|---|---|
+| A | **α fijado en 0.4** (antes 0.33) — alineado con el Boceto / Función de Producción de los profesores; unifica las dos rutas de producción. | `src/production/factors.py` |
+| B | **Capital humano H incorporado** al término de trabajo: `Y = A·K^α·(H·L)^(1−α)` (confirmado contra la celda B7 de `FUNCION DE PRODUCCION.xlsx`). | `tfp.py`, `pib_potencial.py`, `build_production_function_dataset.py`, +3 tests |
+| C | **Capital por inventario permanente con FBKF DANE** — reemplaza la K anual de PWT (cortaba en 2023); el PIB potencial y las brechas llegan al trimestre corriente. De PWT solo se usa δ (promedio) y H. | `src/pipelines/run_pib_potencial.py` |
+| D | **Vista VIOG en el tablero** — gráfica "Brecha del Producto — VIOG (5 filtros)" + `docs/data/viog_trimestral.csv` + botón de descarga. Dos lecturas del PIB potencial (función de producción + VIOG). | `export_web_data.py`, `docs/index.html`, `update.yml` |
+| E | **Workflow mensual que scrapea de verdad** — `update.yml` descarga cada fuente automatizable de forma resiliente (si una falla → warning + dato cacheado). NO scrapea PWT (anual + bloquea bots) ni PIB_USA (muestra). | `.github/workflows/update.yml` |
+| F | **Fix chequeo de coherencia IPC** — `run_derived_checks` compara `ipc_yoy` contra la suma móvil de 12 meses (antes `ipc_mom×12`, que amplificaba la volatilidad estacional). Desbloquea `--merge` / `--all`. | `src/quality_checks.py` |
+| G | **Limpieza** — eliminados `agent_llm.py` (Ollama) y `pyproject.toml.xlsx` (duplicado); quitada la gráfica PTF/α del tablero. | varios |
+
+### Ciclo 2026-05-26
+
+| # | Mejora | Archivos afectados |
+|---|---|---|
+| A | **Boosted HP Filter** — reemplaza el HP simple en todo el pipeline. `boosted_hp_filter(series, lamb=1600, iterations=3)` en `src/production/tfp.py`. Columnas renombradas a `PIB_tend_BHP` / `Brecha_BHP` / `brecha_bhp`. Página web y Excel actualizados. | `tfp.py`, `pib_potencial.py`, `export_web_data.py`, `quality_checks.py`, `excel_writer.py`, `viog.py`, `docs/index.html`, `VIOG.ipynb` |
+| B | **Kalman UCM → Local Linear Trend** — reemplaza `random walk with drift + damped/stochastic cycle` (en log) por `local linear trend + cycle` (en niveles). Pendiente estocástica, sin `cycle_period_bounds`. | `viog.py`, `VIOG.ipynb` |
+| C | **Botones de descarga en la web** — sección dedicada con tarjetas estilizadas, íconos SVG, descripción de cada archivo, atributo `download` y hover effects. | `docs/index.html` |
+
+### Ciclo 2026-05-12
 
 | # | Cuello de botella | Estado | Acción aplicada |
 |---|---|---|---|
@@ -252,7 +273,7 @@ Identificados y corregidos en el ciclo de limpieza 2026-05-12:
 | 10 | `notebooks/exploration.ipynb` vacío | ⚠️ Pendiente | Borrar manualmente: `rm notebooks/exploration.ipynb` |
 | 11 | Pipelines secuenciales en `run_all` | 🔮 Futuro | Paralelizar fuentes independientes con `concurrent.futures` (cuidado con APIs del DANE) |
 | 12 | ANDI EOIC procesa PDFs secuencialmente | 🔮 Futuro | `ProcessPoolExecutor` para parseo de N PDFs (CPU-bound) |
-| 13 | Falta CI/CD (GitHub Actions) | 🔮 Futuro | Workflow básico `pip install -e ".[dev]" && pytest` |
+| 13 | Falta CI/CD (GitHub Actions) | ✅ Resuelto | `tests.yml` (matriz 3.11/3.12 + lint) y `update.yml` (scraping mensual resiliente + publicación del tablero) |
 
 ---
 
@@ -281,6 +302,7 @@ El dataset consolidado va a `data/final/nairu_dataset.csv`, no a `outputs/`. `ou
 - Gómez & Julio (2000). *Transmission Mechanisms and Inflation Targeting: the Case of Colombia*.
 - *2022-04-28 PIB tendencial.pdf* (ver `docs/bib/`). Método del profesor Álvaro.
 - Penn World Tables 11.0 — [www.rug.nl/ggdc/productivity/pwt](https://www.rug.nl/ggdc/productivity/pwt/).
+- Phillips, P.C.B. & Shi, Z. (2021). *Boosting: Why You Can Use the HP Filter*. International Economic Review, 62(2), 521–570. — Base del filtro BHP implementado en `src/production/tfp.py`.
 - DANE — Gran Encuesta Integrada de Hogares (GEIH), Cuentas Nacionales, IPC.
 
 ---

@@ -879,8 +879,9 @@ def run_derived_checks(df: pd.DataFrame) -> bool:
 
     - ``corr(ipc_yoy, Inf_Rate) > 0.97`` para filas con ambas series no nulas
       (se aceptan los primeros 12 meses con NaN en ``ipc_yoy``).
-    - La aproximación ``ipc_mom * 12`` y ``ipc_yoy`` no divergen más de 5 pp
-      en el 90 % de las filas (diferencia esperada por composición geométrica).
+    - La suma de las 12 variaciones mensuales (``Σ ipc_mom``) y ``ipc_yoy`` no
+      divergen más de 5 pp en el 90 % de las filas (la diferencia es el término
+      de composición del encadenamiento, pequeño).
 
     Parameters
     ----------
@@ -917,17 +918,22 @@ def run_derived_checks(df: pd.DataFrame) -> bool:
             )
         logger.info("corr(ipc_yoy, Inf_Rate) = %.4f ✓", corr)
 
-    # 2. Aproximación lineal: |ipc_mom*12 - ipc_yoy| ≤ 5 pp en ≥ 90 % de filas
-    mask2 = df["ipc_yoy"].notna() & df["ipc_mom"].notna()
+    # 2. Coherencia: la variación interanual ≈ suma de las 12 variaciones mensuales
+    #    en ≥ 90 % de las filas. La diferencia es el término de composición del
+    #    encadenamiento (pequeño). NB: comparar contra ``ipc_mom * 12`` es incorrecto:
+    #    anualiza UN solo mes y amplifica ×12 la volatilidad estacional (alimentos,
+    #    ajustes de enero), divergiendo > 5 pp en muchos meses aunque los datos sean buenos.
+    suma_12m = df["ipc_mom"].rolling(12).sum()
+    mask2 = df["ipc_yoy"].notna() & suma_12m.notna()
     if mask2.sum() > 0:
-        diff = (df.loc[mask2, "ipc_mom"] * 12 - df.loc[mask2, "ipc_yoy"]).abs()
+        diff = (suma_12m.loc[mask2] - df.loc[mask2, "ipc_yoy"]).abs()
         pct_ok = (diff <= 5.0).mean()
         if pct_ok < 0.90:
             raise QualityCheckError(
                 f"Solo el {pct_ok:.1%} de las filas cumplen "
-                "|ipc_mom*12 - ipc_yoy| ≤ 5 pp (mínimo esperado: 90 %)."
+                "|suma_12m(ipc_mom) - ipc_yoy| <= 5 pp (minimo esperado: 90 %)."
             )
-        logger.info("|ipc_mom*12 - ipc_yoy| ≤ 5 pp en %.1f %% de las filas ✓", pct_ok * 100)
+        logger.info("|suma_12m(ipc_mom) - ipc_yoy| <= 5 pp en %.1f %% de las filas OK", pct_ok * 100)
 
     logger.info("─── Todas las validaciones de variables derivadas pasaron ✓ ───")
     return True
@@ -940,11 +946,11 @@ def run_pib_potencial_checks(df: pd.DataFrame) -> bool:
 
     Verifica:
     - Columnas mínimas presentes: ``PIB``, ``PIB_pot``, ``Brecha_CD``,
-      ``PIB_tend_HP``, ``Brecha_HP``, ``alpha``, ``A_obs``, ``A_pot``.
+      ``PIB_tend_BHP``, ``Brecha_BHP``, ``alpha``, ``A_obs``, ``A_pot``.
     - ``PIB_pot > 0`` en todos los periodos.
     - ``|Brecha_CD| < 50 pp`` (Colombia históricamente ±10 pp; se permite hasta 50 pp
       para cubrir choques extremos como el COVID-19 en 2020-Q2).
-    - ``|Brecha_HP| < 15 pp``.
+    - ``|Brecha_BHP| < 15 pp``.
     - ``alpha`` en el rango ``(0.15, 0.85)`` para todos los periodos.
     - ``A_pot > 0`` en todos los periodos.
     - Al menos 60 trimestres (cobertura desde 2005-Q1).
@@ -967,7 +973,7 @@ def run_pib_potencial_checks(df: pd.DataFrame) -> bool:
     logger.info("─── Validaciones PIB Potencial ───")
 
     # 1. Columnas mínimas
-    requeridas = {"PIB", "PIB_pot", "Brecha_CD", "PIB_tend_HP", "Brecha_HP", "alpha", "A_pot"}
+    requeridas = {"PIB", "PIB_pot", "Brecha_CD", "PIB_tend_BHP", "Brecha_BHP", "alpha", "A_pot"}
     faltantes = requeridas - set(df.columns)
     if faltantes:
         raise QualityCheckError(
@@ -1001,22 +1007,22 @@ def run_pib_potencial_checks(df: pd.DataFrame) -> bool:
     else:
         logger.info("|Brecha_CD| máx = %.2f pp ✓", max_brecha_cd)
 
-    # 4. Brecha HP acotada
+    # 4. Brecha BHP acotada
     # Umbral de error en 20 pp; advertencia entre 15-20 pp.
-    # El filtro HP (λ=1600) normalmente contiene la brecha a ±5 pp, pero durante
-    # el choque COVID-19 (2020-Q2) puede alcanzar ~17 pp.
-    max_brecha_hp = df["Brecha_HP"].abs().max()
-    if max_brecha_hp >= 20.0:
+    # El filtro BHP (λ=1600, iter=3) normalmente contiene la brecha a ±5 pp,
+    # pero durante el choque COVID-19 (2020-Q2) puede alcanzar ~17 pp.
+    max_brecha_bhp = df["Brecha_BHP"].abs().max()
+    if max_brecha_bhp >= 20.0:
         raise QualityCheckError(
-            f"|Brecha_HP| máxima = {max_brecha_hp:.2f} pp ≥ 20 pp — revisar serie de PIB."
+            f"|Brecha_BHP| máxima = {max_brecha_bhp:.2f} pp ≥ 20 pp — revisar serie de PIB."
         )
-    if max_brecha_hp >= 15.0:
+    if max_brecha_bhp >= 15.0:
         logger.warning(
-            "|Brecha_HP| máx = %.2f pp — supera ±15 pp (verificar trimestre COVID-2020).",
-            max_brecha_hp,
+            "|Brecha_BHP| máx = %.2f pp — supera ±15 pp (verificar trimestre COVID-2020).",
+            max_brecha_bhp,
         )
     else:
-        logger.info("|Brecha_HP| máx = %.2f pp ✓", max_brecha_hp)
+        logger.info("|Brecha_BHP| máx = %.2f pp ✓", max_brecha_bhp)
 
     # 5. Alpha en rango razonable
     alpha_fuera = ((df["alpha"] <= 0.15) | (df["alpha"] >= 0.85)).sum()

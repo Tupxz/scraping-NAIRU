@@ -103,8 +103,8 @@ class TestLoadSeries:
 # ── TestApplyFilters ──────────────────────────────────────────────────
 
 class TestApplyFilters:
-    def test_hp_trend_no_nan(self, filtered_df):
-        assert filtered_df["trend_hp"].notna().all()
+    def test_bhp_trend_no_nan(self, filtered_df):
+        assert filtered_df["trend_bhp"].notna().all()
 
     def test_cf_trend_no_nan(self, filtered_df):
         assert filtered_df["trend_cf"].notna().all()
@@ -125,23 +125,23 @@ class TestApplyFilters:
         assert filtered_df["trend_bk"].iloc[K:-K].notna().all()
 
     def test_trends_are_positive(self, filtered_df):
-        for col in ["trend_hp", "trend_cf", "trend_bw", "trend_kalman"]:
+        for col in ["trend_bhp", "trend_cf", "trend_bw", "trend_kalman"]:
             assert (filtered_df[col] > 0).all(), f"{col} tiene valores ≤ 0"
 
 
 # ── TestComputeGaps ───────────────────────────────────────────────────
 
 class TestComputeGaps:
-    def test_gap_hp_formula(self, gaps_df):
-        expected = np.log(gaps_df["Y"]) - np.log(gaps_df["trend_hp"])
-        pd.testing.assert_series_equal(gaps_df["gap_hp"], expected, check_names=False)
+    def test_gap_bhp_formula(self, gaps_df):
+        expected = np.log(gaps_df["Y"]) - np.log(gaps_df["trend_bhp"])
+        pd.testing.assert_series_equal(gaps_df["gap_bhp"], expected, check_names=False)
 
     def test_gap_ref_formula(self, gaps_df):
         expected = np.log(gaps_df["Y"]) - np.log(gaps_df["Y_ref"])
         pd.testing.assert_series_equal(gaps_df["gap_ref"], expected, check_names=False)
 
     def test_gaps_are_numeric(self, gaps_df):
-        for col in ["gap_hp", "gap_cf", "gap_bw", "gap_kalman", "gap_ref"]:
+        for col in ["gap_bhp", "gap_cf", "gap_bw", "gap_kalman", "gap_ref"]:
             assert pd.api.types.is_float_dtype(gaps_df[col])
 
     def test_gap_bk_nan_at_extremes(self, gaps_df):
@@ -149,7 +149,7 @@ class TestComputeGaps:
         assert gaps_df["gap_bk"].iloc[:K].isna().all()
 
     def test_log_columns_created(self, gaps_df):
-        for tag in ["bk", "cf", "bw", "hp", "kalman"]:
+        for tag in ["bk", "cf", "bw", "bhp", "kalman"]:
             assert f"ln_trend_{tag}" in gaps_df.columns
 
 
@@ -157,23 +157,23 @@ class TestComputeGaps:
 
 class TestComputeVIOGWeights:
     def test_rev_weights_sum_to_one(self, weights_df):
-        gap_vars = ["bk", "cf", "bw", "hp", "kalman", "ref"]
+        gap_vars = ["bk", "cf", "bw", "bhp", "kalman", "ref"]
         valid = weights_df["weight_rev_bk"].notna()
         total = sum(weights_df.loc[valid, f"weight_rev_{v}"] for v in gap_vars)
         np.testing.assert_allclose(total, 1.0, atol=1e-10)
 
     def test_inv_rev_weights_sum_to_one(self, weights_df):
-        gap_vars = ["bk", "cf", "bw", "hp", "kalman", "ref"]
+        gap_vars = ["bk", "cf", "bw", "bhp", "kalman", "ref"]
         valid = weights_df["weight_inv_rev_bk"].notna()
         total = sum(weights_df.loc[valid, f"weight_inv_rev_{v}"] for v in gap_vars)
         np.testing.assert_allclose(total, 1.0, atol=1e-10)
 
     def test_rev_positive_for_non_bk(self, weights_df):
-        for col in ["rev_cf", "rev_bw", "rev_hp", "rev_kalman", "rev_ref"]:
+        for col in ["rev_cf", "rev_bw", "rev_bhp", "rev_kalman", "rev_ref"]:
             assert (weights_df[col] > 0).all(), f"{col} tiene valores ≤ 0"
 
     def test_inv_rev_positive_for_non_bk(self, weights_df):
-        for col in ["inv_rev_cf", "inv_rev_bw", "inv_rev_hp", "inv_rev_kalman", "inv_rev_ref"]:
+        for col in ["inv_rev_cf", "inv_rev_bw", "inv_rev_bhp", "inv_rev_kalman", "inv_rev_ref"]:
             assert (weights_df[col] > 0).all()
 
 
@@ -197,7 +197,7 @@ class TestRunVIOGPipeline:
     def test_output_columns_present(self, pipeline_output):
         df, _ = pipeline_output
         expected = ["date", "year", "quarter", "gap_viog", "gap_inv_viog",
-                    "gap_ref", "gap_hp", "gap_cf", "gap_bk", "gap_bw", "gap_kalman", "source"]
+                    "gap_ref", "gap_bhp", "gap_cf", "gap_bk", "gap_bw", "gap_kalman", "source"]
         for col in expected:
             assert col in df.columns, f"Falta columna: {col}"
 

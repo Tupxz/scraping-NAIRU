@@ -7,7 +7,9 @@ import pandas as pd
 import pytest
 
 from src.production.tfp import (
+    BHP_ITERATIONS,
     HP_LAMBDA_QUARTERLY,
+    boosted_hp_filter,
     compute_tfp,
     compute_tfp_observed,
     compute_tfp_trend,
@@ -95,6 +97,77 @@ class TestHpFilter:
         )
 
 
+# ── boosted_hp_filter ────────────────────────────────────────────────────────
+
+class TestBoostedHpFilter:
+    def test_retorna_cycle_y_trend(self):
+        s = _serie_sintetica()
+        cycle, trend = boosted_hp_filter(s)
+        assert len(cycle) == len(s)
+        assert len(trend) == len(s)
+
+    def test_cycle_mas_trend_igual_serie(self):
+        """cycle + trend debe reconstruir la serie original."""
+        s = _serie_sintetica(50)
+        cycle, trend = boosted_hp_filter(s)
+        reconstruido = cycle + trend
+        pd.testing.assert_series_equal(
+            reconstruido, s, check_names=False, rtol=1e-6,
+        )
+
+    def test_ciclo_bhp_menor_que_hp(self):
+        """Con iter>1, el ciclo BHP es más pequeño que el ciclo HP simple.
+
+        Cada iteración aplica HP sobre el ciclo residual, extrayendo
+        componentes de alta frecuencia sucesivos; el ciclo final es menor.
+        """
+        s = _serie_sintetica(60)
+        cycle_hp,  _ = hp_filter(s)
+        cycle_bhp, _ = boosted_hp_filter(s, iterations=3)
+        assert cycle_bhp.std() < cycle_hp.std()
+
+    def test_trend_bhp_mas_cercana_a_serie(self):
+        """La tendencia BHP (iter>1) tiene mayor varianza que la tendencia HP.
+
+        Como el ciclo BHP es más pequeño, la tendencia = serie − ciclo
+        retiene más varianza de la serie original.
+        """
+        s = _serie_sintetica(60)
+        _, trend_hp  = hp_filter(s)
+        _, trend_bhp = boosted_hp_filter(s, iterations=3)
+        assert trend_bhp.std() >= trend_hp.std()
+
+    def test_maneja_nan_al_inicio(self):
+        s = _serie_sintetica(60)
+        s.iloc[:12] = np.nan
+        cycle, trend = boosted_hp_filter(s)
+        assert cycle.iloc[:12].isna().all()
+        assert trend.iloc[:12].isna().all()
+        assert trend.iloc[12:].notna().all()
+
+    def test_error_con_pocos_datos(self):
+        s = pd.Series([1.0, 2.0, 3.0])
+        with pytest.raises(ValueError, match="8 observaciones"):
+            boosted_hp_filter(s)
+
+    def test_indice_preservado(self):
+        s = _serie_sintetica(40)
+        cycle, trend = boosted_hp_filter(s)
+        assert list(cycle.index) == list(s.index)
+        assert list(trend.index) == list(s.index)
+
+    def test_iteraciones_1_equivale_hp(self):
+        """Con iterations=1 el resultado debe ser igual al HP estándar."""
+        s = _serie_sintetica(50)
+        cycle_hp,  trend_hp  = hp_filter(s)
+        cycle_bhp, trend_bhp = boosted_hp_filter(s, iterations=1)
+        pd.testing.assert_series_equal(trend_bhp, trend_hp, check_names=False, rtol=1e-6)
+        pd.testing.assert_series_equal(cycle_bhp, cycle_hp, check_names=False, rtol=1e-6)
+
+    def test_constante_bhp_iterations(self):
+        assert BHP_ITERATIONS == 3
+
+
 # ── compute_tfp_observed ──────────────────────────────────────────────────────
 
 class TestComputeTfpObserved:
@@ -167,3 +240,33 @@ class TestComputeTfp:
         cols_antes = set(df.columns)
         compute_tfp(df)
         assert set(df.columns) == cols_antes
+
+
+# ── Capital humano H en el término de trabajo ─────────────────────────────────
+
+class TestCapitalHumano:
+    """A_obs = PIB / (K^alpha · (H · L_obs)^(1−alpha)) — H = 1 si la columna falta."""
+
+    def test_h_ausente_equivale_a_h_uno(self):
+        """Sin columna H, A_obs es idéntico a pasar H = 1 (compatibilidad hacia atrás)."""
+        df = _base_df()
+        a_sin = compute_tfp_observed(df)["A_obs"]
+        a_h1 = compute_tfp_observed(df.assign(H=1.0))["A_obs"]
+        pd.testing.assert_series_equal(a_sin, a_h1, check_names=False)
+
+    def test_h_mayor_reduce_la_ptf(self):
+        """Con H > 1 el trabajo efectivo sube → A_obs baja para el mismo PIB."""
+        df = _base_df()
+        a_base = compute_tfp_observed(df.assign(H=1.0))["A_obs"]
+        a_h = compute_tfp_observed(df.assign(H=3.0))["A_obs"]
+        assert (a_h < a_base).all()
+
+    def test_formula_h_explicita(self):
+        """Verifica la fórmula exacta con H presente."""
+        df = _base_df().assign(H=2.5)
+        out = compute_tfp_observed(df)
+        esperado = df["PIB"] / (
+            df["K_usado"] ** df["alpha"]
+            * (df["H"] * df["L_obs"]) ** (1.0 - df["alpha"])
+        )
+        pd.testing.assert_series_equal(out["A_obs"], esperado, check_names=False)
