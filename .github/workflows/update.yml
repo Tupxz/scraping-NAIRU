@@ -18,17 +18,22 @@ on:
 
 # ── Permisos ──────────────────────────────────────────────────────────────────
 permissions:
-  contents: write   # para hacer git push con los CSV actualizados
+  contents: write   # para hacer git push con los datos actualizados
+
+# Evita que dos corridas se solapen (no cancela una en curso)
+concurrency:
+  group: actualizar-datos
+  cancel-in-progress: false
 
 # ── Jobs ─────────────────────────────────────────────────────────────────────
 jobs:
   update:
-    name: Pipeline completo NAIRU + PIB Potencial
+    name: Scrape + NAIRU + PIB Potencial + tablero
     runs-on: ubuntu-latest
     timeout-minutes: 60   # la estimación MLE puede tomar ~5 min
 
     steps:
-      # 1. Clonar el repositorio (incluye data/processed/ ya que no está en .gitignore)
+      # 1. Clonar el repositorio (incluye data/processed/ cacheado)
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -41,49 +46,72 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      # 3. Dependencias
+      # 3. Dependencias (runtime desde pyproject.toml)
       - name: Instalar dependencias
         run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install -e .
 
-      # 4. Pipeline de datos (no hace scraping real — lee desde data/processed/)
+      # ── 4. SCRAPING RESILIENTE ───────────────────────────────────────
+      # Cada fuente se descarga por separado. Si una falla (caída del DANE,
+      # bloqueo de bots, hipo de FRED…), se deja un ::warning:: y el pipeline
+      # SIGUE usando el último CSV cacheado en data/processed/. Así el tablero
+      # se actualiza igual aunque alguna fuente esté caída ese día.
+      #   NO se scrapea PWT (anual + bloquea bots → se actualiza a mano) ni
+      #   PIB_USA (era una muestra). Ambos quedan con su CSV committeado.
+      - name: Scrape fuentes (resiliente)
+        run: |
+          scrape () {
+            echo "──────── src.main $* ────────"
+            if python -m src.main "$@"; then
+              echo "✓ $* OK"
+            else
+              echo "::warning title=Scrape fallido::'src.main $*' falló — se usa el dato cacheado en data/processed/"
+            fi
+          }
+          scrape --unemployment   # DANE GEIH (TD, TGP, PET)
+          scrape --ipc            # DANE IPC
+          scrape --informality    # DANE informalidad
+          scrape --dane-gdp       # DANE PIB trimestral
+          scrape --investment     # DANE FBKF (inversión)  → capital
+          scrape --income         # DANE ingreso (RA/EBE/IM)
+          scrape --andi           # ANDI EOIC (UCI, PDFs)
+          scrape --banrep         # BANREP inflación (SUAMECA)
+          scrape --tes            # BANREP TES Cero Cupón
+          scrape --brent          # FRED Brent
+          scrape --viog-co        # brecha VIOG Colombia (depende de --dane-gdp)
+
+      # ── 5. MODELO (sobre datos frescos o cacheados) ──────────────────
+      # Estos pasos SÍ deben tener éxito: si el modelo falla no se publica
+      # nada y el tablero queda con el último dato bueno.
       - name: Construir Data_NAIRU.xlsx
         run: python -m src.main --nairu-dataset
 
-      # 5. Estimación NAIRU/NAICU (puede saltarse si los datos no cambiaron,
-      #    a menos que se haya activado force_reestimate)
       - name: Estimar NAIRU / NAICU
         env:
           FORCE_REESTIMATE: ${{ github.event.inputs.force_reestimate || 'false' }}
         run: |
           if [ "$FORCE_REESTIMATE" = "true" ]; then
-            # Borrar CSV anterior para forzar re-estimación
-            rm -f outputs/nairu/nairu_colombia.csv
+            rm -f outputs/nairu/nairu_colombia.csv   # fuerza re-estimación
           fi
           python -m src.main --nairu-estim
 
-      # 6. PIB Potencial Cobb-Douglas
-      - name: Calcular PIB Potencial
-        run: python -m src.main --pib-potencial
+      - name: PIB Potencial
+        run: python -m src.main --pib-potencial   # PIB potencial Cobb-Douglas
 
-      # 7. Exportar CSVs limpios a docs/data/
-      - name: Exportar datos web
-        run: python -m src.main --export-web
+      - name: Exportar datos al tablero
+        run: python -m src.main --export-web    # docs/data/*.csv + meta.json
 
-      # 8. Commit & push solo si hay cambios en docs/data/
-      - name: Commit y push docs/data/
+      # ── 6. Commit & push de datos frescos + tablero ──────────────────
+      - name: Commit y push
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add docs/data/nairu_monthly.csv \
-                  docs/data/pib_trimestral.csv \
-                  docs/data/viog_trimestral.csv \
-                  docs/data/meta.json
+          git add data/processed docs/data
 
           if git diff --cached --quiet; then
-            echo "Sin cambios en docs/data/ — nada que hacer."
+            echo "Sin cambios — nada que commitear."
           else
             FECHA=$(date -u +"%Y-%m-%d %H:%M UTC")
             git commit -m "chore(data): actualización automática ${FECHA} [skip ci]"
