@@ -879,8 +879,9 @@ def run_derived_checks(df: pd.DataFrame) -> bool:
 
     - ``corr(ipc_yoy, Inf_Rate) > 0.97`` para filas con ambas series no nulas
       (se aceptan los primeros 12 meses con NaN en ``ipc_yoy``).
-    - La aproximación ``ipc_mom * 12`` y ``ipc_yoy`` no divergen más de 5 pp
-      en el 90 % de las filas (diferencia esperada por composición geométrica).
+    - La suma de las 12 variaciones mensuales (``Σ ipc_mom``) y ``ipc_yoy`` no
+      divergen más de 5 pp en el 90 % de las filas (la diferencia es el término
+      de composición del encadenamiento, pequeño).
 
     Parameters
     ----------
@@ -917,17 +918,22 @@ def run_derived_checks(df: pd.DataFrame) -> bool:
             )
         logger.info("corr(ipc_yoy, Inf_Rate) = %.4f ✓", corr)
 
-    # 2. Aproximación lineal: |ipc_mom*12 - ipc_yoy| ≤ 5 pp en ≥ 90 % de filas
-    mask2 = df["ipc_yoy"].notna() & df["ipc_mom"].notna()
+    # 2. Coherencia: la variación interanual ≈ suma de las 12 variaciones mensuales
+    #    en ≥ 90 % de las filas. La diferencia es el término de composición del
+    #    encadenamiento (pequeño). NB: comparar contra ``ipc_mom * 12`` es incorrecto:
+    #    anualiza UN solo mes y amplifica ×12 la volatilidad estacional (alimentos,
+    #    ajustes de enero), divergiendo > 5 pp en muchos meses aunque los datos sean buenos.
+    suma_12m = df["ipc_mom"].rolling(12).sum()
+    mask2 = df["ipc_yoy"].notna() & suma_12m.notna()
     if mask2.sum() > 0:
-        diff = (df.loc[mask2, "ipc_mom"] * 12 - df.loc[mask2, "ipc_yoy"]).abs()
+        diff = (suma_12m.loc[mask2] - df.loc[mask2, "ipc_yoy"]).abs()
         pct_ok = (diff <= 5.0).mean()
         if pct_ok < 0.90:
             raise QualityCheckError(
                 f"Solo el {pct_ok:.1%} de las filas cumplen "
-                "|ipc_mom*12 - ipc_yoy| ≤ 5 pp (mínimo esperado: 90 %)."
+                "|suma_12m(ipc_mom) - ipc_yoy| <= 5 pp (minimo esperado: 90 %)."
             )
-        logger.info("|ipc_mom*12 - ipc_yoy| ≤ 5 pp en %.1f %% de las filas ✓", pct_ok * 100)
+        logger.info("|suma_12m(ipc_mom) - ipc_yoy| <= 5 pp en %.1f %% de las filas OK", pct_ok * 100)
 
     logger.info("─── Todas las validaciones de variables derivadas pasaron ✓ ───")
     return True
