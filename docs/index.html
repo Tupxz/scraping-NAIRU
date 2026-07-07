@@ -294,8 +294,8 @@
     <!-- Chart 3: Brechas mensuales -->
     <div class="chart-card">
       <div class="card-header">
-        <div class="card-title">Brechas Mensuales (laboral, UCI, inflación)</div>
-        <div class="card-desc">Diferencia entre valor observado y estimado estructural</div>
+        <div class="card-title">Brechas Mensuales (laboral, UCI, inflación núcleo)</div>
+        <div class="card-desc">Diferencia entre valor observado y estimado estructural · inflación = núcleo − meta (sin alimentos ni regulados; por eso 2008 y 2016 lucen menores que la inflación total)</div>
       </div>
       <div class="plotly-container" id="chart-brechas-m"></div>
     </div>
@@ -619,7 +619,7 @@ function renderBrechasM(rows) {
       mode: 'lines', line: { color: '#2e7d32', width: 2 } },
   ];
   if (bInf.some(v => v !== null)) {
-    traces.push({ x, y: bInf, name: 'Brecha inflación',
+    traces.push({ x, y: bInf, name: 'Brecha inflación núcleo (núcleo − meta)',
       mode: 'lines', line: { color: '#e84e0f', width: 2, dash: 'dot' } });
   }
 

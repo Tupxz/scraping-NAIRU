@@ -249,7 +249,12 @@ def merge_all_sources(
         merged["ipc_yoy"] = merged["ipc_index"].pct_change(12) * 100
         merged["ipc_mom"] = merged["ipc_index"].pct_change(1) * 100
     if "Inf_Rate" in merged.columns and "Inf_Goal" in merged.columns:
-        # Brecha de inflación: desviación de la observada vs la meta BANREP.
+        # Brecha de inflación: TOTAL observada vs meta BANREP.
+        # OJO: el modelo NAIRU (model_core.py) define su propio inflation_gap
+        # como NÚCLEO − meta (Core_Inf − Inf_Goal), que es lo que exporta el
+        # tablero como brecha_inf. Mismo nombre, definiciones distintas:
+        # esta (total−meta) vive en el dataset consolidado; aquella
+        # (núcleo−meta) en outputs/nairu/ y docs/data/nairu_monthly.csv.
         merged["inflation_gap"] = merged["Inf_Rate"] - merged["Inf_Goal"]
 
     # Ordenar columnas: date, year, month, luego datos en orden definido
