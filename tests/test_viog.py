@@ -128,6 +128,24 @@ class TestApplyFilters:
         for col in ["trend_bhp", "trend_cf", "trend_bw", "trend_kalman"]:
             assert (filtered_df[col] > 0).all(), f"{col} tiene valores ≤ 0"
 
+    def test_kalman_gap_bounded(self, filtered_df):
+        """Regresión: el UCM con ciclo determinístico divergía (VIOG-CO
+        llegó a +170% en el transitorio inicial). Con ciclo estocástico
+        amortiguado la brecha debe quedar en rango de ciclo de negocio."""
+        gap = np.log(filtered_df["Y"]) - np.log(filtered_df["trend_kalman"])
+        assert gap.abs().max() < 0.20, f"gap_kalman máx {gap.abs().max():.3f} — divergencia"
+
+    def test_kalman_gap_not_degenerate(self, filtered_df):
+        """Regresión: el UCM en niveles colapsaba la brecha a ~0 (VIOG-USA),
+        distorsionando el ponderador 1/VIOG. La brecha debe tener variación."""
+        gap = np.log(filtered_df["Y"]) - np.log(filtered_df["trend_kalman"])
+        assert gap.abs().max() > 1e-5, "gap_kalman degenerado (≈0 en toda la muestra)"
+
+    def test_kalman_trend_tracks_series(self, filtered_df):
+        """El potencial no puede alejarse arbitrariamente de la serie."""
+        ratio = filtered_df["trend_kalman"] / filtered_df["Y"]
+        assert ratio.between(0.8, 1.25).all()
+
 
 # ── TestComputeGaps ───────────────────────────────────────────────────
 

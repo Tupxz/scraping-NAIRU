@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.4.2] — 2026-07-07
+
+### Corregido
+- **Filtro Kalman/UCM del VIOG** (`viog.py::apply_filters`): ahora traduce la
+  especificación Stata original de `data/inputs/Code1.do` —
+  `ucm PIB, model(rwdrift) cycle(1, frequency(.1)) cycle(1, frequency(3))` —
+  como `level="random walk with drift"` + ciclo **estocástico amortiguado**
+  (Harvey 1989) + `irregular=True` (rol del segundo ciclo de alta frecuencia),
+  ajustado sobre 100·ln(Y) en vez de niveles. La especificación anterior
+  (`cycle=True` sin `stochastic_cycle` = ciclo determinístico) producía una
+  brecha sinusoidal pura de ±13% con transitorio inicial de +170% en VIOG-CO,
+  y una brecha degenerada ≈0 en VIOG-USA que además inflaba el ponderador
+  1/VIOG. Además: `cycle_period_bounds` de config por fin conectados (nuevo
+  default 6–64 trimestres; cubre el ciclo largo ≈63q del .do), chequeo
+  explícito de convergencia con reintento Powell→L-BFGS, warnings del fit
+  logueados en vez de silenciados, y guarda de cordura si |gap| > 20%
+  (auditoría §2.5). +3 tests de regresión. **Regenerar
+  `viog_usa.csv`/`viog_colombia.csv` y figuras** con `python -m src.main
+  --viog` y `--viog-co`.
+
+### Mantenimiento
+- Quick wins de la auditoría: seaborn como dependencia runtime (el panel PNG del
+  modelo nunca se generaba en CI), URL correcta del repo en pyproject, código
+  muerto eliminado en `export_web_data.py`, rotación del log (5 MB × 3), docstring
+  de `main.py` completo y README con 32 columnas + comandos faltantes.
+
 ## [0.4.1] — 2026-06-11
 
 ### Corregido

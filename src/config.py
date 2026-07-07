@@ -980,8 +980,13 @@ class VIOGConfig:
     bw_cutoff: float = 1.0 / 16.0
     bw_order: int = 8
 
-    # Kalman UCM — bounds del período del ciclo en trimestres (igual que notebook original)
-    kalman_cycle_period_bounds: tuple[float, float] = (0.3, 40.0)
+    # Kalman UCM — bounds del período del ciclo en trimestres.
+    # (6, 64) = ciclos de 1.5 a 16 años. El límite superior cubre el ciclo
+    # largo del Code1.do original (frequency(.1) ≈ 63 trimestres); el
+    # inferior coincide con la banda BK/CF. Nota: el valor anterior (0.3, 40)
+    # nunca se pasaba al modelo (config muerta) y 0.3 trimestres es
+    # sub-período (sin sentido espectral).
+    kalman_cycle_period_bounds: tuple[float, float] = (6.0, 64.0)
 
 
 VIOG_CONFIG = VIOGConfig()
