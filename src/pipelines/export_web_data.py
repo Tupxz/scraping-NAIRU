@@ -85,9 +85,8 @@ VIOG_EXPORT_COLS = {
     "gap_bk":       "bk",         # Baxter-King
     "gap_bw":       "bw",         # Butterworth
     "gap_kalman":   "kalman",     # Kalman (UCM)
-    "gap_ref":      "ref",        # Referencia: PIB potencial C-D (NaN pre-2005)
 }
-VIOG_GAP_COLS = ["viog", "viog_inv", "bhp", "cf", "bk", "bw", "kalman", "ref"]
+VIOG_GAP_COLS = ["viog", "viog_inv", "bhp", "cf", "bk", "bw", "kalman"]
 VIOG_START = "1994-01-01"  # ventana completa del empalme (antes 2005)
 
 

@@ -2,20 +2,14 @@
 
 ## [0.4.3] — 2026-07-07
 
-### Agregado
-- **VIOG-CO con referencia, como el cuaderno** (`run_viog._build_pib_co_xlsx`):
-  si existe `outputs/pib_potencial/pib_potencial_colombia.csv`, el PIB potencial
-  Cobb-Douglas del propio pipeline se agrega a `PIB_CO.xlsx` como columna
-  `Potential Value(Billions)` y el compuesto VIOG pondera **6 variables**
-  (BK, CF, BW, BHP, Kalman + referencia), igual que `notebooks/VIOG.ipynb`.
-  Pre-2005 la referencia es NaN y los ponderadores renormalizan (mismo
-  mecanismo que los extremos del BK). Sin el archivo, degrada a 5 filtros
-  con warning. `VIOG_CO_CONFIG.ref_col` ahora apunta a esa columna.
-- **Tablero**: la vista VIOG muestra la serie completa desde 1994 (antes
-  recortaba a 2005) e incluye la brecha de la función de producción como
-  línea de referencia; exporta columna `ref` en `viog_trimestral.csv`.
-
 ### Cambiado
+- **Tablero — vista VIOG desde 1994**: `viog_trimestral.csv` exporta la
+  serie completa del empalme (antes recortaba a 2005); se ve la crisis
+  del 99 igual que en las figuras de `outputs/viog_colombia/`.
+- **VIOG-CO se mantiene con 5 filtros sobre el PIB** (BK, CF, BW, BHP,
+  Kalman), sin referencia externa — como `notebooks/VIOG.ipynb` aplicado
+  al PIB (decisión 2026-07-07; se evaluó y descartó usar el potencial
+  C-D del pipeline como sexta variable de referencia).
 - **Tablero**: se retira la brecha de inflación de la gráfica de brechas
   mensuales (pendiente decidir núcleo vs total); sigue en el CSV como
   `brecha_inf`. Se restaura el diseño original de la página (revierte el

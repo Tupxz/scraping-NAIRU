@@ -5,10 +5,9 @@ Soporta dos países:
   - **Colombia**: VIOG_CO_CONFIG, construye PIB_CO.xlsx automáticamente
     desde dane_gdp_colombia.csv (scraper DANE) empalmado con la serie
     histórica Base 2005 del DANE (2000Q1–2011Q2) para extender hacia atrás.
-    Si existe outputs/pib_potencial/pib_potencial_colombia.csv, agrega el
-    PIB potencial Cobb-Douglas como columna de referencia → el compuesto
-    VIOG pondera 6 variables (5 filtros + referencia), igual que el
-    cuaderno notebooks/VIOG.ipynb. Sin ese archivo, degrada a 5 filtros.
+    Solo el PIB, sin referencia externa → compuesto sobre los 5 filtros
+    estadísticos (BK, CF, BW, BHP, Kalman), como notebooks/VIOG.ipynb
+    aplicado al PIB.
 """
 
 from __future__ import annotations
@@ -97,33 +96,6 @@ def _build_pib_co_xlsx(output_path: Path) -> None:
         "Value(Billions)":  values,
         "Variation":        variation.values,
     })
-
-    # ── 5. Referencia: PIB potencial Cobb-Douglas del propio pipeline ─
-    # Igual que el cuaderno (gap_vars incluye "potential"): si existe la
-    # estimación C-D, se agrega como columna de referencia. Cobertura
-    # 2005Q1→presente; antes queda NaN y los ponderadores renormalizan
-    # (mismo mecanismo que los extremos NaN del Baxter-King).
-    pot_csv = OUTPUTS_DIR / "pib_potencial" / "pib_potencial_colombia.csv"
-    ref_col = "Potential Value(Billions)"
-    try:
-        if pot_csv.exists():
-            pot = pd.read_csv(pot_csv)[["year", "quarter", "PIB_pot"]].rename(
-                columns={"year": "Year", "quarter": "Quarter", "PIB_pot": ref_col}
-            )
-            out = out.merge(pot, on=["Year", "Quarter"], how="left")
-            n_ref = int(out[ref_col].notna().sum())
-            logger.info(
-                "[VIOG-CO] Referencia C-D agregada: %d/%d trimestres con potencial.",
-                n_ref, len(out),
-            )
-        else:
-            logger.warning(
-                "[VIOG-CO] %s no existe — VIOG-CO sin referencia (solo 5 filtros). "
-                "Ejecuta --pib-potencial primero para el compuesto de 6 variables.",
-                pot_csv,
-            )
-    except Exception as exc:  # nunca romper la construcción del insumo
-        logger.warning("[VIOG-CO] No se pudo agregar la referencia C-D (%s).", exc)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     out.to_excel(output_path, index=False)
