@@ -3,393 +3,339 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NAIRU y PIB Potencial — Colombia</title>
+  <title>NAIRU &amp; PIB Potencial — Colombia</title>
 
   <!-- Plotly.js -->
   <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
-
-  <!-- Tipografía académica -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400..600&family=Source+Sans+3:ital,wght@0,400..700;1,400..600&display=swap" rel="stylesheet">
 
   <style>
     /* ── Reset & base ───────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --paper:     #f9f8f4;   /* fondo tipo papel */
+      --bg:        #f7f8fc;
       --surface:   #ffffff;
-      --border:    #e4e1d6;
-      --rule:      #23252d;   /* filetes tipográficos */
-      --ink:       #23252d;   /* texto principal */
-      --muted:     #6b6f7a;
-      --navy:      #274069;   /* serie estructural */
-      --vermilion: #b5492c;   /* serie observada */
-      --green:     #3e6b4f;
-      --ochre:     #b48a2c;
-      --plum:      #71588a;
-      --teal:      #2f6f6d;
-      --serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
-      --sans:  'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
+      --border:    #e2e5ef;
+      --primary:   #1a3a6b;
+      --accent:    #e84e0f;
+      --text:      #1c2333;
+      --muted:     #6b7490;
+      --radius:    10px;
+      --shadow:    0 2px 12px rgba(0,0,0,.08);
     }
 
     body {
-      font-family: var(--sans);
-      background: var(--paper);
-      color: var(--ink);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
       line-height: 1.6;
     }
 
-    /* ── Bloque de título (estilo journal) ──────────────── */
+    /* ── Header ─────────────────────────────────────────── */
     header {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 3rem 1.5rem 1.4rem;
-      text-align: center;
-      border-bottom: 4px double var(--rule);
-    }
-    header h1 {
-      font-family: var(--serif);
-      font-size: 2.05rem;
-      font-weight: 600;
-      letter-spacing: .2px;
-      line-height: 1.25;
-    }
-    header p.subtitle {
-      font-family: var(--serif);
-      font-style: italic;
-      font-size: 1.02rem;
-      color: var(--muted);
-      margin-top: .55rem;
-    }
-    header .affiliation {
-      font-size: .8rem;
-      letter-spacing: .14em;
-      text-transform: uppercase;
-      color: var(--ink);
-      margin-top: 1.1rem;
-    }
-    .meta-line {
-      font-size: .8rem;
-      color: var(--muted);
-      margin-top: .45rem;
-      font-variant-numeric: tabular-nums;
-    }
-    .meta-line span { color: var(--ink); }
-
-    /* ── Cifras clave (franja sobria) ───────────────────── */
-    .kpi-strip {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 1.15rem 1rem 1.3rem;
+      background: var(--primary);
+      color: #fff;
+      padding: 2rem 2.5rem 1.6rem;
       display: flex;
       flex-wrap: wrap;
-      justify-content: center;
+      align-items: flex-end;
+      gap: 1rem;
+    }
+    header .titles { flex: 1 1 300px; }
+    header h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -.3px; }
+    header p.subtitle { font-size: .95rem; opacity: .82; margin-top: .25rem; }
+
+    .meta-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .5rem;
+      align-items: center;
+    }
+    .pill {
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 20px;
+      padding: .25rem .75rem;
+      font-size: .8rem;
+      white-space: nowrap;
+    }
+    .pill span { font-weight: 600; }
+
+    /* ── KPI strip ──────────────────────────────────────── */
+    .kpi-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1px;
+      background: var(--border);
       border-bottom: 1px solid var(--border);
     }
     .kpi {
-      padding: 0 1.6rem;
+      background: var(--surface);
+      flex: 1 1 140px;
+      padding: .9rem 1.4rem;
       text-align: center;
-      border-left: 1px solid var(--border);
     }
-    .kpi:first-child { border-left: none; }
-    .kpi .value {
-      font-family: var(--serif);
-      font-size: 1.55rem;
-      font-weight: 600;
-      color: var(--navy);
-      font-variant-numeric: tabular-nums;
-    }
-    .kpi .label {
-      font-size: .66rem;
-      color: var(--muted);
-      margin-top: .1rem;
-      text-transform: uppercase;
-      letter-spacing: .09em;
-    }
+    .kpi .value { font-size: 1.6rem; font-weight: 700; color: var(--primary); }
+    .kpi .label { font-size: .75rem; color: var(--muted); margin-top: .15rem; text-transform: uppercase; letter-spacing: .05em; }
 
     /* ── Layout ─────────────────────────────────────────── */
     main {
-      max-width: 1200px;
+      max-width: 1300px;
       margin: 0 auto;
-      padding: 1.4rem 1.5rem 3rem;
+      padding: 2rem 1.5rem 3rem;
     }
 
     .section-title {
-      font-family: var(--serif);
-      font-size: 1.18rem;
+      font-size: 1.1rem;
       font-weight: 600;
-      color: var(--ink);
-      margin: 2.4rem 0 1rem;
-      padding-bottom: .35rem;
-      border-bottom: 1px solid var(--rule);
-    }
-    .section-title .num {
-      font-style: normal;
-      color: var(--muted);
-      margin-right: .55rem;
-      font-weight: 400;
+      color: var(--primary);
+      margin: 2rem 0 .75rem;
+      padding-bottom: .4rem;
+      border-bottom: 2px solid var(--accent);
+      display: inline-block;
     }
 
     .charts-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(540px, 1fr));
-      gap: 1.4rem;
+      grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
+      gap: 1.25rem;
     }
 
     .chart-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 4px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
       overflow: hidden;
     }
     .chart-card .card-header {
-      padding: .95rem 1.25rem .55rem;
+      padding: .8rem 1.2rem .5rem;
+      border-bottom: 1px solid var(--border);
     }
     .chart-card .card-title {
-      font-family: var(--serif);
-      font-size: 1.0rem;
+      font-size: .95rem;
       font-weight: 600;
-      color: var(--ink);
-    }
-    .chart-card .card-title .fig {
-      color: var(--muted);
-      font-weight: 400;
+      color: var(--text);
     }
     .chart-card .card-desc {
       font-size: .78rem;
       color: var(--muted);
-      margin-top: .15rem;
-      line-height: 1.45;
+      margin-top: .1rem;
     }
     .chart-card .plotly-container {
       width: 100%;
-      height: 360px;
-    }
-    .chart-card .card-source {
-      padding: .35rem 1.25rem .85rem;
-      font-size: .72rem;
-      font-style: italic;
-      color: var(--muted);
-      line-height: 1.4;
+      height: 340px;
     }
 
-    /* ── Estados de carga / error ───────────────────────── */
+    /* ── Loading / error states ─────────────────────────── */
     .state-msg {
       display: flex;
       align-items: center;
       justify-content: center;
       height: 100%;
       color: var(--muted);
-      font-size: .85rem;
-      font-style: italic;
+      font-size: .88rem;
       gap: .5rem;
     }
 
-    /* ── Datos y replicación ────────────────────────────── */
+    /* ── Download section ───────────────────────────────── */
     .download-section {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 1.2rem 1.4rem 1.4rem;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1.4rem 1.6rem 1.6rem;
+      margin-top: .5rem;
     }
-    .download-note {
-      font-size: .82rem;
-      color: var(--muted);
-      margin-bottom: 1rem;
-      font-style: italic;
+    .download-section .section-title {
+      margin: 0 0 1rem;
     }
     .download-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-      gap: .8rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: .85rem;
     }
     .dl-btn {
       display: flex;
       align-items: center;
-      gap: .8rem;
-      padding: .75rem .95rem;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      background: var(--surface);
+      gap: .85rem;
+      padding: .85rem 1.1rem;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      background: #f9fafd;
       text-decoration: none;
-      color: var(--ink);
-      transition: background .15s, border-color .15s;
+      color: var(--text);
+      transition: border-color .18s, background .18s, box-shadow .18s, transform .12s;
       cursor: pointer;
     }
     .dl-btn:hover {
-      background: #f5f3ec;
-      border-color: #c9c4b4;
+      border-color: var(--primary);
+      background: #fff;
+      box-shadow: 0 4px 16px rgba(26,58,107,.12);
+      transform: translateY(-2px);
+    }
+    .dl-btn:active {
+      transform: translateY(0);
+      box-shadow: none;
     }
     .dl-btn .dl-icon {
       flex-shrink: 0;
-      width: 34px;
-      height: 34px;
-      border-radius: 4px;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
     }
-    .dl-btn .dl-icon.csv  { background: rgba(39,64,105,.08);  color: var(--navy); }
-    .dl-btn .dl-icon.json { background: rgba(181,73,44,.08);  color: var(--vermilion); }
+    .dl-btn .dl-icon.csv  { background: rgba(26,58,107,.1);  color: var(--primary); }
+    .dl-btn .dl-icon.json { background: rgba(232,78,15,.1);  color: var(--accent); }
     .dl-btn .dl-info { flex: 1; min-width: 0; }
     .dl-btn .dl-name {
-      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-      font-size: .8rem;
+      font-size: .88rem;
       font-weight: 600;
-      color: var(--navy);
+      color: var(--primary);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .dl-btn .dl-desc {
-      font-size: .73rem;
+      font-size: .75rem;
       color: var(--muted);
       margin-top: .1rem;
-      line-height: 1.35;
+      line-height: 1.3;
     }
-    .dl-btn .dl-arrow { flex-shrink: 0; color: var(--muted); }
-    .dl-btn:hover .dl-arrow { color: var(--navy); }
+    .dl-btn .dl-arrow {
+      flex-shrink: 0;
+      color: var(--muted);
+      transition: color .18s, transform .18s;
+    }
+    .dl-btn:hover .dl-arrow {
+      color: var(--primary);
+      transform: translateY(2px);
+    }
 
-    /* ── Pie ────────────────────────────────────────────── */
+    /* ── Footer ─────────────────────────────────────────── */
     footer {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 1.6rem 1.5rem 2.6rem;
+      text-align: center;
+      padding: 1.5rem 1rem;
       font-size: .78rem;
       color: var(--muted);
-      border-top: 1px solid var(--rule);
-      text-align: center;
-      line-height: 1.7;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
     }
-    footer .method {
-      font-family: var(--serif);
-      font-style: italic;
-    }
-    footer a { color: var(--navy); text-decoration: none; border-bottom: 1px dotted var(--navy); }
-    footer a:hover { border-bottom-style: solid; }
+    footer a { color: var(--primary); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
 
     /* ── Responsive ─────────────────────────────────────── */
     @media (max-width: 680px) {
-      header { padding: 2rem 1rem 1.1rem; }
-      header h1 { font-size: 1.45rem; }
+      header { padding: 1.5rem 1rem 1.2rem; }
+      header h1 { font-size: 1.3rem; }
       .charts-grid { grid-template-columns: 1fr; }
-      .chart-card .plotly-container { height: 300px; }
-      .kpi { padding: 0 .9rem; }
-      .kpi .value { font-size: 1.25rem; }
+      .chart-card .plotly-container { height: 280px; }
     }
   </style>
 </head>
 
 <body>
 
-<!-- ══════════════════ TÍTULO ══════════════════ -->
+<!-- ══════════════════ HEADER ══════════════════ -->
 <header>
-  <h1>NAIRU y PIB Potencial en Colombia</h1>
-  <p class="subtitle">
-    Estimaciones estructurales mensuales: filtro de Kalman bi-estado (MLE)
-    y función de producción Cobb-Douglas
-  </p>
-  <div class="affiliation">Coyuntura Económica · Universidad EAFIT</div>
-  <div class="meta-line" id="metaPills">Cargando datos…</div>
+  <div class="titles">
+    <h1>NAIRU &amp; PIB Potencial — Colombia</h1>
+    <p class="subtitle">
+      Estimación Kalman bi-estado MLE · Función de Producción Cobb-Douglas ·
+      EAFIT Coyuntura Económica
+    </p>
+  </div>
+  <div class="meta-pills" id="metaPills">
+    <div class="pill">Cargando datos…</div>
+  </div>
 </header>
 
-<!-- ══════════════════ CIFRAS CLAVE ══════════════════ -->
+<!-- ══════════════════ KPI STRIP ══════════════════ -->
 <div class="kpi-strip" id="kpiStrip">
-  <div class="kpi"><div class="value" id="kpi-nairu">—</div><div class="label">NAIRU (%)</div></div>
-  <div class="kpi"><div class="value" id="kpi-td">—</div><div class="label">Desempleo obs. (%)</div></div>
-  <div class="kpi"><div class="value" id="kpi-naicu">—</div><div class="label">NAICU (%)</div></div>
-  <div class="kpi"><div class="value" id="kpi-uci">—</div><div class="label">UCI obs. (%)</div></div>
+  <div class="kpi"><div class="value" id="kpi-nairu">—</div><div class="label">NAIRU estimado (%)</div></div>
+  <div class="kpi"><div class="value" id="kpi-td">—</div><div class="label">Desempleo observado (%)</div></div>
+  <div class="kpi"><div class="value" id="kpi-naicu">—</div><div class="label">NAICU estimado (%)</div></div>
+  <div class="kpi"><div class="value" id="kpi-uci">—</div><div class="label">UCI observada (%)</div></div>
   <div class="kpi"><div class="value" id="kpi-brecha-lab">—</div><div class="label">Brecha laboral (pp)</div></div>
   <div class="kpi"><div class="value" id="kpi-brecha-cd">—</div><div class="label">Brecha PIB C-D (%)</div></div>
 </div>
 
-<!-- ══════════════════ FIGURAS ══════════════════ -->
+<!-- ══════════════════ CHARTS ══════════════════ -->
 <main>
 
-  <div class="section-title"><span class="num">I.</span>Mercado laboral y capacidad instalada</div>
+  <div class="section-title">Mercado Laboral</div>
   <div class="charts-grid">
 
-    <!-- Figura 1: NAIRU vs TD -->
+    <!-- Chart 1: NAIRU vs TD -->
     <div class="chart-card">
       <div class="card-header">
-        <div class="card-title"><span class="fig">Figura 1.</span> NAIRU y tasa de desempleo</div>
-        <div class="card-desc">Estimación por filtro de Kalman bi-estado (MLE) con banda de confianza al 90 %.</div>
+        <div class="card-title">NAIRU vs Tasa de Desempleo</div>
+        <div class="card-desc">Estimación Kalman-MLE con banda de confianza al 90%</div>
       </div>
       <div class="plotly-container" id="chart-nairu"></div>
-      <div class="card-source">Fuente: DANE (GEIH, serie desestacionalizada); estimación propia.</div>
     </div>
 
-    <!-- Figura 2: NAICU vs UCI -->
+    <!-- Chart 2: NAICU vs UCI -->
     <div class="chart-card">
       <div class="card-header">
-        <div class="card-title"><span class="fig">Figura 2.</span> NAICU y utilización de capacidad instalada</div>
-        <div class="card-desc">Estimación por filtro de Kalman bi-estado (MLE) con banda de confianza al 90 %.</div>
+        <div class="card-title">NAICU vs Utilización de Capacidad Instalada</div>
+        <div class="card-desc">Estimación Kalman-MLE con banda de confianza al 90%</div>
       </div>
       <div class="plotly-container" id="chart-naicu"></div>
-      <div class="card-source">Fuente: ANDI (EOIC); estimación propia.</div>
     </div>
 
   </div>
 
-  <div class="section-title"><span class="num">II.</span>Brechas de actividad</div>
+  <div class="section-title">Brechas de Actividad</div>
   <div class="charts-grid">
 
-    <!-- Figura 3: Brechas mensuales -->
+    <!-- Chart 3: Brechas mensuales -->
     <div class="chart-card">
       <div class="card-header">
-        <div class="card-title"><span class="fig">Figura 3.</span> Brechas mensuales: laboral, UCI e inflación núcleo</div>
-        <div class="card-desc">Desviación del valor observado frente al estimado estructural. La brecha de inflación es núcleo − meta (excluye alimentos y regulados; por eso 2008 y 2016 lucen menores que con inflación total).</div>
+        <div class="card-title">Brechas Mensuales (laboral y UCI)</div>
+        <div class="card-desc">Diferencia entre valor observado y estimado estructural</div>
       </div>
       <div class="plotly-container" id="chart-brechas-m"></div>
-      <div class="card-source">Fuente: DANE, Banco de la República; cálculos propios. Sombreado: choque COVID-19.</div>
     </div>
 
-    <!-- Figura 4: Brechas PIB trimestrales -->
+    <!-- Chart 4: Brechas PIB trimestrales -->
     <div class="chart-card">
       <div class="card-header">
-        <div class="card-title"><span class="fig">Figura 4.</span> Brecha del producto — función de producción</div>
-        <div class="card-desc">Cobb-Douglas (barras) y tendencia Boosted Hodrick-Prescott (línea), % del PIB potencial.</div>
+        <div class="card-title">Brecha del Producto — PIB Potencial (trimestral)</div>
+        <div class="card-desc">Cobb-Douglas (C-D) y Boosted Hodrick-Prescott (BHP) · % del PIB potencial</div>
       </div>
       <div class="plotly-container" id="chart-brechas-q"></div>
-      <div class="card-source">Fuente: DANE (Cuentas Nacionales); cálculos propios. Y* = A*·K<sup>α</sup>·(H·L*)<sup>1−α</sup>, BHP λ = 1600.</div>
     </div>
 
-    <!-- Figura 5: Brecha del producto por filtros (VIOG) -->
+    <!-- Chart VIOG: Brecha del producto por filtros -->
     <div class="chart-card">
       <div class="card-header">
-        <div class="card-title"><span class="fig">Figura 5.</span> Brecha del producto — compuesto VIOG</div>
-        <div class="card-desc">Compuesto VIOG (ponderación por revisión acumulada) y los cinco filtros subyacentes: Baxter-King, Christiano-Fitzgerald, Butterworth, BHP y Kalman/UCM.</div>
+        <div class="card-title">Brecha del Producto — VIOG (5 filtros)</div>
+        <div class="card-desc">Compuesto VIOG y los 5 filtros (B-K, C-F, Butterworth, BHP, Kalman) · % del PIB</div>
       </div>
       <div class="plotly-container" id="chart-viog"></div>
-      <div class="card-source">Fuente: DANE; cálculos propios. Las oscilaciones de los filtros de banda alrededor de 2020 son el eco del choque COVID (−16,3 % t/t), inherente al método.</div>
     </div>
 
   </div>
 
-  <div class="section-title"><span class="num">III.</span>PIB potencial</div>
+  <div class="section-title">PIB Potencial</div>
   <div class="charts-grid">
 
-    <!-- Figura 6: PIB niveles -->
+    <!-- Chart 5: PIB niveles -->
     <div class="chart-card">
       <div class="card-header">
-        <div class="card-title"><span class="fig">Figura 6.</span> PIB observado y PIB potencial</div>
-        <div class="card-desc">Índice 2005 = 100. Función de producción Cobb-Douglas y tendencia BHP.</div>
+        <div class="card-title">PIB Observado vs PIB Potencial (índice 2005 = 100)</div>
+        <div class="card-desc">Función de producción Cobb-Douglas y tendencia BHP</div>
       </div>
       <div class="plotly-container" id="chart-pib"></div>
-      <div class="card-source">Fuente: DANE (Cuentas Nacionales); cálculos propios.</div>
     </div>
 
   </div>
-
-  <!-- ══ DATOS ══ -->
-  <div class="section-title"><span class="num">IV.</span>Datos y replicación</div>
+  <!-- ══ DOWNLOAD SECTION ══ -->
+  <div class="section-title">Descargar Datos</div>
   <div class="download-section">
-    <div class="download-note">
-      Series completas en formato abierto. El código de estimación es reproducible desde el
-      repositorio; los datos se regeneran automáticamente cada mes.
-    </div>
     <div class="download-grid">
 
       <a class="dl-btn" href="data/nairu_monthly.csv" download="nairu_monthly.csv">
@@ -467,7 +413,7 @@
         </div>
         <div class="dl-info">
           <div class="dl-name">meta.json</div>
-          <div class="dl-desc">Metadatos: última actualización y valores clave</div>
+          <div class="dl-desc">Metadatos: última actualización y valores KPI</div>
         </div>
         <div class="dl-arrow">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -481,18 +427,12 @@
 
 </main>
 
-<!-- ══════════════════ PIE ══════════════════ -->
+<!-- ══════════════════ FOOTER ══════════════════ -->
 <footer>
-  <div class="method">
-    Metodología: filtro de Kalman bi-estado estimado por máxima verosimilitud;
-    PIB potencial por función de producción Cobb-Douglas con tendencias Boosted HP (λ = 1600);
-    brecha compuesta VIOG sobre cinco filtros estadísticos.
-  </div>
-  <div style="margin-top:.5rem">
-    Fuentes: DANE · Banco de la República · ANDI · PWT 11.0 · FRED/EIA.
-    Actualización mensual automática vía <a href="https://github.com/features/actions" target="_blank" rel="noopener">GitHub Actions</a>.
-    Código y datos: <a href="https://github.com/Tupxz/scraping-NAIRU" target="_blank" rel="noopener">github.com/Tupxz/scraping-NAIRU</a>.
-  </div>
+  Datos actualizados automáticamente cada mes vía
+  <a href="https://github.com/features/actions" target="_blank">GitHub Actions</a>.
+  Fuentes: DANE, BanRep, ANDI, PWT 11.0, FRED/EIA.
+  Metodología: Kalman bi-estado MLE + Cobb-Douglas HP (λ=1600).
 </footer>
 
 <!-- ══════════════════ JAVASCRIPT ══════════════════ -->
@@ -525,47 +465,17 @@ function fmt(v, dec = 2) {
   return (+v).toFixed(dec);
 }
 
-/* ─── Paleta académica (daltónico-segura, tonos apagados) ─── */
-const C = {
-  navy:      '#274069',
-  vermilion: '#b5492c',
-  green:     '#3e6b4f',
-  ochre:     '#b48a2c',
-  plum:      '#71588a',
-  teal:      '#2f6f6d',
-  gray:      '#8a8a92',
-};
-
-/* Banda sombreada del choque COVID (para las figuras de brechas) */
-const COVID_BAND = {
-  type: 'rect', xref: 'x', yref: 'paper',
-  x0: '2020-03-01', x1: '2020-12-31', y0: 0, y1: 1,
-  fillcolor: 'rgba(35,37,45,.05)', line: { width: 0 }, layer: 'below',
-};
-
-/* Plotly layout base — estética de figura de journal */
+/* Plotly layout base */
 function baseLayout(opts = {}) {
   return {
-    margin: { t: 12, r: 16, b: 52, l: 54 },
-    legend: {
-      orientation: 'h', y: -0.2, x: 0.5, xanchor: 'center',
-      font: { size: 11, color: '#4a4d55' },
-    },
-    xaxis: {
-      showgrid: false, zeroline: false,
-      showline: true, linecolor: '#c9c6bb', linewidth: 1,
-      ticks: 'outside', ticklen: 4, tickcolor: '#c9c6bb',
-      tickfont: { size: 11, color: '#4a4d55' },
-    },
-    yaxis: {
-      gridcolor: '#ececec', griddash: 'dot', zeroline: false,
-      tickfont: { size: 11, color: '#4a4d55' },
-    },
+    margin: { t: 10, r: 18, b: 48, l: 52 },
+    legend: { orientation: 'h', y: -0.18, x: 0.5, xanchor: 'center', font: { size: 11 } },
+    xaxis: { showgrid: false, zeroline: false, tickfont: { size: 11 } },
+    yaxis: { gridcolor: '#e8eaf0', zeroline: false, tickfont: { size: 11 } },
     plot_bgcolor: '#ffffff',
     paper_bgcolor: '#ffffff',
     hovermode: 'x unified',
-    hoverlabel: { font: { family: "'Source Sans 3', 'Segoe UI', sans-serif", size: 12 } },
-    font: { family: "'Source Sans 3', 'Segoe UI', system-ui, sans-serif", size: 12, color: '#23252d' },
+    font: { family: "'Segoe UI', system-ui, sans-serif", size: 12 },
     ...opts,
   };
 }
@@ -601,7 +511,7 @@ async function loadAll() {
     } else {
       ['chart-brechas-q', 'chart-pib'].forEach(id => {
         document.getElementById(id).innerHTML =
-          '<div class="state-msg">Datos PIB no disponibles aún — ejecuta --pib-potencial</div>';
+          '<div class="state-msg">ℹ️ Datos PIB no disponibles aún — ejecuta --pib-potencial</div>';
       });
     }
     if (viog) {
@@ -609,26 +519,28 @@ async function loadAll() {
     } else {
       const el = document.getElementById('chart-viog');
       if (el) el.innerHTML =
-        '<div class="state-msg">Datos VIOG no disponibles aún — ejecuta --viog-co</div>';
+        '<div class="state-msg">ℹ️ Datos VIOG no disponibles aún — ejecuta --viog-co</div>';
     }
   } catch(err) {
     console.error(err);
     document.getElementById('metaPills').innerHTML =
-      `Error cargando datos: ${err}`;
+      `<div class="pill">⚠️ Error cargando datos: ${err}</div>`;
   }
 }
 
-/* ─── Línea de metadatos ──────────────────────────────────── */
+/* ─── Meta pills ──────────────────────────────────────────── */
 function renderMeta(meta) {
   const updated = meta.last_updated || '—';
   const lastN   = meta.last_obs_nairu || '—';
   const lastP   = meta.last_obs_pib || '—';
-  document.getElementById('metaPills').innerHTML =
-    `Actualizado: <span>${updated}</span> &nbsp;·&nbsp; Última obs. NAIRU: <span>${lastN}</span>` +
-    (lastP !== '—' ? ` &nbsp;·&nbsp; Última obs. PIB: <span>${lastP}</span>` : '');
+  document.getElementById('metaPills').innerHTML = `
+    <div class="pill">Actualizado: <span>${updated}</span></div>
+    <div class="pill">Último dato NAIRU: <span>${lastN}</span></div>
+    ${lastP !== '—' ? `<div class="pill">Último dato PIB: <span>${lastP}</span></div>` : ''}
+  `;
 }
 
-/* ─── Cifras clave ────────────────────────────────────────── */
+/* ─── KPIs ────────────────────────────────────────────────── */
 function renderKPIs(meta) {
   document.getElementById('kpi-nairu').textContent      = fmt(meta.latest_nairu);
   document.getElementById('kpi-td').textContent         = fmt(meta.latest_td);
@@ -638,7 +550,7 @@ function renderKPIs(meta) {
   document.getElementById('kpi-brecha-cd').textContent  = fmt(meta.latest_brecha_cd);
 }
 
-/* ─── Figura 1: NAIRU vs TD ───────────────────────────────── */
+/* ─── Chart 1: NAIRU vs TD ────────────────────────────────── */
 function renderNAIRU(rows) {
   const x      = rows.map(r => r.fecha);
   const td     = toNum(rows, 'td_obs');
@@ -647,22 +559,24 @@ function renderNAIRU(rows) {
   const hi90   = toNum(rows, 'nairu_hi90');
 
   const traces = [
+    // Banda de confianza (relleno)
     { x, y: hi90, name: 'IC 90% sup', mode: 'lines', line: { color: 'transparent' },
       showlegend: false, hoverinfo: 'skip' },
-    { x, y: lo90, name: 'IC 90 %', fill: 'tonexty',
-      fillcolor: 'rgba(39,64,105,.10)', mode: 'lines',
+    { x, y: lo90, name: 'IC 90%', fill: 'tonexty',
+      fillcolor: 'rgba(26,58,107,.12)', mode: 'lines',
       line: { color: 'transparent' }, showlegend: true, hoverinfo: 'skip' },
+    // Series principales
     { x, y: td,    name: 'Tasa de desempleo (obs.)',
-      mode: 'lines', line: { color: C.vermilion, width: 1.6 } },
+      mode: 'lines', line: { color: '#e84e0f', width: 1.8 } },
     { x, y: nairu, name: 'NAIRU estimado',
-      mode: 'lines', line: { color: C.navy, width: 2.4 } },
+      mode: 'lines', line: { color: '#1a3a6b', width: 2.5 } },
   ];
 
   Plotly.newPlot('chart-nairu', traces,
-    baseLayout({ yaxis: { ticksuffix: ' %', gridcolor: '#ececec', griddash: 'dot', zeroline: false, tickfont: { size: 11, color: '#4a4d55' } } }), CONF);
+    baseLayout({ yaxis: { ticksuffix: '%' } }), CONF);
 }
 
-/* ─── Figura 2: NAICU vs UCI ──────────────────────────────── */
+/* ─── Chart 2: NAICU vs UCI ───────────────────────────────── */
 function renderNAICU(rows) {
   const x     = rows.map(r => r.fecha);
   const uci   = toNum(rows, 'uci_obs');
@@ -673,115 +587,107 @@ function renderNAICU(rows) {
   const traces = [
     { x, y: hi90, name: 'IC 90% sup', mode: 'lines',
       line: { color: 'transparent' }, showlegend: false, hoverinfo: 'skip' },
-    { x, y: lo90, name: 'IC 90 %', fill: 'tonexty',
-      fillcolor: 'rgba(62,107,79,.10)', mode: 'lines',
+    { x, y: lo90, name: 'IC 90%', fill: 'tonexty',
+      fillcolor: 'rgba(56,142,60,.12)', mode: 'lines',
       line: { color: 'transparent' }, showlegend: true, hoverinfo: 'skip' },
     { x, y: uci,   name: 'UCI observada',
-      mode: 'lines', line: { color: C.vermilion, width: 1.6 } },
+      mode: 'lines', line: { color: '#e84e0f', width: 1.8 } },
     { x, y: naicu, name: 'NAICU estimado',
-      mode: 'lines', line: { color: C.green, width: 2.4 } },
+      mode: 'lines', line: { color: '#2e7d32', width: 2.5 } },
   ];
 
   Plotly.newPlot('chart-naicu', traces,
-    baseLayout({ yaxis: { ticksuffix: ' %', gridcolor: '#ececec', griddash: 'dot', zeroline: false, tickfont: { size: 11, color: '#4a4d55' } } }), CONF);
+    baseLayout({ yaxis: { ticksuffix: '%' } }), CONF);
 }
 
-/* ─── Figura 3: Brechas mensuales ─────────────────────────── */
+/* ─── Chart 3: Brechas mensuales ─────────────────────────── */
 function renderBrechasM(rows) {
   const x           = rows.map(r => r.fecha);
   const bLaboral    = toNum(rows, 'brecha_laboral');
   const bUci        = toNum(rows, 'brecha_uci');
-  const bInf        = toNum(rows, 'brecha_inf');
+  // Brecha de inflación (núcleo − meta) disponible en el CSV como brecha_inf;
+  // retirada de la gráfica por ahora (pendiente decidir núcleo vs total).
 
   const zero = x.map(() => 0);
 
   const traces = [
     { x, y: zero, name: '', mode: 'lines',
-      line: { color: C.gray, width: 1, dash: 'dot' },
+      line: { color: '#888', width: 1, dash: 'dot' },
       showlegend: false, hoverinfo: 'skip' },
-    { x, y: bLaboral, name: 'Brecha laboral (TD − NAIRU)',
-      mode: 'lines', line: { color: C.navy, width: 1.9 } },
-    { x, y: bUci,     name: 'Brecha UCI (UCI − NAICU)',
-      mode: 'lines', line: { color: C.green, width: 1.6 } },
+    { x, y: bLaboral, name: 'Brecha laboral (TD - NAIRU)',
+      mode: 'lines', line: { color: '#1a3a6b', width: 2 } },
+    { x, y: bUci,     name: 'Brecha UCI (UCI - NAICU)',
+      mode: 'lines', line: { color: '#2e7d32', width: 2 } },
   ];
-  if (bInf.some(v => v !== null)) {
-    traces.push({ x, y: bInf, name: 'Brecha inflación núcleo (núcleo − meta)',
-      mode: 'lines', line: { color: C.vermilion, width: 1.9, dash: 'dot' } });
-  }
 
   Plotly.newPlot('chart-brechas-m', traces,
-    baseLayout({
-      yaxis: { ticksuffix: ' pp', gridcolor: '#ececec', griddash: 'dot', zeroline: false, tickfont: { size: 11, color: '#4a4d55' } },
-      shapes: [COVID_BAND],
-    }), CONF);
+    baseLayout({ yaxis: { ticksuffix: ' pp' } }), CONF);
 }
 
-/* ─── Figura 4: Brechas PIB trimestrales ──────────────────── */
+/* ─── Chart 4: Brechas PIB trimestrales ──────────────────── */
 function renderBrechasQ(rows) {
   const x     = rows.map(r => r.fecha);
   const bCD   = toNum(rows, 'brecha_cd');
   const bHP   = toNum(rows, 'brecha_bhp');
   const zero  = x.map(() => 0);
 
-  // Brecha C-D como barras (positiva navy, negativa vermellón)
+  const fillColor = v => v >= 0 ? 'rgba(26,58,107,.18)' : 'rgba(232,78,15,.18)';
+
+  // Brecha C-D como barras
   const tracesBar = [{
     x, y: bCD,
     name: 'Brecha C-D',
     type: 'bar',
-    marker: { color: bCD.map(v => v >= 0 ? 'rgba(39,64,105,.62)' : 'rgba(181,73,44,.62)') },
+    marker: { color: bCD.map(v => v >= 0 ? 'rgba(26,58,107,.7)' : 'rgba(232,78,15,.7)') },
   }];
 
   const tracesLine = [
-    { x, y: zero, mode: 'lines', line: { color: C.gray, width: 1, dash: 'dot' },
+    { x, y: zero, mode: 'lines', line: { color: '#555', width: 1, dash: 'dot' },
       showlegend: false, hoverinfo: 'skip' },
     { x, y: bHP, name: 'Brecha BHP',
-      mode: 'lines', line: { color: '#4a4d55', width: 1.7, dash: 'dash' } },
+      mode: 'lines', line: { color: '#555', width: 1.8, dash: 'dash' } },
   ];
 
   Plotly.newPlot('chart-brechas-q', [...tracesBar, ...tracesLine],
     baseLayout({
       barmode: 'overlay',
-      yaxis: { ticksuffix: ' %', gridcolor: '#ececec', griddash: 'dot', zeroline: false, tickfont: { size: 11, color: '#4a4d55' } },
-      shapes: [COVID_BAND],
+      yaxis: { ticksuffix: '%' },
     }), CONF);
 }
 
-/* ─── Figura 5: brecha del producto por filtros (VIOG) ────── */
+/* ─── Chart VIOG: brecha del producto por filtros ─────────── */
 function renderVIOG(rows) {
   const x    = rows.map(r => r.fecha);
   const zero = x.map(() => 0);
 
   // Los 5 filtros que componen el VIOG (líneas tenues = dispersión)
   const filtros = [
-    ['bk',     'Baxter-King',            C.plum],
-    ['cf',     'Christiano-Fitzgerald',  C.green],
-    ['bw',     'Butterworth',            C.teal],
-    ['bhp',    'Boosted HP',             C.ochre],
-    ['kalman', 'Kalman/UCM',             C.vermilion],
+    ['bk',     'B-K',         '#8e44ad'],
+    ['cf',     'C-F',         '#2e7d32'],
+    ['bw',     'Butterworth', '#00897b'],
+    ['bhp',    'BHP',         '#e8902f'],
+    ['kalman', 'Kalman',      '#c0392b'],
   ];
   const tracesFiltros = filtros.map(([col, name, color]) => ({
     x, y: toNum(rows, col), name,
-    mode: 'lines', line: { color, width: 1.1 }, opacity: 0.5,
+    mode: 'lines', line: { color, width: 1.2 }, opacity: 0.55,
     connectgaps: false,
   }));
 
   const traces = [
-    { x, y: zero, mode: 'lines', line: { color: C.gray, width: 1, dash: 'dot' },
+    { x, y: zero, mode: 'lines', line: { color: '#555', width: 1, dash: 'dot' },
       showlegend: false, hoverinfo: 'skip' },
     ...tracesFiltros,
     // Compuesto VIOG: línea principal
     { x, y: toNum(rows, 'viog'), name: 'VIOG (compuesto)',
-      mode: 'lines', line: { color: C.navy, width: 2.7 } },
+      mode: 'lines', line: { color: '#1a3a6b', width: 2.8 } },
   ];
 
   Plotly.newPlot('chart-viog', traces,
-    baseLayout({
-      yaxis: { ticksuffix: ' %', gridcolor: '#ececec', griddash: 'dot', zeroline: false, tickfont: { size: 11, color: '#4a4d55' } },
-      shapes: [COVID_BAND],
-    }), CONF);
+    baseLayout({ yaxis: { ticksuffix: '%' } }), CONF);
 }
 
-/* ─── Figura 6: PIB niveles ───────────────────────────────── */
+/* ─── Chart 5: PIB niveles ────────────────────────────────── */
 function renderPIB(rows) {
   const x    = rows.map(r => r.fecha);
   const obs  = toNum(rows, 'pib_obs_idx');
@@ -795,16 +701,16 @@ function renderPIB(rows) {
 
   const traces = [
     { x, y: obsF, name: 'PIB observado',
-      mode: 'lines', line: { color: C.vermilion, width: 1.8 } },
+      mode: 'lines', line: { color: '#e84e0f', width: 2 } },
     { x, y: potF, name: 'PIB potencial (C-D)',
-      mode: 'lines', line: { color: C.navy, width: 2.4 } },
+      mode: 'lines', line: { color: '#1a3a6b', width: 2.5 } },
     { x, y: hpF,  name: 'Tendencia BHP',
-      mode: 'lines', line: { color: C.gray, width: 1.4, dash: 'dash' } },
+      mode: 'lines', line: { color: '#888', width: 1.5, dash: 'dash' } },
   ];
 
   const suffix = obs.some(v => v !== null) ? '' : ' (billones COP)';
   Plotly.newPlot('chart-pib', traces,
-    baseLayout({ yaxis: { ticksuffix: suffix, gridcolor: '#ececec', griddash: 'dot', zeroline: false, tickfont: { size: 11, color: '#4a4d55' } } }), CONF);
+    baseLayout({ yaxis: { ticksuffix: suffix } }), CONF);
 }
 
 /* ─── Arrancar ────────────────────────────────────────────── */
