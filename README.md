@@ -9,7 +9,7 @@ Pipeline reproducible que descarga, limpia, valida y consolida series macroecon�
 1. **NAIRU/NAICU** — Tasa de desempleo (y de capacidad instalada) consistente con inflación estable. Filtro de Kalman biestado en `src/nairu/`.
 2. **PIB potencial vía Cobb-Douglas** — Y\* = A\*·Kᵅ·(H·L\*)^(1−α) con α = 0.4. PTF tendencial y brecha estadística via filtro Boosted Hodrick-Prescott (BHP, Phillips & Shi 2021).
 
-Todas las fuentes se actualizan ejecutando un solo comando; el resultado es un CSV mensual de **21 columnas × ~270 meses (2004-01-01 → presente)**.
+Todas las fuentes se actualizan ejecutando un solo comando; el resultado es un CSV mensual de **32 columnas × ~270 meses (2004-01-01 → presente)**.
 
 ---
 
@@ -30,7 +30,7 @@ Todas las fuentes se actualizan ejecutando un solo comando; el resultado es un C
    src/merge.py   ── outer-merge por `date`, recorte ≥ 2004-01-01
        │
        ▼
-   data/final/nairu_dataset.csv   ── dataset consolidado (21 cols)
+   data/final/nairu_dataset.csv   ── dataset consolidado (32 cols)
        │
        ▼
    src/nairu/  ──  estimación NAIRU/NAICU (Kalman)
@@ -49,7 +49,7 @@ Todas las fuentes se actualizan ejecutando un solo comando; el resultado es un C
 
 ## 2. Fuentes y columnas del dataset final
 
-`data/final/nairu_dataset.csv` (21 columnas):
+`data/final/nairu_dataset.csv` (32 columnas):
 
 | Bloque | Columnas | Fuente | Frecuencia | Cobertura |
 |---|---|---|---|---|
@@ -113,6 +113,11 @@ python -m src.main --dane-gdp        # PIB trimestral DANE
 python -m src.main --informality     # Informalidad GEIH-EISS
 python -m src.main --viog            # VIOG-USA
 python -m src.main --viog-co         # VIOG-Colombia (requiere --dane-gdp antes)
+python -m src.main --investment      # Inversión FBKF trimestral DANE
+python -m src.main --income          # PIB enfoque ingreso DANE (para alpha)
+python -m src.main --prod-func       # Dataset anual función de producción
+python -m src.main --andi-reprocess  # Reprocesar PDFs ANDI locales
+python -m src.main --export-web      # Exportar CSVs + meta.json al tablero
 ```
 
 ### 4.2 Pipeline completo y merge

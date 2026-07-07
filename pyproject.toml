@@ -37,6 +37,7 @@ dependencies = [
     "statsmodels>=0.14,<1.0",      # BK, CF, HP, Kalman/UCM
     # Visualización del pipeline VIOG
     "matplotlib>=3.8,<4.0",
+    "seaborn>=0.13,<1.0",          # Panel NAIRU/NAICU (model_core.write_state_panel_figure)
 ]
 
 [project.optional-dependencies]
@@ -60,7 +61,7 @@ all = [
 ]
 
 [project.urls]
-Repository = "https://github.com/luisca/scraping-NAIRU"
+Repository = "https://github.com/Tupxz/scraping-NAIRU"
 
 [project.scripts]
 nairu = "src.main:main"

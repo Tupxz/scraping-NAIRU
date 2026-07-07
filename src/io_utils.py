@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import pandas as pd
@@ -61,8 +62,11 @@ def setup_logging(level: int = logging.INFO) -> logging.Logger:
         return logger
 
     # Handler de archivo
-    file_handler = logging.FileHandler(
-        LOGS_DIR / LOG_FILENAME, encoding="utf-8"
+    file_handler = RotatingFileHandler(
+        LOGS_DIR / LOG_FILENAME,
+        maxBytes=5_000_000,   # ~5 MB por archivo
+        backupCount=2,        # pipeline.log + .1 + .2
+        encoding="utf-8",
     )
     file_handler.setLevel(level)
     file_handler.setFormatter(logging.Formatter(LOG_FORMAT, LOG_DATE_FORMAT))

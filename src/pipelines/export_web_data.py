@@ -22,7 +22,6 @@ from pathlib import Path
 import pandas as pd
 
 from src.config import OUTPUTS_DIR, PROCESSED_DIR
-from src.pipelines.run_pib_potencial import _build_monthly  # reutiliza builder
 
 logger = logging.getLogger("nairu_pipeline.export_web")
 
@@ -31,7 +30,6 @@ DOCS_DATA_DIR = Path(__file__).resolve().parents[2] / "docs" / "data"
 NAIRU_CSV   = OUTPUTS_DIR / "nairu" / "nairu_colombia.csv"
 PIB_CSV     = OUTPUTS_DIR / "pib_potencial" / "pib_potencial_colombia.csv"
 VIOG_CSV    = PROCESSED_DIR / "viog_colombia.csv"
-MONTHLY_CSV = OUTPUTS_DIR / "pib_potencial" / "mensual_web.csv"  # generado aquí
 
 
 # ── Columnas exportadas ───────────────────────────────────────────────────────
