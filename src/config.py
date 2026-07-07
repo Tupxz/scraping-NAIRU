@@ -1003,7 +1003,12 @@ VIOG_CO_CONFIG = VIOGConfig(
     processed_filename="viog_colombia.csv",
     source_label="DANE Cuentas Nacionales",
     series_col="Value(Billions)",
-    ref_col=None,  # Sin PIB potencial externo — solo 5 filtros estadísticos
+    # Referencia: PIB potencial Cobb-Douglas del propio pipeline, agregado a
+    # PIB_CO.xlsx por run_viog._build_pib_co_xlsx (cobertura 2005Q1→). Si la
+    # columna no está (falta --pib-potencial), el pipeline degrada a 5
+    # filtros sin fallar. Con ella el compuesto pondera 6 variables, igual
+    # que notebooks/VIOG.ipynb.
+    ref_col="Potential Value(Billions)",
 )
 
 VIOG_PROCESSED_COLUMNS: list[str] = [

@@ -312,8 +312,8 @@
     <!-- Chart VIOG: Brecha del producto por filtros -->
     <div class="chart-card">
       <div class="card-header">
-        <div class="card-title">Brecha del Producto — VIOG (5 filtros)</div>
-        <div class="card-desc">Compuesto VIOG y los 5 filtros (B-K, C-F, Butterworth, BHP, Kalman) · % del PIB</div>
+        <div class="card-title">Brecha del Producto — VIOG</div>
+        <div class="card-desc">Compuesto VIOG y sus componentes: B-K, C-F, Butterworth, BHP, Kalman y función de producción (referencia, desde 2005) · % del PIB · serie desde 1994</div>
       </div>
       <div class="plotly-container" id="chart-viog"></div>
     </div>
@@ -673,6 +673,16 @@ function renderVIOG(rows) {
     mode: 'lines', line: { color, width: 1.2 }, opacity: 0.55,
     connectgaps: false,
   }));
+
+  // Referencia: brecha vs PIB potencial C-D (columna 'ref'; NaN pre-2005)
+  const ref = toNum(rows, 'ref');
+  if (ref.some(v => v !== null)) {
+    tracesFiltros.push({
+      x, y: ref, name: 'Función de producción (ref.)',
+      mode: 'lines', line: { color: '#555', width: 1.3, dash: 'dash' },
+      opacity: 0.7, connectgaps: false,
+    });
+  }
 
   const traces = [
     { x, y: zero, mode: 'lines', line: { color: '#555', width: 1, dash: 'dot' },
