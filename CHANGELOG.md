@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.1] — 2026-06-11
+
+### Corregido
+- **`meta.json` del tablero**: `latest_brecha_cd` y `latest_brecha_viog` usan ahora el
+  **último valor válido** (`export_web_data._last_valid`) en vez de la última fila — el
+  trimestre corriente tiene PIB observado pero aún no potencial CD (FBKF rezagado), lo
+  que producía `NaN`. El `meta.json` versionado (generado antes del guard anti-NaN)
+  contenía el literal `NaN` (JSON inválido) y un `latest_brecha_viog` del VIOG malo ya
+  restaurado; regenerado coherente con los CSV publicados. +10 tests (503 total).
+
 ## [0.4.0] — 2026-06-09
 
 ### Agregado

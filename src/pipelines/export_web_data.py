@@ -112,6 +112,19 @@ def _round_floats(df: pd.DataFrame, decimals: int = 4) -> pd.DataFrame:
     return df
 
 
+def _last_valid(df: pd.DataFrame | None, key: str) -> float | None:
+    """Último valor no-NaN de la columna (None si no hay ninguno).
+
+    El último trimestre puede tener PIB observado pero aún no potencial
+    (p. ej. FBKF rezagado) → ``iloc[-1]`` daría NaN aunque exista un dato
+    válido un trimestre atrás. None se serializa como ``null`` (JSON válido).
+    """
+    if df is None or key not in df.columns:
+        return None
+    s = pd.to_numeric(df[key], errors="coerce").dropna()
+    return round(float(s.iloc[-1]), 2) if len(s) else None
+
+
 # ── Pipeline principal ────────────────────────────────────────────────────────
 
 def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
@@ -194,12 +207,11 @@ def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
         "latest_brecha_laboral": _num(latest, "brecha_laboral"),
     }
     if pib is not None and len(pib):
-        last_pib = pib.iloc[-1]
-        meta["latest_brecha_cd"]  = _num(last_pib, "brecha_cd")
-        meta["latest_brecha_bhp"] = _num(last_pib, "brecha_bhp")
+        meta["latest_brecha_cd"]  = _last_valid(pib, "brecha_cd")
+        meta["latest_brecha_bhp"] = _last_valid(pib, "brecha_bhp")
         meta["last_obs_pib"]      = str(pib["fecha"].max())[:10]
     if viog is not None and len(viog):
-        meta["latest_brecha_viog"] = _num(viog.iloc[-1], "viog")
+        meta["latest_brecha_viog"] = _last_valid(viog, "viog")
         meta["last_obs_viog"]      = str(viog["fecha"].max())[:10]
 
     out_meta = docs_data_dir / "meta.json"
