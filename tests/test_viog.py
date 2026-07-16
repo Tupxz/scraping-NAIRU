@@ -113,7 +113,33 @@ class TestApplyFilters:
         assert filtered_df["trend_bw"].notna().all()
 
     def test_kalman_trend_no_nan(self, filtered_df):
-        assert filtered_df["trend_kalman"].notna().all()
+        burnin = VIOG_CONFIG.kalman_burnin_periods
+        # Las primeras `burnin` obs son NaN por diseño (condiciones iniciales del filtro)
+        assert filtered_df["trend_kalman"].iloc[:burnin].isna().all()
+        assert filtered_df["trend_kalman"].iloc[burnin:].notna().all()
+
+    def test_kalman_gap_bounded(self, filtered_df):
+        """Regresión: el UCM con ciclo determinístico divergía (VIOG-CO
+        llegó a +170% en el transitorio inicial). Con ciclo estocástico
+        amortiguado la brecha debe quedar en rango de ciclo de negocio."""
+        burnin = VIOG_CONFIG.kalman_burnin_periods
+        gap = np.log(filtered_df["Y"]) - np.log(filtered_df["trend_kalman"])
+        assert gap.iloc[burnin:].abs().max() < 0.20, \
+            f"gap_kalman máx {gap.iloc[burnin:].abs().max():.3f} — divergencia"
+
+    def test_kalman_gap_not_degenerate(self, filtered_df):
+        """Regresión: el UCM en niveles colapsaba la brecha a ~0 (VIOG-USA),
+        distorsionando el ponderador 1/VIOG. La brecha debe tener variación."""
+        burnin = VIOG_CONFIG.kalman_burnin_periods
+        gap = np.log(filtered_df["Y"]) - np.log(filtered_df["trend_kalman"])
+        assert gap.iloc[burnin:].abs().max() > 1e-5, \
+            "gap_kalman degenerado (≈0 en toda la muestra)"
+
+    def test_kalman_trend_tracks_series(self, filtered_df):
+        """El potencial no puede alejarse arbitrariamente de la serie."""
+        burnin = VIOG_CONFIG.kalman_burnin_periods
+        ratio = filtered_df["trend_kalman"].iloc[burnin:] / filtered_df["Y"].iloc[burnin:]
+        assert ratio.between(0.8, 1.25).all()
 
     def test_bk_has_nan_at_extremes(self, filtered_df):
         K = VIOG_CONFIG.bk_K
@@ -125,26 +151,12 @@ class TestApplyFilters:
         assert filtered_df["trend_bk"].iloc[K:-K].notna().all()
 
     def test_trends_are_positive(self, filtered_df):
-        for col in ["trend_bhp", "trend_cf", "trend_bw", "trend_kalman"]:
+        burnin = VIOG_CONFIG.kalman_burnin_periods
+        for col in ["trend_bhp", "trend_cf", "trend_bw"]:
             assert (filtered_df[col] > 0).all(), f"{col} tiene valores ≤ 0"
-
-    def test_kalman_gap_bounded(self, filtered_df):
-        """Regresión: el UCM con ciclo determinístico divergía (VIOG-CO
-        llegó a +170% en el transitorio inicial). Con ciclo estocástico
-        amortiguado la brecha debe quedar en rango de ciclo de negocio."""
-        gap = np.log(filtered_df["Y"]) - np.log(filtered_df["trend_kalman"])
-        assert gap.abs().max() < 0.20, f"gap_kalman máx {gap.abs().max():.3f} — divergencia"
-
-    def test_kalman_gap_not_degenerate(self, filtered_df):
-        """Regresión: el UCM en niveles colapsaba la brecha a ~0 (VIOG-USA),
-        distorsionando el ponderador 1/VIOG. La brecha debe tener variación."""
-        gap = np.log(filtered_df["Y"]) - np.log(filtered_df["trend_kalman"])
-        assert gap.abs().max() > 1e-5, "gap_kalman degenerado (≈0 en toda la muestra)"
-
-    def test_kalman_trend_tracks_series(self, filtered_df):
-        """El potencial no puede alejarse arbitrariamente de la serie."""
-        ratio = filtered_df["trend_kalman"] / filtered_df["Y"]
-        assert ratio.between(0.8, 1.25).all()
+        # Kalman: positivo después del burn-in
+        assert (filtered_df["trend_kalman"].iloc[burnin:] > 0).all(), \
+            "trend_kalman tiene valores ≤ 0 fuera del burn-in"
 
 
 # ── TestComputeGaps ───────────────────────────────────────────────────
@@ -187,12 +199,21 @@ class TestComputeVIOGWeights:
         np.testing.assert_allclose(total, 1.0, atol=1e-10)
 
     def test_rev_positive_for_non_bk(self, weights_df):
-        for col in ["rev_cf", "rev_bw", "rev_bhp", "rev_kalman", "rev_ref"]:
+        burnin = VIOG_CONFIG.kalman_burnin_periods
+        for col in ["rev_cf", "rev_bw", "rev_bhp", "rev_ref"]:
             assert (weights_df[col] > 0).all(), f"{col} tiene valores ≤ 0"
+        # rev_kalman: NaN en primeras `burnin` filas, positivo después
+        assert weights_df["rev_kalman"].iloc[:burnin].isna().all()
+        assert (weights_df["rev_kalman"].iloc[burnin:] > 0).all(), \
+            "rev_kalman tiene valores ≤ 0 fuera del burn-in"
 
     def test_inv_rev_positive_for_non_bk(self, weights_df):
-        for col in ["inv_rev_cf", "inv_rev_bw", "inv_rev_bhp", "inv_rev_kalman", "inv_rev_ref"]:
+        burnin = VIOG_CONFIG.kalman_burnin_periods
+        for col in ["inv_rev_cf", "inv_rev_bw", "inv_rev_bhp", "inv_rev_ref"]:
             assert (weights_df[col] > 0).all()
+        # inv_rev_kalman: NaN en primeras `burnin` filas, positivo después
+        assert weights_df["inv_rev_kalman"].iloc[:burnin].isna().all()
+        assert (weights_df["inv_rev_kalman"].iloc[burnin:] > 0).all()
 
 
 # ── TestRunVIOGPipeline ───────────────────────────────────────────────

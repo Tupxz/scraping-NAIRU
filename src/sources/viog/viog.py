@@ -189,7 +189,12 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
         _warnings.simplefilter("ignore")
         result = ucm.fit(start_params=_sp, disp=False)
     # Reconvertir tendencia en log → nivel original (exp del nivel suavizado)
-    df["trend_kalman"] = np.exp(result.level.smoothed)
+    _trend_log = result.level.smoothed.copy()
+    # Enmascarar burn-in: las primeras N obs tienen condiciones iniciales
+    # no fiables (Stata también las omite, típicamente 2 obs).
+    if cfg.kalman_burnin_periods > 0:
+        _trend_log[: cfg.kalman_burnin_periods] = np.nan
+    df["trend_kalman"] = np.exp(_trend_log)
 
     return df
 

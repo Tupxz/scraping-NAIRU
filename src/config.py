@@ -990,6 +990,10 @@ class VIOGConfig:
     kalman_damped_cycle: bool = True
     kalman_stochastic_cycle: bool = True
     kalman_irregular: bool = False
+    # kalman_burnin_periods: primeras N obs del Kalman marcadas NaN (burn-in).
+    # Stata omite las primeras 2; Python tiene ~4 trimestres de condiciones iniciales
+    # poco fiables. Se enmascaran como NaN en trend_kalman -> gap_kalman = NaN.
+    kalman_burnin_periods: int = 4
 
 
 VIOG_CONFIG = VIOGConfig()
