@@ -120,20 +120,32 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     _, bhp_trend = boosted_hp_filter(y_series, lamb=cfg.hp_lambda, iterations=BHP_ITERATIONS)
     df["trend_bhp"] = bhp_trend.values
 
-    # Kalman / UCM — local linear trend con ciclo determinístico
-    # Se ajusta sobre niveles de Y. La pendiente de la tendencia es estocástica
-    # (local linear trend), lo que la hace más adaptable que random walk with drift.
-    # NOTA sobre cycle_period_bounds: no se pasa explícitamente porque el rango
-    # configurado (0.3–40 trimestres) permite ciclos sub-trimestrales (ruido puro)
-    # que desestabilizan la estimación. Sin restricción, statsmodels maximiza la
-    # verosimilitud libremente y el filtro converge a un trend estable.
-    logger.info("[VIOG] Ajustando Kalman UCM (local linear trend + cycle)...")
+    # ── Kalman / UCM — Structural Time Series (equivalente a Stata ucm) ─────────
+    # Modelo STS estimado por máxima verosimilitud vía filtro de Kalman:
+    #
+    #   Observación:  y_t = μ_t + c_t + ε_t        (irregular si cfg.kalman_irregular)
+    #   Nivel:        μ_t = μ_{t-1} + β_{t-1} + η_t   (local linear trend)
+    #   Pendiente:    β_t = β_{t-1} + ζ_t             (slope estocástico)
+    #   Ciclo:        c_t sigue AR(2) con frecuencia λ = 2π/período y
+    #                 amortiguamiento ρ < 1 si damped_cycle=True
+    #
+    # Stata equivalente:
+    #   ucm lngdp, irregular level slope cycle(1) cyclelen(32) cyc1rho(0.8)
+    #
+    # La tendencia (nivel suavizado) es el PIB potencial estimado.
+    logger.info("[VIOG] Ajustando Kalman UCM (STS: level + slope + cycle)...")
     import warnings as _warnings
-    ucm = UnobservedComponents(
+    ucm_kwargs: dict = dict(
         endog=y,
-        level="local linear trend",  # slope estocástico incorpora el drift
+        level="local linear trend",   # nivel + pendiente estocástica (= stata: level slope)
         cycle=True,
+        stochastic_cycle=cfg.kalman_stochastic_cycle,
+        damped_cycle=cfg.kalman_damped_cycle,
+        irregular=cfg.kalman_irregular,
     )
+    if cfg.kalman_cycle_period_bounds is not None:
+        ucm_kwargs["cycle_period_bounds"] = cfg.kalman_cycle_period_bounds
+    ucm = UnobservedComponents(**ucm_kwargs)
     with _warnings.catch_warnings():
         _warnings.simplefilter("ignore")
         result = ucm.fit(disp=False)

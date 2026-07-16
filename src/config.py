@@ -986,7 +986,10 @@ class VIOGConfig:
     # inferior coincide con la banda BK/CF. Nota: el valor anterior (0.3, 40)
     # nunca se pasaba al modelo (config muerta) y 0.3 trimestres es
     # sub-período (sin sentido espectral).
-    kalman_cycle_period_bounds: tuple[float, float] = (6.0, 64.0)
+    kalman_cycle_period_bounds: tuple[float, float] = (6.0, 32.0)
+    kalman_damped_cycle: bool = True
+    kalman_stochastic_cycle: bool = True
+    kalman_irregular: bool = False
 
 
 VIOG_CONFIG = VIOGConfig()
