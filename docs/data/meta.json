@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-16 09:54",
+  "last_updated": "2026-07-16 14:34",
   "last_obs_nairu": "2025-12-01",
   "n_obs_monthly": 250,
   "n_obs_quarterly": 84,
@@ -11,6 +11,6 @@
   "latest_brecha_cd": 0.5,
   "latest_brecha_bhp": -0.4,
   "last_obs_pib": "2025-10-01",
-  "latest_brecha_viog": -0.07,
+  "latest_brecha_viog": -0.18,
   "last_obs_viog": "2026-01-01"
 }
