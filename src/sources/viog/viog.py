@@ -130,13 +130,27 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     #                 amortiguamiento ρ < 1 si damped_cycle=True
     #
     # Stata equivalente:
-    #   ucm lngdp, irregular level slope cycle(1) cyclelen(32) cyc1rho(0.8)
+    #   ucm lnpib, level slope cycle(1) cyclelen(32) cyc1rho(.) nolog
+    #
+    # NOTA sobre identificación: la función de log-verosimilitud tiene dos
+    # máximos locales:
+    #   (a) Solución DEGENERADA (llf≈296): σ²_ciclo→0, brecha≈0.  ← L-BFGS-B default
+    #   (b) Solución ECONÓMICA  (llf≈290): σ²_ciclo≈Var(ΔlnPIB),  ← Stata
+    #       brecha significativa (COVID 2020Q2 ≈ −19%).
+    # Stata elige (b) por sus valores iniciales. Para replicarlo debemos
+    # inicializar σ²_ciclo ≈ Var(ΔlnPIB) y ρ_ciclo ≈ 0.70.
     #
     # La tendencia (nivel suavizado) es el PIB potencial estimado.
     logger.info("[VIOG] Ajustando Kalman UCM (STS: level + slope + cycle)...")
     import warnings as _warnings
+    # ── IMPORTANTE: aplicar UCM al log(PIB) igual que Stata 'ucm lnpib ...' ──────
+    # Stata: gen lnpib = ln(pib)  →  ucm lnpib, level slope cycle(1) cyclelen(32)
+    # El modelo STS es lineal → debe estimarse en logaritmos para ser equivalente.
+    # La tendencia en logs se reconvierte al nivel: trend = exp(level.smoothed).
+    y_log = np.log(y.values.astype(float))
+
     ucm_kwargs: dict = dict(
-        endog=y,
+        endog=y_log,
         level="local linear trend",   # nivel + pendiente estocástica (= stata: level slope)
         cycle=True,
         stochastic_cycle=cfg.kalman_stochastic_cycle,
@@ -146,10 +160,36 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     if cfg.kalman_cycle_period_bounds is not None:
         ucm_kwargs["cycle_period_bounds"] = cfg.kalman_cycle_period_bounds
     ucm = UnobservedComponents(**ucm_kwargs)
+
+    # ── Valores iniciales en la cuenca del máximo económico (≈ Stata) ─────────
+    # Var(ΔlnPIB) es la varianza de las primeras diferencias del log-PIB.
+    # Inicializar σ²_ciclo ≈ Var(ΔlnPIB) y ρ ≈ 0.70 evita que L-BFGS-B
+    # converja al máximo degenerado donde σ²_ciclo → 0.
+    _var_dy = float(np.var(np.diff(y_log)))   # ← usa log-PIB, no nivel
+    _sp = ucm.start_params.copy()
+    _pnames = ucm.param_names
+    _i_cyc = next((i for i, n in enumerate(_pnames) if "cycle" in n and "sigma" in n), None)
+    _i_rho = next((i for i, n in enumerate(_pnames) if "damping" in n), None)
+    _i_lev = next((i for i, n in enumerate(_pnames) if "level" in n and "sigma" in n), None)
+    _i_trn = next((i for i, n in enumerate(_pnames) if "trend" in n and "sigma" in n), None)
+    if _i_cyc is not None:
+        _sp[_i_cyc] = _var_dy           # σ²_ciclo ≈ Var(ΔlnPIB) — cuenca económica
+    if _i_rho is not None:
+        _sp[_i_rho] = 0.70              # ρ ≈ 0.70 — persistencia cíclica razonable
+    if _i_lev is not None:
+        _sp[_i_lev] = _var_dy * 0.01   # σ²_nivel pequeña (tendencia suave)
+    if _i_trn is not None:
+        _sp[_i_trn] = _var_dy * 0.001  # σ²_pendiente muy pequeña
+    # Frecuencia inicial ≈ ciclo largo (período dominante = upper bound)
+    _i_freq = next((i for i, n in enumerate(_pnames) if "frequency" in n), None)
+    if _i_freq is not None and cfg.kalman_cycle_period_bounds is not None:
+        _sp[_i_freq] = 2 * np.pi / cfg.kalman_cycle_period_bounds[1]  # período máximo
+
     with _warnings.catch_warnings():
         _warnings.simplefilter("ignore")
-        result = ucm.fit(disp=False)
-    df["trend_kalman"] = result.level.smoothed
+        result = ucm.fit(start_params=_sp, disp=False)
+    # Reconvertir tendencia en log → nivel original (exp del nivel suavizado)
+    df["trend_kalman"] = np.exp(result.level.smoothed)
 
     return df
 
