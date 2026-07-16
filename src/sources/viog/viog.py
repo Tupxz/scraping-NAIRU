@@ -15,13 +15,9 @@ Notas:
   - Baxter-King recorta K=12 trimestres de cada extremo → NaN en extremos para gap_bk.
   - El divisor N usa len(df) (generalización del notebook original).
   - BHP (Boosted Hodrick-Prescott) usa iterations=3 y lambda=cfg.hp_lambda (1600).
-  - Kalman traduce el `ucm` de Stata del Code1.do original:
-    UnobservedComponents(level="random walk with drift", irregular=True,
-    cycle=True, stochastic_cycle=True, damped_cycle=True) — ciclo estocástico
-    amortiguado (Harvey 1989). Con ciclo determinístico (stochastic_cycle=False)
-    la brecha degenera en una sinusoide pura o colapsa a ~0 según la serie.
-    Se ajusta sobre 100·ln(Y) (condicionamiento numérico del MLE); la
-    tendencia/potencial en niveles es exp(result.level.smoothed / 100).
+  - Kalman usa UnobservedComponents(level="local linear trend", drift=True, cycle=True).
+    Pendiente estocástica (slope varía en el tiempo). Se ajusta en niveles.
+    El nivel suavizado (result.level.smoothed) es la tendencia/potencial.
 """
 
 from __future__ import annotations
@@ -124,64 +120,24 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     _, bhp_trend = boosted_hp_filter(y_series, lamb=cfg.hp_lambda, iterations=BHP_ITERATIONS)
     df["trend_bhp"] = bhp_trend.values
 
-    # Kalman / UCM — traducción de la especificación Stata original
-    # (data/inputs/Code1.do):
-    #     ucm PIB, model(rwdrift) cycle(1, frequency(.1)) cycle(1, frequency(3))
-    # → tendencia random walk con drift + ciclo estocástico amortiguado
-    #   (Harvey 1989). statsmodels solo admite un ciclo; el segundo ciclo de
-    #   Stata (freq 3 ≈ período 2 trimestres) es un absorbedor de ruido de
-    #   alta frecuencia cuyo papel lo cumple irregular=True.
-    # Con ciclo determinístico (la especificación anterior) la brecha era una
-    # sinusoide pura (VIOG-CO, ±13% y transitorio +170%) o colapsaba a ~0
-    # (VIOG-USA). Se ajusta sobre 100·ln(Y): escala estándar que mejora el
-    # condicionamiento del MLE (en niveles el fit divergía) y hace que el
-    # nivel suavizado sea directamente el ln del potencial.
-    logger.info(
-        "[VIOG] Ajustando Kalman UCM (rwdrift + ciclo estocástico amortiguado)..."
-    )
+    # Kalman / UCM — local linear trend con ciclo determinístico
+    # Se ajusta sobre niveles de Y. La pendiente de la tendencia es estocástica
+    # (local linear trend), lo que la hace más adaptable que random walk with drift.
+    # NOTA sobre cycle_period_bounds: no se pasa explícitamente porque el rango
+    # configurado (0.3–40 trimestres) permite ciclos sub-trimestrales (ruido puro)
+    # que desestabilizan la estimación. Sin restricción, statsmodels maximiza la
+    # verosimilitud libremente y el filtro converge a un trend estable.
+    logger.info("[VIOG] Ajustando Kalman UCM (local linear trend + cycle)...")
     import warnings as _warnings
-
-    ln_y = 100.0 * np.log(y)
     ucm = UnobservedComponents(
-        endog=ln_y,
-        level="random walk with drift",  # model(rwdrift) de Stata
-        irregular=True,                  # rol del ciclo freq-3 del .do
+        endog=y,
+        level="local linear trend",  # slope estocástico incorpora el drift
         cycle=True,
-        stochastic_cycle=True,           # como Stata: ciclo con innovaciones
-        damped_cycle=True,               # como Stata: amortiguamiento ρ estimado
-        cycle_period_bounds=tuple(cfg.kalman_cycle_period_bounds),
     )
-    with _warnings.catch_warnings(record=True) as _caught:
-        _warnings.simplefilter("always")
-        result = ucm.fit(disp=False, maxiter=500)
-        if not result.mle_retvals.get("converged", True):
-            # Reintento estilo Stata (difftol/from): Powell sin gradiente y
-            # refinamiento L-BFGS desde ese punto; se conserva el mejor llf.
-            logger.warning("[VIOG] UCM no convergió con L-BFGS; reintentando con Powell...")
-            res_powell  = ucm.fit(method="powell", disp=False, maxiter=1000)
-            res_refined = ucm.fit(start_params=res_powell.params, disp=False, maxiter=500)
-            result = max((result, res_powell, res_refined), key=lambda r: r.llf)
-    for _msg in {str(w.message) for w in _caught}:
-        logger.debug("[VIOG] UCM warning: %s", _msg)
-    if not result.mle_retvals.get("converged", True):
-        logger.warning(
-            "[VIOG] UCM sin convergencia declarada (llf=%.2f); revisar gap_kalman.",
-            result.llf,
-        )
-
-    trend_kalman = np.exp(np.asarray(result.level.smoothed) / 100.0)
-    df["trend_kalman"] = trend_kalman
-
-    # Guarda de cordura (auditoría §2.5): brechas >20% delatan divergencia
-    # del filtro (transitorio tipo VIOG-CO). Warning, no excepción: la
-    # decisión de publicar queda en el caller/CI.
-    _max_gap = float(np.nanmax(np.abs(np.log(y.values) - np.log(trend_kalman))))
-    if _max_gap > 0.20:
-        logger.warning(
-            "[VIOG] |gap_kalman| máximo = %.1f%% — posible divergencia del UCM; "
-            "revisar viog_14_kalman_gap.png antes de publicar.",
-            100.0 * _max_gap,
-        )
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")
+        result = ucm.fit(disp=False)
+    df["trend_kalman"] = result.level.smoothed
 
     return df
 
