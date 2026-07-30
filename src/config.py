@@ -983,8 +983,13 @@ class VIOGConfig:
     cf_one_sided: bool = True
     # cf_min_obs: warm-up del CF de una cola — mínimo de observaciones antes
     # del primer valor no-NaN de trend_cf (antes: NaN, peso VIOG 0, como los
-    # extremos de BK). None → 2 * cf_high (64 trimestres con high=32).
-    cf_min_obs: Optional[int] = None
+    # extremos de BK). 3 = mínimo matemático → la serie cubre casi todo el
+    # período (decisión 2026-07-30: el tablero muestra la C-F completa; los
+    # primeros años son la mejor estimación causal posible pero con poca
+    # historia — leerlos con cautela). Alternativas conservadoras: 32 (un
+    # período completo de la banda) o None → 2 * cf_high (64 trimestres).
+    # La causalidad no depende de este valor: es solo una máscara.
+    cf_min_obs: Optional[int] = 3
 
     # Hodrick-Prescott
     hp_lambda: int = 1600

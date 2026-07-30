@@ -261,10 +261,12 @@ class TestCFOneSided:
         y = self._serie()
         n = len(y)
         _, trend_full = cf_filter_one_sided(y, low=VIOG_CONFIG.cf_low,
-                                            high=VIOG_CONFIG.cf_high)
+                                            high=VIOG_CONFIG.cf_high,
+                                            min_obs=CF_WARMUP)
         for t in [CF_WARMUP + 2, 90, 110, 130, n - 2]:
             _, trend_sub = cf_filter_one_sided(y[: t + 1], low=VIOG_CONFIG.cf_low,
-                                               high=VIOG_CONFIG.cf_high)
+                                               high=VIOG_CONFIG.cf_high,
+                                               min_obs=CF_WARMUP)
             np.testing.assert_allclose(
                 trend_sub, trend_full[: t + 1], rtol=1e-12, atol=1e-8,
                 err_msg=f"Agregar datos después de t={t} revisó valores pasados "
@@ -278,7 +280,8 @@ class TestCFOneSided:
 
         y = self._serie()
         cycle_1s, trend_1s = cf_filter_one_sided(
-            y, low=VIOG_CONFIG.cf_low, high=VIOG_CONFIG.cf_high
+            y, low=VIOG_CONFIG.cf_low, high=VIOG_CONFIG.cf_high,
+            min_obs=CF_WARMUP,
         )
         for t in [CF_WARMUP - 1, CF_WARMUP + 10, 100, 125, len(y) - 1]:
             cyc_sub, tr_sub = cffilter(

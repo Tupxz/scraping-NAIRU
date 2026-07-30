@@ -23,8 +23,10 @@ Notas:
     política habría visto en tiempo real y NO se revisa retroactivamente al
     llegar datos nuevos (crítica de Orphanides 2001 AER; 2003 JME) — es el
     análogo "filtered" del "smoothed" que ya se distingue para el Kalman.
-    Warm-up: las primeras cf_min_obs−1 obs (default 2*cf_high = 64 trimestres)
-    quedan en NaN y su peso VIOG es 0 (mismo mecanismo que los extremos de BK).
+    Warm-up: las primeras cf_min_obs−1 obs quedan en NaN y su peso VIOG es 0
+    (mismo mecanismo que los extremos de BK). VIOGConfig usa cf_min_obs=3
+    (mínimo matemático: serie casi completa, primeros años con poca historia);
+    la función acepta None → 2*cf_high como alternativa conservadora.
     Con cfg.cf_one_sided=False se reproduce la versión anterior de dos colas
     (statsmodels cffilter, drift=False) para comparación/depuración.
   - Kalman usa UnobservedComponents(level="local linear trend", drift=True, cycle=True).

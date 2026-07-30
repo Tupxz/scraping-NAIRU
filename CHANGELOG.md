@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.1] — 2026-07-30
+
+### Cambiado
+- **`cf_min_obs` default pasa de None (2·cf_high = 64T) a 3** (mínimo
+  matemático del filtro asimétrico): la serie C-F de una cola cubre casi
+  todo el período (VIOG-CO: 1994Q3–presente en vez de 2009Q4–presente).
+  Decisión editorial para el tablero: los primeros años son la mejor
+  estimación causal posible en su momento pero con poca historia (el
+  filtro no ha visto un período completo de la banda hasta 2001Q4) —
+  leerlos con cautela. La causalidad no cambia (la máscara no altera
+  ningún valor); beneficio lateral: `rev_cf` acumula error desde el
+  inicio y el peso 1/VIOG del CF vuelve a ser comparable al de los
+  demás filtros.
+
 ## [0.5.0] — 2026-07-30
 
 ### Cambiado
