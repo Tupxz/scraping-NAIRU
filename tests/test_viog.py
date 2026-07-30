@@ -16,15 +16,19 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.config import INPUTS_DIR, VIOG_CONFIG
+from src.config import INPUTS_DIR, VIOG_CONFIG, VIOGConfig
 from src.sources.viog.viog import (
     apply_filters,
+    cf_filter_one_sided,
     compute_gaps,
     compute_viog_weights,
     compute_weighted_gap,
     load_series,
     run_viog_pipeline,
 )
+
+# Warm-up del CF de una cola: primeras (CF_WARMUP−1) obs de trend_cf son NaN.
+CF_WARMUP = VIOG_CONFIG.cf_min_obs or 2 * VIOG_CONFIG.cf_high
 
 
 # ── Fixture sintético ─────────────────────────────────────────────────
@@ -106,8 +110,14 @@ class TestApplyFilters:
     def test_bhp_trend_no_nan(self, filtered_df):
         assert filtered_df["trend_bhp"].notna().all()
 
-    def test_cf_trend_no_nan(self, filtered_df):
-        assert filtered_df["trend_cf"].notna().all()
+    def test_cf_trend_warmup_then_valid(self, filtered_df):
+        """CF de una cola: NaN durante el warm-up, válido después.
+
+        Mismo patrón que los extremos de BK y el burn-in del Kalman: durante
+        el warm-up el peso VIOG del CF es 0 y los demás filtros se
+        renormalizan. (Antes trend_cf era de dos colas y no tenía NaN.)"""
+        assert filtered_df["trend_cf"].iloc[: CF_WARMUP - 1].isna().all()
+        assert filtered_df["trend_cf"].iloc[CF_WARMUP - 1:].notna().all()
 
     def test_bw_trend_no_nan(self, filtered_df):
         assert filtered_df["trend_bw"].notna().all()
@@ -152,8 +162,11 @@ class TestApplyFilters:
 
     def test_trends_are_positive(self, filtered_df):
         burnin = VIOG_CONFIG.kalman_burnin_periods
-        for col in ["trend_bhp", "trend_cf", "trend_bw"]:
+        for col in ["trend_bhp", "trend_bw"]:
             assert (filtered_df[col] > 0).all(), f"{col} tiene valores ≤ 0"
+        # CF: positivo después del warm-up (una cola)
+        assert (filtered_df["trend_cf"].iloc[CF_WARMUP - 1:] > 0).all(), \
+            "trend_cf tiene valores ≤ 0 fuera del warm-up"
         # Kalman: positivo después del burn-in
         assert (filtered_df["trend_kalman"].iloc[burnin:] > 0).all(), \
             "trend_kalman tiene valores ≤ 0 fuera del burn-in"
@@ -200,8 +213,12 @@ class TestComputeVIOGWeights:
 
     def test_rev_positive_for_non_bk(self, weights_df):
         burnin = VIOG_CONFIG.kalman_burnin_periods
-        for col in ["rev_cf", "rev_bw", "rev_bhp", "rev_ref"]:
+        for col in ["rev_bw", "rev_bhp", "rev_ref"]:
             assert (weights_df[col] > 0).all(), f"{col} tiene valores ≤ 0"
+        # rev_cf: NaN durante el warm-up del CF de una cola, positivo después
+        assert weights_df["rev_cf"].iloc[: CF_WARMUP - 1].isna().all()
+        assert (weights_df["rev_cf"].iloc[CF_WARMUP - 1:] > 0).all(), \
+            "rev_cf tiene valores ≤ 0 fuera del warm-up"
         # rev_kalman: NaN en primeras `burnin` filas, positivo después
         assert weights_df["rev_kalman"].iloc[:burnin].isna().all()
         assert (weights_df["rev_kalman"].iloc[burnin:] > 0).all(), \
@@ -209,11 +226,103 @@ class TestComputeVIOGWeights:
 
     def test_inv_rev_positive_for_non_bk(self, weights_df):
         burnin = VIOG_CONFIG.kalman_burnin_periods
-        for col in ["inv_rev_cf", "inv_rev_bw", "inv_rev_bhp", "inv_rev_ref"]:
+        for col in ["inv_rev_bw", "inv_rev_bhp", "inv_rev_ref"]:
             assert (weights_df[col] > 0).all()
+        # inv_rev_cf: NaN durante el warm-up, positivo después
+        assert weights_df["inv_rev_cf"].iloc[: CF_WARMUP - 1].isna().all()
+        assert (weights_df["inv_rev_cf"].iloc[CF_WARMUP - 1:] > 0).all()
         # inv_rev_kalman: NaN en primeras `burnin` filas, positivo después
         assert weights_df["inv_rev_kalman"].iloc[:burnin].isna().all()
         assert (weights_df["inv_rev_kalman"].iloc[burnin:] > 0).all()
+
+
+# ── TestCFOneSided ────────────────────────────────────────────────────
+
+class TestCFOneSided:
+    """Propiedades del filtro Christiano-Fitzgerald de una cola (causal).
+
+    La propiedad definitoria (test_causalidad_muestra_expansiva): el valor
+    de trend_cf en t calculado con la muestra completa y[:T] debe COINCIDIR
+    con el calculado usando solo y[:t+1]. Si agregar datos futuros cambia un
+    valor pasado, el filtro no es de una cola.
+    """
+
+    @staticmethod
+    def _serie(n: int = 160, seed: int = 7) -> np.ndarray:
+        """Serie sintética tipo log-PIB en niveles: RW con drift + ciclo AR(2)."""
+        rng = np.random.default_rng(seed)
+        cyc = np.zeros(n)
+        for t in range(2, n):
+            cyc[t] = 1.5 * cyc[t - 1] - 0.6 * cyc[t - 2] + rng.normal(0, 40)
+        return 5_000.0 + np.cumsum(rng.normal(50, 10, n)) + cyc
+
+    def test_causalidad_muestra_expansiva(self):
+        """trend_cf sobre y[:T] == trend_cf sobre y[:t+1] para varios t < T."""
+        y = self._serie()
+        n = len(y)
+        _, trend_full = cf_filter_one_sided(y, low=VIOG_CONFIG.cf_low,
+                                            high=VIOG_CONFIG.cf_high)
+        for t in [CF_WARMUP + 2, 90, 110, 130, n - 2]:
+            _, trend_sub = cf_filter_one_sided(y[: t + 1], low=VIOG_CONFIG.cf_low,
+                                               high=VIOG_CONFIG.cf_high)
+            np.testing.assert_allclose(
+                trend_sub, trend_full[: t + 1], rtol=1e-12, atol=1e-8,
+                err_msg=f"Agregar datos después de t={t} revisó valores pasados "
+                        f"→ el filtro NO es de una cola",
+            )
+
+    def test_equivalencia_cffilter_expansivo(self):
+        """Ruta analítica (fórmula de borde CF 2003) == ruta pragmática
+        (statsmodels cffilter sobre y[:t+1], último valor)."""
+        from statsmodels.tsa.filters.cf_filter import cffilter
+
+        y = self._serie()
+        cycle_1s, trend_1s = cf_filter_one_sided(
+            y, low=VIOG_CONFIG.cf_low, high=VIOG_CONFIG.cf_high
+        )
+        for t in [CF_WARMUP - 1, CF_WARMUP + 10, 100, 125, len(y) - 1]:
+            cyc_sub, tr_sub = cffilter(
+                y[: t + 1], low=VIOG_CONFIG.cf_low, high=VIOG_CONFIG.cf_high,
+                drift=False,
+            )
+            assert np.isclose(cycle_1s[t], np.asarray(cyc_sub)[-1],
+                              rtol=1e-10, atol=1e-8)
+            assert np.isclose(trend_1s[t], np.asarray(tr_sub)[-1],
+                              rtol=1e-10, atol=1e-8)
+
+    def test_apply_filters_usa_una_cola(self, filtered_df, synthetic_df):
+        """apply_filters (cf_one_sided=True default) cablea cf_filter_one_sided."""
+        _, trend = cf_filter_one_sided(
+            synthetic_df["Y"].to_numpy(dtype=float),
+            low=VIOG_CONFIG.cf_low, high=VIOG_CONFIG.cf_high,
+            min_obs=VIOG_CONFIG.cf_min_obs,
+        )
+        np.testing.assert_allclose(
+            filtered_df["trend_cf"].to_numpy(), trend, rtol=1e-12, atol=1e-8
+        )
+
+    def test_flag_false_reproduce_dos_colas(self, synthetic_df):
+        """cf_one_sided=False reproduce la versión anterior (cffilter, dos
+        colas, sin NaN) — para comparación/depuración."""
+        from statsmodels.tsa.filters.cf_filter import cffilter
+
+        cfg_legacy = VIOGConfig(cf_one_sided=False)
+        df = apply_filters(synthetic_df.copy(), cfg=cfg_legacy)
+        assert df["trend_cf"].notna().all()
+        _, tr_2s = cffilter(
+            synthetic_df["Y"].astype(float),
+            low=cfg_legacy.cf_low, high=cfg_legacy.cf_high, drift=False,
+        )
+        np.testing.assert_allclose(
+            df["trend_cf"].to_numpy(), np.asarray(tr_2s), rtol=1e-12, atol=1e-8
+        )
+
+    def test_warmup_configurable(self):
+        """cf_min_obs se respeta: NaN antes, válido después."""
+        y = self._serie(n=80)
+        _, trend = cf_filter_one_sided(y, low=6, high=32, min_obs=20)
+        assert np.isnan(trend[:19]).all()
+        assert np.isfinite(trend[19:]).all()
 
 
 # ── TestRunVIOGPipeline ───────────────────────────────────────────────

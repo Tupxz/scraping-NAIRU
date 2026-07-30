@@ -7,6 +7,7 @@ producto robusta a la elección del filtro.
 
 from src.sources.viog.viog import (
     apply_filters,
+    cf_filter_one_sided,
     compute_gaps,
     compute_viog_weights,
     compute_weighted_gap,
@@ -17,6 +18,7 @@ from src.sources.viog.viog import (
 
 __all__ = [
     "apply_filters",
+    "cf_filter_one_sided",
     "compute_gaps",
     "compute_viog_weights",
     "compute_weighted_gap",

@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.5.0] — 2026-07-30
+
+### Cambiado
+- **Filtro Christiano-Fitzgerald del VIOG pasa a UNA COLA (causal) por
+  defecto** (`viog.py::apply_filters`, flag `cf_one_sided: bool = True` en
+  `VIOGConfig` — aplica a VIOG-USA y VIOG-CO): `trend_cf` en cada t ahora
+  depende solo de y₁..y_t (fórmula asimétrica de Christiano & Fitzgerald
+  2003 con nf=0 adelantos, implementación analítica en
+  `cf_filter_one_sided()`), de modo que la brecha C-F es la de tiempo real
+  y no se revisa retroactivamente con cada dato nuevo (crítica de
+  Orphanides 2001 AER; 2003 JME). La versión anterior de dos colas
+  (statsmodels `cffilter`, drift=False) se conserva con
+  `cf_one_sided=False`. Costo: warm-up de `cf_min_obs` obs (default
+  2·cf_high = 64T) con `trend_cf = NaN` y peso VIOG 0 (mismo mecanismo que
+  los extremos de BK) — en VIOG-CO la serie C-F publicada arranca en
+  2009Q4; y mayor persistencia/menor amplitud del ciclo en crisis (en
+  2020Q2 la brecha en tiempo real fue −2.0 pp vs −8.3 pp ex-post). En el
+  borde derecho ambos filtros coinciden por construcción.
+- **`run_viog_pipeline()` acepta `cfg=`** y `run_viog.py` le pasa la config
+  del país: antes los filtros usaban siempre `VIOG_CONFIG` (inocuo mientras
+  ambas configs compartían parámetros; necesario ahora que flags como
+  `cf_one_sided` pueden diferir por país).
+
+### Agregado
+- `cf_filter_one_sided()` en `viog.py` (numpy puro; exportada en
+  `src.sources.viog`): equivale a precisión de máquina a correr
+  `cffilter(y[:t+1], drift=False)` y tomar el último valor para cada t.
+- `tests/test_viog.py::TestCFOneSided`: test de la propiedad definitoria de
+  causalidad (filtrar y[:T] == filtrar y[:t+1] en el tramo común, varios
+  t), equivalencia con el `cffilter` expansivo de statsmodels, cableado en
+  `apply_filters`, reproducción del modo dos colas y warm-up configurable.
+- `scripts/compare_cf_one_sided.py`: comparación una vs dos colas sobre
+  PIB_CO (gráfica + CSV en `outputs/diagnostico_cf/`), con la revisión
+  ex-post implícita del filtro de dos colas (media 1.4 pp, máx 6.3 pp en
+  2020Q2; sd de la brecha 2.3 pp) y el efecto sobre los compuestos VIOG.
+
 ## [0.4.3] — 2026-07-07
 
 ### Cambiado

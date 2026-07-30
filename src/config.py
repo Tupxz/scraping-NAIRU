@@ -972,6 +972,19 @@ class VIOGConfig:
     # Christiano-Fitzgerald
     cf_low: int = 6
     cf_high: int = 32
+    # cf_one_sided: True → filtro CF de UNA COLA (causal / tiempo real):
+    # trend_cf en cada t usa solo y_1..y_t (fórmula asimétrica de CF 2003 con
+    # nf=0, evaluada sobre muestra expansiva). La brecha no se revisa
+    # retroactivamente con cada dato nuevo (crítica de Orphanides 2001 AER) —
+    # análogo "filtered" del "smoothed" del Kalman. False → versión de dos
+    # colas anterior (statsmodels cffilter, drift=False), útil para
+    # comparación/depuración. Aplica a VIOG_CONFIG y VIOG_CO_CONFIG por ser
+    # default de la clase.
+    cf_one_sided: bool = True
+    # cf_min_obs: warm-up del CF de una cola — mínimo de observaciones antes
+    # del primer valor no-NaN de trend_cf (antes: NaN, peso VIOG 0, como los
+    # extremos de BK). None → 2 * cf_high (64 trimestres con high=32).
+    cf_min_obs: Optional[int] = None
 
     # Hodrick-Prescott
     hp_lambda: int = 1600

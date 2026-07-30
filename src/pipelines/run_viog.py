@@ -132,6 +132,7 @@ def _run_for_config(
         ref_col=config.ref_col,
         source_label=config.source_label,
         plot=True, plot_dir=plot_dir,
+        cfg=config,  # respeta la config del país (p.ej. cf_one_sided)
     )
     print(f"[VIOG] {len(df)} observaciones guardadas en {output_path}")
     print(f"[VIOG] Gráficas guardadas en {plot_dir}")

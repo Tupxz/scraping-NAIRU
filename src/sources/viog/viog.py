@@ -15,6 +15,18 @@ Notas:
   - Baxter-King recorta K=12 trimestres de cada extremo → NaN en extremos para gap_bk.
   - El divisor N usa len(df) (generalización del notebook original).
   - BHP (Boosted Hodrick-Prescott) usa iterations=3 y lambda=cfg.hp_lambda (1600).
+  - Christiano-Fitzgerald: por defecto (cfg.cf_one_sided=True) se usa la versión
+    de UNA COLA (causal / tiempo real): trend_cf en cada t depende SOLO de
+    y_1..y_t — fórmula asimétrica de Christiano & Fitzgerald (2003, IER 44(2))
+    con nf=0 adelantos, equivalente a evaluar el borde derecho del filtro sobre
+    la muestra expansiva y[:t+1]. La brecha resultante es la que un hacedor de
+    política habría visto en tiempo real y NO se revisa retroactivamente al
+    llegar datos nuevos (crítica de Orphanides 2001 AER; 2003 JME) — es el
+    análogo "filtered" del "smoothed" que ya se distingue para el Kalman.
+    Warm-up: las primeras cf_min_obs−1 obs (default 2*cf_high = 64 trimestres)
+    quedan en NaN y su peso VIOG es 0 (mismo mecanismo que los extremos de BK).
+    Con cfg.cf_one_sided=False se reproduce la versión anterior de dos colas
+    (statsmodels cffilter, drift=False) para comparación/depuración.
   - Kalman usa UnobservedComponents(level="local linear trend", drift=True, cycle=True).
     Pendiente estocástica (slope varía en el tiempo). Se ajusta en niveles.
     El nivel suavizado (result.level.smoothed) es la tendencia/potencial.
@@ -86,6 +98,86 @@ def load_pib_usa(path: Path) -> pd.DataFrame:
 
 # ── 2. Filtros ────────────────────────────────────────────────────────
 
+def cf_filter_one_sided(
+    x: np.ndarray,
+    low: float = 6,
+    high: float = 32,
+    min_obs: Optional[int] = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Filtro Christiano-Fitzgerald de UNA COLA (causal / tiempo real).
+
+    Implementa el filtro asimétrico "random walk" de Christiano & Fitzgerald
+    (2003, "The Band Pass Filter", International Economic Review 44(2),
+    435-465) restringido a nf=0 adelantos: el ciclo en cada t depende
+    ÚNICAMENTE de x_1..x_t. Es la estimación que un analista podía calcular
+    en el trimestre t, y no se revisa al llegar observaciones futuras
+    (a diferencia de la versión de dos colas de ``statsmodels.cffilter``,
+    que usa adelantos dentro de la muestra y revisa toda la historia con
+    cada dato nuevo — crítica de Orphanides 2001 AER; 2003 JME).
+
+    Identidad clave: para el filtro asimétrico de CF, el valor en el ÚLTIMO
+    punto de cualquier muestra de tamaño n es causal por construcción:
+
+        c_n = 0.5·B0·x_n + Σ_{j=1}^{n-2} B_j·x_{n-j} + B̃_{n-1}·x_1,
+        B̃_{n-1} = −0.5·B0 − Σ_{j=1}^{n-2} B_j,
+
+    con B0=(b−a)/π, B_j=(sin(j·b)−sin(j·a))/(π·j), a=2π/high, b=2π/low.
+    Aplicar esta fórmula de borde sobre la muestra expansiva x[0..t] para
+    cada t ES el filtro de una cola, y coincide a precisión de máquina con
+    correr ``cffilter(x[:t+1], drift=False)`` y quedarse con el último valor
+    (la ruta pragmática O(T²)), porque statsmodels implementa exactamente el
+    filtro asimétrico random-walk de CF. La ruta analítica evita depender de
+    ese detalle interno y solo requiere numpy.
+
+    Parameters
+    ----------
+    x:        Serie 1-D a filtrar (niveles, igual que el uso actual de
+              cffilter en apply_filters).
+    low:      Período mínimo de oscilación (default 6 trimestres = 1.5 años).
+    high:     Período máximo de oscilación (default 32 trimestres = 8 años).
+    min_obs:  Warm-up — mínimo de observaciones acumuladas antes del primer
+              valor no-NaN. Con menos historia el filtro de borde es poco
+              fiable (la cola de pesos B̃ concentra demasiada masa en x_1).
+              None → 2*high (64 trimestres con high=32).
+
+    Returns
+    -------
+    (cycle, trend): tupla de arrays, mismo contrato que ``cffilter``.
+        trend = x − cycle. NaN durante el warm-up.
+    """
+    x = np.asarray(x, dtype=float)
+    if x.ndim == 2 and x.shape[1] == 1:
+        x = x[:, 0]
+    if x.ndim != 1:
+        raise ValueError("cf_filter_one_sided solo soporta series 1-D")
+    if low < 2:
+        raise ValueError("low debe ser >= 2")
+    nobs = x.shape[0]
+    if min_obs is None:
+        min_obs = int(np.ceil(2 * high))
+    min_obs = max(int(min_obs), 3)
+
+    a = 2 * np.pi / high
+    b = 2 * np.pi / low
+
+    j = np.arange(1, nobs)
+    B = np.empty(nobs) if nobs else np.empty(0)
+    if nobs:
+        B[0] = (b - a) / np.pi
+    if nobs > 1:
+        B[1:] = (np.sin(b * j) - np.sin(a * j)) / (np.pi * j)
+    csum = np.cumsum(B)  # csum[k] = B0 + B_1 + ... + B_k
+
+    cycle = np.full(nobs, np.nan)
+    for t in range(min_obs - 1, nobs):
+        # c_t = 0.5·B0·x[t] + Σ_{j=1}^{t-1} B_j·x[t-j] + B̃_t·x[0]
+        btilde = -0.5 * B[0] - (csum[t - 1] - B[0])
+        cycle[t] = 0.5 * B[0] * x[t] + B[1:t] @ x[t - 1:0:-1] + btilde * x[0]
+
+    trend = x - cycle
+    return cycle, trend
+
+
 def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     """Aplica los 5 filtros de tendencia a la columna Y."""
     from scipy.signal import butter, filtfilt
@@ -108,8 +200,18 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     df["trend_bk"] = trend_bk
 
     # Christiano-Fitzgerald
-    _, cf_trend = cffilter(y, low=cfg.cf_low, high=cfg.cf_high, drift=False)
-    df["trend_cf"] = cf_trend.values
+    # cf_one_sided=True (default): versión causal / una cola — trend_cf en t
+    # usa SOLO y_1..y_t (estimación de tiempo real, sin revisión retroactiva).
+    # cf_one_sided=False: versión de dos colas de statsmodels (usa adelantos
+    # dentro de la muestra; solo el último punto de la muestra es causal).
+    if cfg.cf_one_sided:
+        _, cf_trend_arr = cf_filter_one_sided(
+            y.to_numpy(), low=cfg.cf_low, high=cfg.cf_high, min_obs=cfg.cf_min_obs
+        )
+        df["trend_cf"] = cf_trend_arr
+    else:
+        _, cf_trend = cffilter(y, low=cfg.cf_low, high=cfg.cf_high, drift=False)
+        df["trend_cf"] = cf_trend.values
 
     # Butterworth
     b, a = butter(N=cfg.bw_order, Wn=cfg.bw_cutoff, btype="low")
@@ -572,6 +674,7 @@ def run_viog_pipeline(
     source_label: Optional[str] = None,
     plot: bool = False,
     plot_dir: Optional[Path] = None,
+    cfg=None,
 ) -> pd.DataFrame:
     """Pipeline completo VIOG. Genérico para cualquier serie trimestral.
 
@@ -583,12 +686,20 @@ def run_viog_pipeline(
     ref_col:     Columna de tendencia de referencia en el Excel.
     plot:        Si True, genera y guarda gráficas en plot_dir.
     plot_dir:    Directorio para PNG (por defecto: mismo directorio que output_path).
+    cfg:         VIOGConfig a usar en apply_filters. None → VIOG_CONFIG (USA),
+                 que era el comportamiento anterior (los filtros SIEMPRE usaban
+                 VIOG_CONFIG aunque el runner pasara VIOG_CO_CONFIG; era inocuo
+                 porque ambas configs comparten parámetros econométricos, pero
+                 con flags como cf_one_sided conviene respetar la config del
+                 país — run_viog.py ahora la pasa explícitamente).
     """
     from src.config import VIOG_CONFIG
 
+    if cfg is None:
+        cfg = VIOG_CONFIG
     logger.info("[VIOG] Cargando %s (serie=%s, ref=%s)", input_path, series_col, ref_col)
     df = load_series(input_path, series_col=series_col, ref_col=ref_col)
-    df = apply_filters(df, cfg=VIOG_CONFIG)
+    df = apply_filters(df, cfg=cfg)
     df = compute_gaps(df)
     df = compute_viog_weights(df)
     df = compute_weighted_gap(df)
@@ -610,7 +721,7 @@ def run_viog_pipeline(
         "gap_bk":       df["gap_bk"],
         "gap_bw":       df["gap_bw"],
         "gap_kalman":   df["gap_kalman"],
-        "source":       source_label or VIOG_CONFIG.source_label,
+        "source":       source_label or cfg.source_label,
     }
     if ref_col and "gap_ref" in df.columns:
         out["gap_ref"] = df["gap_ref"]
