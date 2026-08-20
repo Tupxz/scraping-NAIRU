@@ -3,11 +3,8 @@
 Uso:
     python -m src.main                  # Solo desempleo (default)
     python -m src.main --unemployment   # Solo desempleo (TD + TGP + PET)
-    python -m src.main --informality    # Solo informalidad laboral (GEIH-EISS)
     python -m src.main --pwt            # Solo PWT 11.0 (capital stock + capital humano)
     python -m src.main --dane-gdp       # Solo PIB trimestral DANE (Cuentas Nacionales)
-    python -m src.main --investment     # Solo Inversión FBKF trimestral (DANE, enfoque gasto)
-    python -m src.main --income         # Solo PIB enfoque ingreso (RA/EBE/IM, DANE)
     python -m src.main --ipc            # Solo IPC (DANE real)
     python -m src.main --banrep         # Solo inflación (BANREP/SUAMECA)
     python -m src.main --tes            # Solo TES Cero Cupón (BANREP/SUAMECA)
@@ -15,10 +12,7 @@ Uso:
     python -m src.main --andi           # Solo ANDI EOIC (incremental)
     python -m src.main --andi-backfill  # ANDI EOIC (backfill completo)
     python -m src.main --andi-reprocess # ANDI EOIC (reprocesar PDFs locales)
-    python -m src.main --viog           # Solo VIOG-USA (brecha del producto, 5 filtros)
-    python -m src.main --viog-co        # Solo VIOG-Colombia (requiere --dane-gdp previo)
-    python -m src.main --merge          # Solo el merge del dataset consolidado
-    python -m src.main --all            # Fuentes + merge + modelos (la estimación MLE tarda ~5 min)
+    python -m src.main --all            # Todos los pipelines de datos + merge (rápido, ~20s)
     python -m src.main --nairu-dataset  # Construir Data_NAIRU.xlsx desde fuentes del repo
     python -m src.main --nairu-estim    # Estimar NAIRU/NAICU (costoso, requiere --nairu-dataset)
     python -m src.main --prod-func      # Dataset anual función de producción Cobb-Douglas (con A)

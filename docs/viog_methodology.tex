@@ -1,0 +1,50 @@
+\documentclass[11pt]{article}
+\usepackage[spanish]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\title{VIOG: Ponderación por Inverso de la Varianza del Output Gap}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+El VIOG (\emph{Variance-Weighted Inverse Output Gap}) estima la brecha del producto de Colombia
+combinando cinco filtros de extracción de tendencia --Baxter-King, Christiano-Fitzgerald,
+Butterworth, Hodrick-Prescott potenciado (BHP) y un filtro de Kalman/UCM equivalente al comando
+\texttt{ucm} de Stata-- aplicados sobre el logaritmo del PIB trimestral desestacionalizado
+(1994--2023). Cada filtro produce una brecha $g_{i,t} = \ln Y_t - \ln Y^{*}_{i,t}$, y el
+ponderador de cada método se define como el inverso de la suma acumulada de sus brechas
+absolutas hasta el periodo $t$, normalizada por el número de observaciones. El PIB potencial
+final es el promedio ponderado $\ln Y^{*}_t = \sum_i w_{i,t}\,\ln Y^{*}_{i,t}$, de modo que los
+filtros más estables (menor volatilidad histórica) reciben mayor peso relativo en cada instante.
+
+El filtro de Kalman se especifica como un modelo de componentes no observados con tendencia
+local lineal y ciclo estocástico amortiguado (periodo acotado entre 6 y 32 trimestres), estimado
+sobre $\ln(\text{PIB})$ mediante máxima verosimilitud con valores iniciales anclados en el
+óptimo económico (evitando el máximo degenerado de varianza cíclica nula). Las primeras cuatro
+observaciones (1994) se descartan por \emph{burn-in}, replicando el tratamiento de Stata. La
+Tabla~\ref{tab:filtros} resume las características y el desempeño de cada filtro sobre la serie
+colombiana.
+
+\begin{table}[h]
+\centering
+\caption{Comparación de filtros empleados en el VIOG (Colombia, 1994--2023)}
+\label{tab:filtros}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Filtro} & \textbf{Tipo} & \textbf{Parámetro clave} & \textbf{Desv. estándar brecha} \\
+\midrule
+Baxter-King (BK)        & Pasa-banda           & Ciclo 6--32 trim.\ ($K=12$) & 0.028 \\
+Christiano-Fitzgerald    & Pasa-banda asimétrico & Ciclo 6--32 trim.           & 0.024 \\
+Butterworth (BW)         & Pasa-bajo             & Orden 8, $\omega_c=1/16$    & 0.031 \\
+HP potenciado (BHP)      & Suavizado iterado     & $\lambda=1600$, 3 iter.\    & 0.026 \\
+Kalman / UCM             & Estado-espacio        & Ciclo 6--32 trim.\ amort.\  & 0.022 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
