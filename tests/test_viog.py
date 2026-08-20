@@ -110,14 +110,24 @@ class TestApplyFilters:
     def test_bhp_trend_no_nan(self, filtered_df):
         assert filtered_df["trend_bhp"].notna().all()
 
-    def test_cf_trend_warmup_then_valid(self, filtered_df):
-        """CF de una cola: NaN durante el warm-up, válido después.
+    def test_cf_trend_no_nan(self, filtered_df):
+        """CF de dos colas (default desde 2026-08-05): sin NaN.
+
+        El filtro simétrico usa toda la muestra en cada t, así que no hay
+        warm-up. (Con cf_one_sided=True sí hay NaN en las primeras
+        cf_min_obs−1 obs — ver test_una_cola_tiene_warmup.)"""
+        assert filtered_df["trend_cf"].notna().all()
+
+    def test_una_cola_tiene_warmup(self, synthetic_df):
+        """cf_one_sided=True: NaN durante el warm-up, válido después.
 
         Mismo patrón que los extremos de BK y el burn-in del Kalman: durante
         el warm-up el peso VIOG del CF es 0 y los demás filtros se
-        renormalizan. (Antes trend_cf era de dos colas y no tenía NaN.)"""
-        assert filtered_df["trend_cf"].iloc[: CF_WARMUP - 1].isna().all()
-        assert filtered_df["trend_cf"].iloc[CF_WARMUP - 1:].notna().all()
+        renormalizan."""
+        cfg_1s = VIOGConfig(cf_one_sided=True)
+        df = apply_filters(synthetic_df.copy(), cfg=cfg_1s)
+        assert df["trend_cf"].iloc[: CF_WARMUP - 1].isna().all()
+        assert df["trend_cf"].iloc[CF_WARMUP - 1:].notna().all()
 
     def test_bw_trend_no_nan(self, filtered_df):
         assert filtered_df["trend_bw"].notna().all()
@@ -293,31 +303,31 @@ class TestCFOneSided:
             assert np.isclose(trend_1s[t], np.asarray(tr_sub)[-1],
                               rtol=1e-10, atol=1e-8)
 
-    def test_apply_filters_usa_una_cola(self, filtered_df, synthetic_df):
-        """apply_filters (cf_one_sided=True default) cablea cf_filter_one_sided."""
-        _, trend = cf_filter_one_sided(
-            synthetic_df["Y"].to_numpy(dtype=float),
-            low=VIOG_CONFIG.cf_low, high=VIOG_CONFIG.cf_high,
-            min_obs=VIOG_CONFIG.cf_min_obs,
-        )
-        np.testing.assert_allclose(
-            filtered_df["trend_cf"].to_numpy(), trend, rtol=1e-12, atol=1e-8
-        )
-
-    def test_flag_false_reproduce_dos_colas(self, synthetic_df):
-        """cf_one_sided=False reproduce la versión anterior (cffilter, dos
-        colas, sin NaN) — para comparación/depuración."""
+    def test_apply_filters_usa_dos_colas(self, filtered_df, synthetic_df):
+        """apply_filters (cf_one_sided=False default) cablea statsmodels
+        cffilter — el CF simétrico de dos colas, drift=False."""
         from statsmodels.tsa.filters.cf_filter import cffilter
 
-        cfg_legacy = VIOGConfig(cf_one_sided=False)
-        df = apply_filters(synthetic_df.copy(), cfg=cfg_legacy)
-        assert df["trend_cf"].notna().all()
+        assert VIOG_CONFIG.cf_one_sided is False, "el default debe ser dos colas"
         _, tr_2s = cffilter(
             synthetic_df["Y"].astype(float),
-            low=cfg_legacy.cf_low, high=cfg_legacy.cf_high, drift=False,
+            low=VIOG_CONFIG.cf_low, high=VIOG_CONFIG.cf_high, drift=False,
         )
         np.testing.assert_allclose(
-            df["trend_cf"].to_numpy(), np.asarray(tr_2s), rtol=1e-12, atol=1e-8
+            filtered_df["trend_cf"].to_numpy(), np.asarray(tr_2s),
+            rtol=1e-12, atol=1e-8,
+        )
+
+    def test_flag_true_reproduce_una_cola(self, synthetic_df):
+        """cf_one_sided=True cablea cf_filter_one_sided (versión causal)."""
+        cfg_1s = VIOGConfig(cf_one_sided=True)
+        df = apply_filters(synthetic_df.copy(), cfg=cfg_1s)
+        _, trend = cf_filter_one_sided(
+            synthetic_df["Y"].to_numpy(dtype=float),
+            low=cfg_1s.cf_low, high=cfg_1s.cf_high, min_obs=cfg_1s.cf_min_obs,
+        )
+        np.testing.assert_allclose(
+            df["trend_cf"].to_numpy(), trend, rtol=1e-12, atol=1e-8
         )
 
     def test_warmup_configurable(self):

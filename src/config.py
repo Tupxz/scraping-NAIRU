@@ -972,15 +972,18 @@ class VIOGConfig:
     # Christiano-Fitzgerald
     cf_low: int = 6
     cf_high: int = 32
-    # cf_one_sided: True → filtro CF de UNA COLA (causal / tiempo real):
-    # trend_cf en cada t usa solo y_1..y_t (fórmula asimétrica de CF 2003 con
-    # nf=0, evaluada sobre muestra expansiva). La brecha no se revisa
-    # retroactivamente con cada dato nuevo (crítica de Orphanides 2001 AER) —
-    # análogo "filtered" del "smoothed" del Kalman. False → versión de dos
-    # colas anterior (statsmodels cffilter, drift=False), útil para
-    # comparación/depuración. Aplica a VIOG_CONFIG y VIOG_CO_CONFIG por ser
-    # default de la clase.
-    cf_one_sided: bool = True
+    # cf_one_sided: False (DEFAULT desde 2026-08-05) → filtro CF de DOS COLAS,
+    # el simétrico de banda de Christiano-Fitzgerald (statsmodels cffilter,
+    # drift=False): trend_cf en t usa toda la muestra, adelantos y rezagos.
+    # Es el benchmark de investigación — sin desfase de fase ni atenuación de
+    # amplitud, comparable con BK/Butterworth/BHP/Kalman suavizado — pero se
+    # revisa retroactivamente con cada dato nuevo.
+    # True → versión de UNA COLA (causal / tiempo real): trend_cf en cada t
+    # usa solo y_1..y_t (fórmula asimétrica de CF 2003 con nf=0, evaluada
+    # sobre muestra expansiva), sin revisión retroactiva (crítica de
+    # Orphanides 2001 AER) — análogo "filtered" del "smoothed" del Kalman.
+    # Aplica a VIOG_CONFIG y VIOG_CO_CONFIG por ser default de la clase.
+    cf_one_sided: bool = False
     # cf_min_obs: warm-up del CF de una cola — mínimo de observaciones antes
     # del primer valor no-NaN de trend_cf (antes: NaN, peso VIOG 0, como los
     # extremos de BK). 3 = mínimo matemático → la serie cubre casi todo el
@@ -989,6 +992,7 @@ class VIOGConfig:
     # historia — leerlos con cautela). Alternativas conservadoras: 32 (un
     # período completo de la banda) o None → 2 * cf_high (64 trimestres).
     # La causalidad no depende de este valor: es solo una máscara.
+    # Solo tiene efecto cuando cf_one_sided=True.
     cf_min_obs: Optional[int] = 3
 
     # Hodrick-Prescott

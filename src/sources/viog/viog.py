@@ -15,20 +15,23 @@ Notas:
   - Baxter-King recorta K=12 trimestres de cada extremo → NaN en extremos para gap_bk.
   - El divisor N usa len(df) (generalización del notebook original).
   - BHP (Boosted Hodrick-Prescott) usa iterations=3 y lambda=cfg.hp_lambda (1600).
-  - Christiano-Fitzgerald: por defecto (cfg.cf_one_sided=True) se usa la versión
-    de UNA COLA (causal / tiempo real): trend_cf en cada t depende SOLO de
-    y_1..y_t — fórmula asimétrica de Christiano & Fitzgerald (2003, IER 44(2))
-    con nf=0 adelantos, equivalente a evaluar el borde derecho del filtro sobre
-    la muestra expansiva y[:t+1]. La brecha resultante es la que un hacedor de
-    política habría visto en tiempo real y NO se revisa retroactivamente al
-    llegar datos nuevos (crítica de Orphanides 2001 AER; 2003 JME) — es el
-    análogo "filtered" del "smoothed" que ya se distingue para el Kalman.
-    Warm-up: las primeras cf_min_obs−1 obs quedan en NaN y su peso VIOG es 0
-    (mismo mecanismo que los extremos de BK). VIOGConfig usa cf_min_obs=3
-    (mínimo matemático: serie casi completa, primeros años con poca historia);
-    la función acepta None → 2*cf_high como alternativa conservadora.
-    Con cfg.cf_one_sided=False se reproduce la versión anterior de dos colas
-    (statsmodels cffilter, drift=False) para comparación/depuración.
+  - Christiano-Fitzgerald: por defecto (cfg.cf_one_sided=False, desde
+    2026-08-05) se usa la versión de DOS COLAS — el filtro de banda simétrico
+    de Christiano & Fitzgerald (2003, IER 44(2)) vía statsmodels cffilter con
+    drift=False: trend_cf en cada t usa TODA la muestra (adelantos y rezagos),
+    sin desfase de fase ni atenuación de amplitud, y sin NaN. Es el benchmark
+    de investigación, comparable con BK / Butterworth / BHP / Kalman suavizado;
+    su contrapartida es que se revisa retroactivamente con cada dato nuevo.
+    Con cfg.cf_one_sided=True se usa la versión de UNA COLA (causal / tiempo
+    real): trend_cf en cada t depende SOLO de y_1..y_t — fórmula asimétrica de
+    CF 2003 con nf=0 adelantos, equivalente a evaluar el borde derecho del
+    filtro sobre la muestra expansiva y[:t+1]. Esa es la brecha que un hacedor
+    de política habría visto en tiempo real y NO se revisa retroactivamente
+    (crítica de Orphanides 2001 AER; 2003 JME) — el análogo "filtered" del
+    "smoothed" que ya se distingue para el Kalman. En ese modo hay warm-up:
+    las primeras cf_min_obs−1 obs quedan en NaN y su peso VIOG es 0 (mismo
+    mecanismo que los extremos de BK); VIOGConfig usa cf_min_obs=3 y la
+    función acepta None → 2*cf_high como alternativa conservadora.
   - Kalman usa UnobservedComponents(level="local linear trend", drift=True, cycle=True).
     Pendiente estocástica (slope varía en el tiempo). Se ajusta en niveles.
     El nivel suavizado (result.level.smoothed) es la tendencia/potencial.
@@ -202,10 +205,11 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     df["trend_bk"] = trend_bk
 
     # Christiano-Fitzgerald
-    # cf_one_sided=True (default): versión causal / una cola — trend_cf en t
-    # usa SOLO y_1..y_t (estimación de tiempo real, sin revisión retroactiva).
-    # cf_one_sided=False: versión de dos colas de statsmodels (usa adelantos
-    # dentro de la muestra; solo el último punto de la muestra es causal).
+    # cf_one_sided=False (default): versión simétrica / dos colas de
+    # statsmodels — trend_cf en t usa toda la muestra (adelantos y rezagos);
+    # solo el último punto de la muestra es causal.
+    # cf_one_sided=True: versión causal / una cola — trend_cf en t usa SOLO
+    # y_1..y_t (estimación de tiempo real, sin revisión retroactiva).
     if cfg.cf_one_sided:
         _, cf_trend_arr = cf_filter_one_sided(
             y.to_numpy(), low=cfg.cf_low, high=cfg.cf_high, min_obs=cfg.cf_min_obs
