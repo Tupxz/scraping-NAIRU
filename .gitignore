@@ -23,8 +23,17 @@ andi_agent/__pycache__/
 # Pipeline outputs / reportes
 outputs/
 
-# Temporary inspection scripts
-scripts/
+# Scripts de análisis y calibración
+#   El CÓDIGO sí se versiona: es la evidencia metodológica del informe
+#   (compare_cf_one_sided.py, validate_kalman_fix.py, y la futura
+#   nairu_calibration.py del motor v3). Solo se ignoran sus salidas y
+#   los borradores desechables.
+scripts/tmp_*
+scripts/outputs/
+scripts/*.csv
+scripts/*.xlsx
+scripts/*.png
+scripts/*.log
 
 # Byte-compiled / optimized / DLL files
 *__pycache__/
@@ -243,3 +252,9 @@ __marimo__/
 legacy/**/__pycache__/
 legacy/**/outputs/
 legacy/**/data/
+
+# Residuos del puente de dispositivo (Cowork/Claude no puede borrar
+# archivos en el Mac: se mueven a _to_delete/ y se borran a mano)
+_to_delete/
+*cowork_snapshot.tgz
+*_cowork_stage.tgz
