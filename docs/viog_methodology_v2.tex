@@ -1,0 +1,129 @@
+% ---------------------------------------------------------------------------
+% Metodología del VIOG — sección para el paper.
+% Todas las cifras salen de data/processed/viog_colombia.csv
+% (129 obs, 1994Q1–2026Q1; C-F de DOS COLAS, cf_one_sided=False desde 2026-08-05).
+% Verificado: la réplica de los ponderadores reproduce gap_viog y gap_inv_viog
+% publicados con error máximo de 4e-15.
+% ---------------------------------------------------------------------------
+\documentclass[11pt]{article}
+\usepackage[spanish]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+% Bibliografía: natbib + apalike (disponible en cualquier TeX Live).
+% Requiere referencias.bib en la misma carpeta y correr:  pdflatex → bibtex → pdflatex ×2
+\usepackage{natbib}
+\bibliographystyle{apalike}
+% Alternativa recomendada si tienes MacTeX completo: apacite respeta el español
+% (escribe "y" en vez de "and" y "et al." correctamente). Comenta las dos
+% líneas de arriba y descomenta estas tres:
+%   \usepackage[natbibapa]{apacite}
+%   \bibliographystyle{apacite}
+%   \renewcommand{\bibname}{Referencias}
+
+\title{VIOG: brecha del producto por combinación ponderada de filtros}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+El VIOG combina cinco extracciones alternativas de la tendencia del PIB colombiano
+---Baxter-King \citep{baxter_king_1999}, Christiano-Fitzgerald
+\citep{christiano_fitzgerald_2003}, Butterworth, Hodrick-Prescott potenciado
+\citep{phillips_shi_2021} y un modelo de componentes no observados estimado por filtro de
+Kalman \citep{harvey_1989}--- aplicadas al logaritmo del PIB trimestral
+desestacionalizado a precios constantes de 2015 (1994Q1--2026Q1, $n=129$; serie empalmada
+por el autor a partir de las bases de Cuentas Nacionales Trimestrales del DANE, que en su
+versión vigente arranca en 2005). Cada filtro $i$ entrega una brecha
+$g_{i,t}=\ln Y_t-\ln Y^{*}_{i,t}$ y un error absoluto acumulado
+$e_{i,t}=N^{-1}\sum_{s\leq t}\lvert g_{i,s}\rvert$. Con ellos se construyen dos compuestos: el
+VIOG pondera cada tendencia proporcionalmente a ese error,
+$w_{i,t}=e_{i,t}\big/\sum_j e_{j,t}$, de modo que el filtro que atribuye más movimiento al
+ciclo pesa más; el 1/VIOG invierte el criterio,
+$\tilde w_{i,t}=e_{i,t}^{-1}\big/\sum_j e_{j,t}^{-1}$, y premia al filtro más estable. En
+ambos casos el potencial es $\ln Y^{*}_t=\sum_i w_{i,t}\ln Y^{*}_{i,t}$ y la brecha final
+$\ln Y_t-\ln Y^{*}_t$. La elección entre uno y otro es poco consecuente en la práctica: las
+dos series correlacionan 0,99 y sus desviaciones estándar difieren en 0,1 pp, lo que sugiere
+que el resultado descansa en el conjunto de filtros y no en el esquema de ponderación.
+
+Los filtros difieren sobre todo en el tratamiento de los extremos de la muestra, que es
+justamente donde la brecha importa para política. Baxter-King, simétrico con $K=12$ rezagos y
+adelantos, pierde doce trimestres en cada extremo: no aporta información desde 2023Q2, su
+ponderador es exactamente cero en ese tramo y los cuatro filtros restantes se renormalizan.
+El Kalman descarta cuatro trimestres de calentamiento y se estima por máxima verosimilitud
+sobre $\ln Y$ con tendencia local lineal, ciclo estocástico amortiguado y período acotado
+entre 6 y 32 trimestres, con valores iniciales anclados fuera del máximo degenerado de
+varianza cíclica nula. Christiano-Fitzgerald se emplea en su versión de dos colas, que en cada
+$t$ usa toda la muestra. La elección no lo convierte en filtro de referencia ---ninguno lo es:
+los cinco entran al compuesto en pie de igualdad--- sino que lo pone en el mismo terreno que
+los otros cuatro, todos ellos suavizados o de dos colas. El costo es que la brecha se revisa
+retroactivamente con cada nueva observación \citep{orphanides_vannorden_2002}; la variante
+causal, que solo usa $y_1,\dots,y_t$, está disponible como alternativa y sitúa la caída de
+2020Q2 en $-2{,}0$ pp en lugar de $-8{,}3$.
+El BHP itera tres veces el filtro HP \citep[$\lambda=1600$;][]{hodrick_prescott_1997} sobre el residuo, en vez del criterio de
+parada basado en datos de \citet{phillips_shi_2021}, y el Butterworth es un pasa-bajo de
+orden 8 con frecuencia de corte
+$\omega_c=1/16$ aplicado en fase cero.
+
+El Cuadro~\ref{tab:filtros} resume especificación, cobertura y desempeño. La dispersión de las
+brechas ordena los filtros con nitidez: el Kalman atribuye al ciclo cerca de 50\,\% más
+variabilidad que Christiano-Fitzgerald (2,86 frente a 1,92 pp de desviación estándar) y, por
+construcción del ponderador, termina con el mayor peso del compuesto VIOG (32,6\,\% en 2026Q1)
+y con el menor bajo el criterio inverso (18,7\,\%). La divergencia se concentra en 2020Q2: los
+dos filtros de banda propiamente dichos ---Baxter-King y Christiano-Fitzgerald--- registran
+caídas de 9,3 y 8,3 pp, menos de la mitad de las de Butterworth (17,6), BHP (17,3) y Kalman
+(19,3). No es un error de estimación sino una consecuencia de la banda: el colapso y rebote de la
+pandemia duró dos o tres trimestres, un \emph{periodo} por debajo del piso de seis y por tanto
+una \emph{frecuencia} superior a la que el filtro deja pasar al ciclo. Todo lo que queda fuera
+de la banda ---tanto lo más lento como lo más rápido--- cae al residuo que rotulamos tendencia,
+de modo que el ``potencial'' de Baxter-King y Christiano-Fitzgerald retrocede 12,9 y 13,0\,\%
+en 2020Q2 y rebota cerca de 9,6\,\% en 2020Q3: la desviación estándar de la variación
+trimestral de esas dos tendencias es 1,99 y 1,87 pp, frente a 0,44 y 0,40 pp en Butterworth y
+BHP y 2,20 pp en el PIB observado. Es una advertencia de lectura más que un defecto ---fuera
+de episodios de esa intensidad los cinco filtros coinciden--- y el compuesto sitúa la brecha de
+2020Q2 en $-14{,}8$ pp.
+
+\begin{table}[htbp]
+\centering
+\caption{Filtros del VIOG: especificación, cobertura y desempeño (Colombia, 1994Q1--2026Q1)}
+\label{tab:filtros}
+\footnotesize
+\setlength{\tabcolsep}{3.8pt}
+\begin{tabular}{llccrrrr}
+\toprule
+\textbf{Filtro} & \textbf{Tipo} & \textbf{Parámetro clave} & \textbf{Cobertura} & \textbf{Obs.} &
+\textbf{D.E.} & \textbf{2020Q2} & \textbf{Peso} \\
+ & & & & & (pp) & (pp) & 2026Q1 \\
+\midrule
+Baxter-King           & Banda, simétrico  & 6--32 trim., $K{=}12$    & 1997Q1--2023Q1 & 105 & 2,33 & $-9{,}28$  & 0,0\,\%  \\
+Christiano-Fitzgerald & Banda, dos colas  & 6--32 trim.              & 1994Q1--2026Q1 & 129 & 1,92 & $-8{,}26$  & 22,3\,\% \\
+Butterworth           & Pasa-bajo, fase 0 & orden 8, $\omega_c=1/16$ & 1994Q1--2026Q1 & 129 & 2,30 & $-17{,}62$ & 23,4\,\% \\
+HP potenciado (BHP)   & HP iterado        & $\lambda=1600$, 3 iter.  & 1994Q1--2026Q1 & 129 & 2,21 & $-17{,}25$ & 21,7\,\% \\
+Kalman / UCM          & Estado-espacio    & 6--32 trim., amort.      & 1995Q1--2026Q1 & 125 & 2,86 & $-19{,}31$ & 32,6\,\% \\
+\midrule
+\textbf{VIOG}         & Compuesto & $w_{i,t}\propto e_{i,t}$      & 1994Q1--2026Q1 & 129 & 2,19 & $-14{,}78$ & --- \\
+\textbf{1/VIOG}       & Compuesto & $w_{i,t}\propto e_{i,t}^{-1}$ & 1994Q1--2026Q1 & 129 & 2,09 & $-14{,}00$ & --- \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.4em}
+\begin{minipage}{0.95\textwidth}
+\footnotesize
+\textit{Nota:} brechas en puntos porcentuales del PIB ($100\times(\ln Y-\ln Y^{*})$). D.E. es la
+desviación estándar de la brecha sobre las observaciones disponibles de cada filtro. El peso de
+Baxter-King es cero desde 2023Q2 por el recorte de $K=12$ trimestres en el extremo derecho.
+Correlación de cada brecha con el compuesto VIOG: BHP 0,96; Kalman 0,95; Butterworth 0,94;
+Baxter-King 0,93; Christiano-Fitzgerald 0,88.
+\end{minipage}
+\end{table}
+
+\renewcommand{\refname}{Referencias}
+\small
+\bibliography{referencias}
+
+\end{document}
