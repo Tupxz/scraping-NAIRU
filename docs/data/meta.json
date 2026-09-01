@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-08-01 07:21",
+  "last_updated": "2026-09-01 06:41",
   "last_obs_nairu": "2025-12-01",
   "n_obs_monthly": 250,
   "n_obs_quarterly": 85,
@@ -8,9 +8,9 @@
   "latest_naicu": 79.05,
   "latest_uci": 77.47,
   "latest_brecha_laboral": -1.08,
-  "latest_brecha_cd": 0.47,
+  "latest_brecha_cd": 0.46,
   "latest_brecha_bhp": -0.26,
   "last_obs_pib": "2026-01-01",
-  "latest_brecha_viog": -0.17,
+  "latest_brecha_viog": -0.18,
   "last_obs_viog": "2026-01-01"
 }
