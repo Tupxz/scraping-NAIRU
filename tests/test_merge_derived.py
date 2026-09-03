@@ -9,6 +9,14 @@ Los tres casos del plan CLOSEOUT (§C3):
 1. Serie sintética de crecimiento constante al 5 % anual.
 2. Caso puntual con inflation_gap = 1.0.
 3. Dataset corto (<12 meses) → ipc_yoy todo NaN, sin lanzar excepción.
+
+Clases (agregado 2026-09-01, Fase 1 de limpieza):
+  TestIpcYoyInternalGap — regresión del bug de fill_method="pad" implícito
+                          (auditoria_src_2026-08-21.md): un hueco INTERIOR
+                          en ipc_index (p.ej. por el outer-merge con
+                          Inf_Goal, que se publica con anticipación) ya no
+                          se rellena hacia adelante antes de calcular el
+                          % de variación.
 """
 
 from __future__ import annotations
@@ -39,10 +47,15 @@ def _make_df(n_months: int = 36) -> pd.DataFrame:
 
 
 def _apply_derived(df: pd.DataFrame) -> pd.DataFrame:
-    """Aplica las mismas fórmulas que merge_all_sources."""
+    """Aplica las mismas fórmulas que merge_all_sources.
+
+    Fix 2026-09-01 (Fase 1, auditoria_src_2026-08-21.md): fill_method=None
+    explícito, igual que en merge_all_sources -- si no, este helper deja de
+    ser fiel a "las mismas fórmulas" apenas diverge del código real.
+    """
     df = df.copy()
-    df["ipc_yoy"] = df["ipc_index"].pct_change(12) * 100
-    df["ipc_mom"] = df["ipc_index"].pct_change(1) * 100
+    df["ipc_yoy"] = df["ipc_index"].pct_change(12, fill_method=None) * 100
+    df["ipc_mom"] = df["ipc_index"].pct_change(1, fill_method=None) * 100
     df["inflation_gap"] = df["Inf_Rate"] - df["Inf_Goal"]
     return df
 
@@ -186,3 +199,54 @@ class TestRunDerivedChecks:
         df["Inf_Rate"] = rng.uniform(-5, 15, len(df))
         with pytest.raises(QualityCheckError, match="corr"):
             run_derived_checks(df)
+
+
+# ── Regresión: hueco interior en ipc_index (Fase 1, 2026-09-01) ──────────────
+
+class TestIpcYoyInternalGap:
+    """auditoria_src_2026-08-21.md: fill_method="pad" (default legacy de
+    pandas <3.0, con FutureWarning) rellenaba huecos INTERIORES de
+    ipc_index antes de calcular ipc_yoy/ipc_mom. En producción el hueco lo
+    crea el merge outer con Inf_Goal (se publica con anticipación, ver
+    merge_all_sources); acá se simula directamente sobre _apply_derived
+    (ya arreglado arriba con fill_method=None).
+    """
+
+    def _df_with_gap(self, n_months: int = 24, gap_at: int = 18) -> pd.DataFrame:
+        df = _make_df(n_months)
+        df.loc[gap_at, "ipc_index"] = float("nan")
+        return df
+
+    def test_gap_propagates_as_nan_not_fabricated(self):
+        df = _apply_derived(self._df_with_gap(gap_at=18))
+        # El propio hueco: no se puede calcular ni la variación mensual que
+        # LLEGA a él ni la que SALE de él.
+        assert pd.isna(df["ipc_mom"].iloc[18])
+        assert pd.isna(df["ipc_mom"].iloc[19]), (
+            "ipc_mom del mes posterior al hueco no debe fabricarse "
+            "comparando contra un valor rellenado hacia adelante"
+        )
+        assert pd.isna(df["ipc_yoy"].iloc[18])
+
+    def test_gap_does_not_affect_unrelated_months(self):
+        df = _apply_derived(self._df_with_gap(gap_at=18))
+        # Meses lejos del hueco deben seguir dando ≈0.407 %/mes (5 % anual)
+        # como en el caso sin huecos -- el fix no debe volverse "contagioso".
+        untouched = df["ipc_mom"].iloc[[5, 10, 20, 22, 23]]
+        assert untouched.notna().all()
+        assert (untouched - 0.4074).abs().max() < 1e-2
+
+    def test_old_pad_behavior_would_have_fabricated_a_value(self):
+        # Control negativo: confirma que este escenario SÍ dispara el bug
+        # histórico con el fill_method="pad" legacy (documenta por qué hace
+        # falta el fix, no solo que el fix no rompe nada). pandas emite
+        # FutureWarning al pasar fill_method explícito a partir de 2.1.
+        df = self._df_with_gap(gap_at=18)
+        with pytest.warns(FutureWarning):
+            with_pad = df["ipc_index"].pct_change(1, fill_method="pad") * 100
+        assert pd.notna(with_pad.iloc[19]), (
+            "Este test documenta el bug histórico: con fill_method='pad' "
+            "el mes posterior al hueco SÍ fabricaba un valor (~0.82 %, el "
+            "doble de la variación mensual real) -- por eso hace falta "
+            "fill_method=None explícito en el código real."
+        )

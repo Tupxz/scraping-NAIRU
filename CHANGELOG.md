@@ -1,5 +1,226 @@
 # Changelog
 
+## [0.5.4] — 2026-09-01
+
+### Corregido
+- **`pct_change()` sin `fill_method` explícito (5 sitios)** (hallazgo #2 de
+  la auditoría 2026-08-21, Fase 1 ítem 1 del plan de limpieza): heredaban
+  el default legacy de pandas 2.1-2.x (`fill_method='pad'`), que rellena
+  huecos hacia adelante ANTES de calcular la variación % -- fabricando
+  variaciones trimestre/mes a trimestre/mes que nunca ocurrieron en vez de
+  propagar NaN. La auditoría había contado 4 sitios; se confirmó un
+  quinto al revisar todo el repo de nuevo. Arreglados con
+  `fill_method=None` explícito: `src/merge.py` (`ipc_yoy`/`ipc_mom` -- el
+  caso con mayor impacto: 6 meses de inflación fabricada en
+  `data/final/nairu_dataset.csv`, filas futuras de `Inf_Goal` publicadas
+  con anticipación que el outer-merge deja con `ipc_index=NaN`),
+  `src/pipelines/build_production_function_dataset.py` (`_pct_change`,
+  todas las columnas `Var%*` del dataset trimestral de función de
+  producción), `src/quality_checks.py` (`check_ipc_monotonic` -- hallazgo
+  nuevo, no estaba en la auditoría original), `src/pipelines/run_pib_potencial.py`
+  (`g_q`, sin cambio de comportamiento porque `inv_q` ya llegaba sin
+  nulos -- arreglado solo por consistencia y para no emitir el
+  `FutureWarning`) y `src/sources/viog/viog.py::plot_filters` (uso
+  exclusivamente gráfico, sin consumidor numérico aguas abajo).
+- **AIC/BIC calculados sobre el objetivo penalizado del optimizador, no
+  la log-verosimilitud real** (`src/nairu/model_core.py`, hallazgo
+  confirmado por lectura en la auditoría 2026-08-21, Fase 1 ítem 6 del
+  plan de limpieza): `_kalman_pass` acumulaba en una sola variable `nll`
+  tanto el término gaussiano genuino de la verosimilitud como las
+  penalizaciones cuadráticas que mantienen al optimizador dentro de los
+  pisos/techos válidos de NAIRU/NAICU (p.ej. `8·(MIN_NAIRU_LEVEL −
+  nairu_pred)²`) -- `compute_mle_inference` calculaba
+  `log_likelihood = -fit.nll` directamente, tratando esas penalizaciones
+  como si fueran parte del modelo. Arreglo: nuevo campo
+  `KalmanHistory.unpenalized_nll` que acumula solo el término gaussiano
+  puro; `compute_mle_inference` recalcula una pasada barata (`O(n_obs)`,
+  nada que ver con las 97 corridas del multi-start) en el óptimo para
+  separar ambos términos, y usa el puro para `log_likelihood`/AIC/BIC.
+  Se agregó también `penalty_at_optimum` a `diagnostics_table` como
+  diagnóstico de cuánta penalización seguía activa en el punto final
+  (0 = ninguna).
+- **Sensibilidad de K₀ (capital inicial) no cuantificada**
+  (`src/pipelines/run_pib_potencial.py`, hallazgo #5 de la auditoría
+  2026-08-21, Fase 1 ítem 3 del plan de limpieza, decisión del usuario
+  2026-09-01: "tabla de sensibilidad"): `K_0` (capital de estado
+  estacionario, fórmula de Harberger) se ancla en 2005-Q1 y su peso
+  decae solo con la depreciación acumulada -- `(1-δ_q)^84 ≈ 0,50` hacia
+  2026 -- sin ninguna forma de saber cuánto le importa un error ahí al
+  PIB potencial publicado. No existe una serie de capital DANE anterior
+  a 2005 con la que anclar mejor `K_0`, así que en vez de "arreglar" el
+  ancla se la hizo auditable: `_build_capital_quarterly`/
+  `load_and_align_sources` ganan un parámetro `k0_multiplier` (1.0 =
+  sin cambios, el comportamiento de siempre) y una función nueva,
+  `compute_k0_sensitivity`, corre el pipeline completo con `K_0`
+  perturbado ±10 %/±20 % y mide el efecto en `K_pot`, `PIB_pot` y
+  `Brecha_CD` a través del tiempo. `run()` la llama después de los
+  quality checks y escribe `outputs/pib_potencial/k0_sensitivity.csv`
+  -- no cambia la estimación central (multiplicador 1.0), solo la
+  documenta.
+  Hallazgo adicional al verificar numéricamente: el efecto real
+  simulado es mucho menor que la estimación a ojo de la auditoría
+  (~2 pp para un error del 10 %). En este pipeline, un error
+  multiplicativo en `K` se cancela casi por completo en el residuo de
+  TFP (`A_obs = PIB / (K_usado^α · HL_obs^(1-α))`, con PIB observado
+  fijo) porque `K_pot/K_usado = NAICU_q/UCI` es exactamente invariante a
+  cualquier transformación de `K` -- ambos términos son lineales en la
+  misma serie de `K`. El efecto simulado sobre `Brecha_CD` incluso en el
+  escenario más extremo (±20 %, sin decaimiento) queda en el orden de
+  0,02-0,03 pp, no ~2 pp. `k0_sensitivity.csv` documenta la cifra real en
+  vez de dejar la intuición de la auditoría sin contrastar.
+
+### Agregado
+- **Tests para los arreglos de `pct_change`**: `tests/test_merge_derived.py`
+  gana `TestIpcYoyInternalGap` (3 tests, incluye control negativo con
+  `pytest.warns(FutureWarning)` confirmando que el comportamiento viejo
+  fabricaba un valor); `tests/test_build_production_function_dataset.py`
+  es un archivo nuevo (el módulo no tenía ninguna cobertura) con
+  `TestPctChange` (4 tests, mismo patrón de control negativo -- se
+  confirmó que el bug reintroducido hace fallar 2 de los 4).
+- **Tests para el arreglo de AIC/BIC**: `tests/test_nairu.py` gana
+  `TestUnpenalizedNLL` (3 tests) -- confirma que `unpenalized_nll` es
+  idéntico a `nll` cuando ninguna penalización está activa, que excluye
+  correctamente una penalización real y grande (~226, escenario
+  construido con `naicu_initial_level=41.0`), y que
+  `compute_mle_inference` de verdad usa el valor recalculado (no
+  `fit.nll`) inyectando una penalización artificial de 500 en un
+  `FitResult` sintético y confirmando que `log_likelihood`/AIC no la
+  heredan.
+  Los 17 tests de `tests/test_nairu.py` + los 4 de
+  `tests/test_build_production_function_dataset.py`, más los 19 de
+  `tests/test_merge_derived.py` y los 35 de `tests/test_merge.py`, se
+  corrieron de verdad con pytest usando pandas 2.3.3 (la versión fijada
+  en `pyproject.toml`, no la que trae por defecto el contenedor de la
+  nube) para reproducir con exactitud el comportamiento legacy que se
+  está corrigiendo -- 75 tests, todos pasan.
+- **Tests para la sensibilidad de K₀**: `tests/test_run_pib_potencial.py`
+  es un archivo nuevo (el módulo no tenía ninguna cobertura) con
+  `TestBuildCapitalQuarterly` (4 tests: el multiplicador escala
+  linealmente el primer periodo y decae geométricamente con
+  `(1-δ_q)` después, exactamente igual que cualquier otro término de la
+  recursión del inventario permanente) y `TestComputeK0Sensitivity`
+  (4 tests: contrato de la función -- corre sin `statsmodels` -- más
+  integración completa con los datos reales del repo -- solo corre si
+  `statsmodels` está instalado, p.ej. en el Mac del usuario). 8 tests,
+  todos pasan; control negativo confirmado (3/8 fallan si se reintroduce
+  un `k0_multiplier` ignorado).
+
+### Nota
+- Fase 1 del plan de limpieza 2026-09-01: de los 6 hallazgos, 2 eran
+  arreglos mecánicos de bajo riesgo (no cambian ninguna cifra publicada
+  salvo `ipc_yoy`/`ipc_mom`, que ya estaba mal) y la sensibilidad de K₀
+  resultó ser un tercero de bajo riesgo una vez decidido el enfoque
+  (tabla auditable, no cambia la estimación central -- ver arriba). Los
+  otros 3 (SE del MLE ≈ identidad, `L_pot` con TGP observada en vez de
+  TGP*, filtros VIOG en niveles vs Kalman en logs) son decisiones
+  metodológicas que cambiarían cifras ya publicadas o requieren
+  construir un sub-modelo nuevo -- se presentaron al usuario para
+  decidir antes de tocar código (ver plan de limpieza en la memoria del
+  proyecto). De esos 3, la investigación de "SE del MLE ≈ identidad"
+  reveló algo más grande de lo esperado: el ajuste MLE publicado
+  (`nairu_colombia.csv`) probablemente no está en un óptimo genuino
+  (verificado con los datos reales: apretar solo las tolerancias del
+  optimizador, cotas sin cambios, mejora la log-verosimilitud de forma
+  sustancial) y "reparametrizar quitando las cotas" -- el plan original
+  -- no es seguro (sin ellas el optimizador empuja hacia una NAIRU/NAICU
+  degenerada que persigue el dato ruidoso en vez de estimar una
+  tendencia suave; esas cotas hacen trabajo de regularización real, no
+  son solo un límite numérico). Pausado para una segunda decisión del
+  usuario sobre el alcance del arreglo -- ver la memoria del proyecto
+  para el detalle completo.
+- Pendiente en el Mac del usuario (se suma a lo ya pendiente de Fase 0):
+  `pytest tests/` completo -- aquí solo se pudieron correr los archivos
+  de test relacionados con los módulos tocados (75 tests), no la suite
+  entera (varios tests de fuentes/VIOG necesitan `statsmodels`, bloqueado
+  por PyPI 403 en este contenedor).
+
+## [0.5.3] — 2026-09-01
+
+### Corregido
+- **Off-by-one en el suavizador de Kalman de `src/nairu/model_core.py`**
+  (`kalman_filter_and_smoother`, hallazgo #1 de la auditoría de código del
+  2026-08-21): armaba `state_transition` con `params[9]`/`params[10]`
+  (= `covid_shock_coefficient`/`nairu_adjustment_speed`) en vez de
+  `params[10]`/`params[11]` (`nairu_adjustment_speed`/
+  `naicu_adjustment_speed`) — se desalineó cuando `covid_shock_coefficient`
+  se insertó en la posición 9 de `PARAMETER_NAMES` y nadie actualizó este
+  bloque (`_kalman_pass`, que desempaqueta por nombre, no se vio afectado).
+  Efecto verificado numéricamente reproduciendo la corrida publicada con
+  `nairu_mle_coefficients.csv`: NAIRU 2005-01 publicada 16,67 % vs 13,48 %
+  correcta (3,19 pp; decae a <0,1 pp hacia 2007), NAICU máx. 1,43 pp,
+  ancho de banda 90 % medio 0,574 pp (publicado) vs 0,723 pp (correcto),
+  3/250 obs con varianza pegada al piso `MIN_VARIANCE=1e-10` (de ahí el
+  `nairu_se≈1e-05` de las primeras filas). Arreglo: en vez de otro índice
+  hardcodeado, `kalman_filter_and_smoother` ahora arma `state_transition`
+  con `unpack_params()` — la misma fuente de verdad que ya usa el resto
+  del módulo — para que un futuro cambio en `PARAMETER_NAMES` no pueda
+  romper esto otra vez en silencio.
+- **Disparador de re-estimación ciego al código** (`estimation.py`,
+  hallazgo confirmado por lectura en la misma auditoría): la re-estimación
+  solo se disparaba si `Data_NAIRU.xlsx` era más nuevo que
+  `nairu_colombia.csv` — un cambio en `model_core.py`/`estimation.py`
+  nunca la disparaba. Mordía justo al arreglar el bug anterior: sin este
+  fix, corregir el suavizador no habría bastado para regenerar el CSV
+  publicado. Se extrajo la decisión a una función pura
+  `_needs_estimation(data_path, existing_csv, package_dir)` que además
+  compara el mtime más reciente de los `.py` de `src/nairu/`.
+
+### Agregado
+- **Primeros tests para `src/nairu/`** (antes sin ninguna cobertura,
+  confirmado por grep en toda `tests/`): 14 tests nuevos en
+  `tests/test_nairu.py` — `TestParameterVectorConsistency` (3),
+  `TestUnpackParams` (3), `TestKalmanSmootherRegression` (3, incluye
+  regresión directa del off-by-one y un "golden master" contra los
+  coeficientes MLE ya publicados), `TestNeedsEstimationTrigger` (5).
+  Corridos de verdad con `pytest` (no solo razonados a mano): los 14
+  pasan — este módulo solo necesita numpy/pandas/scipy (no statsmodels),
+  así que sí corre completo en un contenedor con scipy instalado aunque
+  no tenga el `.venv` del Mac.
+
+### Nota
+- Fase 0 del plan de limpieza 2026-09-01 completa (los 2 bugs de mayor
+  impacto + cobertura de tests). Quedan pendientes en el Mac del usuario:
+  `pytest tests/` completo (suite entera, no solo `test_nairu.py`) y
+  `python -m src.main --nairu-estim` para regenerar `nairu_colombia.csv`
+  con el fix (hoy sigue publicado el valor con el bug hasta que se
+  re-corra). `.github/workflows/update.yml` sigue con la reestimación
+  automática PAUSADA (ver comentario en el propio archivo) hasta que ese
+  `pytest` + esa corrida se validen y se comiteen.
+
+## [0.5.2] — 2026-09-01
+
+### Agregado
+- **PIB de Colombia anualizado antes de los 5 filtros del VIOG**: nueva
+  `VIOGConfig.annualize_series` (+ `annualize_window`, default 4) en
+  `src/config.py`, y `annualize_trailing_sum()` / `_annualize_df()` en
+  `src/sources/viog/viog.py`. Suma móvil de 4 trimestres
+  (`Y[t]+Y[t-1]+Y[t-2]+Y[t-3]`) sobre `Value(Billions)` — quita la
+  estacionalidad por construcción sin pasar por un ajuste estacional
+  formal (X-13/TRAMO-SEATS). Solo se anualiza `Y`; `Y_ref` (potencial de
+  función de producción) no aplica a VIOG-CO (`ref_col=None`). Activado en
+  `VIOG_CO_CONFIG` (`annualize_series=True`); `VIOG_CONFIG` (USA) no
+  cambia. Efecto en la muestra: 129 → 126 trimestres (arranca en 1994Q4 en
+  vez de 1994Q1 — las primeras 3 obs no tienen historia suficiente y se
+  descartan, no se dejan en NaN, porque bkfilter/cffilter/filtfilt no
+  toleran NaN intercalado). Verificado numéricamente: el valor anualizado
+  en 1994Q4 (393.555,27 mil millones) coincide exactamente con el PIB
+  anual DANE de 1994 (suma de sus 4 trimestres).
+- 14 tests nuevos en `tests/test_viog.py`: `TestAnnualizeGDP` (9, corren
+  sin statsmodels/scipy), `TestRunVIOGPipelineColombia` (4, requieren
+  statsmodels/scipy — correr con el `.venv` del Mac),
+  `TestRunColombiaUsesOwnConfig` (1, regresión del hallazgo de auditoría
+  de abajo).
+
+### Corregido
+- **`run_viog.py::_run_for_config` no pasaba `cfg=config` a
+  `run_viog_pipeline`** (hallazgo de la auditoría de código del
+  2026-08-21): el VIOG-CO corría siempre con `VIOG_CONFIG` (USA) por
+  defecto pese a que el docstring de `run_viog_pipeline` ya afirmaba lo
+  contrario. Era inocuo mientras `VIOG_CO_CONFIG` no divergiera
+  econométricamente de `VIOG_CONFIG`, pero bloqueaba por completo el punto
+  anterior — sin este fix, `annualize_series=True` en `VIOG_CO_CONFIG` no
+  habría tenido ningún efecto real.
+
 ## [0.5.1] — 2026-07-30
 
 ### Cambiado

@@ -1017,6 +1017,24 @@ class VIOGConfig:
     # poco fiables. Se enmascaran como NaN en trend_kalman -> gap_kalman = NaN.
     kalman_burnin_periods: int = 4
 
+    # -- Anualizacion (paso previo a los filtros, opcional) ------------
+    # annualize_series=True: antes de aplicar los 5 filtros, la columna Y
+    # (solo Y -- Y_ref, si existe, NO se toca: es una tendencia de potencial
+    # ya suavizada, no un flujo que tenga sentido acumular) se reemplaza
+    # por su suma movil de `annualize_window` trimestres:
+    #   Y_anual[t] = Y[t] + Y[t-1] + ... + Y[t-(window-1)]
+    # Convencion habitual DANE/Banrep para leer un flujo trimestral en
+    # unidades "ano movil" sin ajuste estacional formal (X-13/TRAMO-SEATS):
+    # al sumar siempre 4 trimestres consecutivos la estacionalidad se
+    # cancela por construccion. Las primeras `annualize_window - 1`
+    # observaciones no tienen historia suficiente y se DESCARTAN (no se
+    # dejan en NaN: bkfilter/cffilter/filtfilt no toleran NaN intercalado
+    # -- ver annualize_trailing_sum / _annualize_df en viog.py).
+    # False (default) reproduce el comportamiento historico: los filtros
+    # ven la serie trimestral cruda tal cual llega del Excel.
+    annualize_series: bool = False
+    annualize_window: int = 4
+
 
 VIOG_CONFIG = VIOGConfig()
 
@@ -1035,6 +1053,16 @@ VIOG_CO_CONFIG = VIOGConfig(
     # Sin referencia externa: solo el PIB y los 5 filtros estadísticos,
     # como notebooks/VIOG.ipynb aplicado al PIB (decisión 2026-07-07).
     ref_col=None,
+    # Decision 2026-09-01: el PIB de Colombia entra a los 5 filtros ya
+    # anualizado (suma movil de 4 trimestres) en vez de en niveles
+    # trimestrales crudos -- ver VIOGConfig.annualize_series arriba.
+    # VIOG_CONFIG (USA) NO cambia (annualize_series=False, default de la
+    # clase). Efecto en la muestra: 129 -> 126 trimestres (arranca en
+    # 1994Q4 en vez de 1994Q1; el valor anualizado en 1994Q4 = 393.555,27
+    # mil millones = PIB anual DANE de 1994 sumando sus 4 trimestres,
+    # verificado). viog_colombia.csv queda con 126 filas en vez de 129
+    # desde el proximo `--viog-co`.
+    annualize_series=True,
 )
 
 VIOG_PROCESSED_COLUMNS: list[str] = [

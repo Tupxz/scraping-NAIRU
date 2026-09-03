@@ -355,7 +355,9 @@ def check_ipc_monotonic(df: pd.DataFrame, tolerance: float = 0.15) -> None:
         Fracción máxima de caída mensual permitida sin alerta.
     """
     df_sorted = df.sort_values("date")
-    pct_change = df_sorted["ipc_index"].pct_change()
+    # Fix 2026-09-01: fill_method=None explícito (ver src/merge.py) -- un
+    # hueco interior ya no se enmascara como variación 0% tras el padding.
+    pct_change = df_sorted["ipc_index"].pct_change(fill_method=None)
     large_drops = pct_change[pct_change < -tolerance]
 
     if not large_drops.empty:

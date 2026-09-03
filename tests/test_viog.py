@@ -1,11 +1,14 @@
 """Tests para el pipeline VIOG (output gap ponderado por filtros).
 
 Clases:
-  TestLoadSeries         — carga del Excel y construcción del índice
-  TestApplyFilters       — cada filtro genera su columna de tendencia
-  TestComputeGaps        — logaritmos y brechas
-  TestComputeVIOGWeights — ponderadores VIOG y 1/VIOG
-  TestRunVIOGPipeline    — pipeline completo con archivo real
+  TestLoadSeries              — carga del Excel y construcción del índice
+  TestAnnualizeGDP             — suma móvil de 4 trimestres, previa a los filtros
+  TestApplyFilters             — cada filtro genera su columna de tendencia
+  TestComputeGaps               — logaritmos y brechas
+  TestComputeVIOGWeights        — ponderadores VIOG y 1/VIOG
+  TestRunVIOGPipeline           — pipeline completo con archivo real (PIB_USA.xlsx)
+  TestRunVIOGPipelineColombia   — ídem, PIB_CO.xlsx con annualize_series=True
+  TestVIOGColombiaRunner        — orquestador run_colombia() / _run_for_config()
 """
 
 from __future__ import annotations
@@ -16,8 +19,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.config import INPUTS_DIR, VIOG_CONFIG, VIOGConfig
+from src.config import INPUTS_DIR, VIOG_CO_CONFIG, VIOG_CONFIG, VIOGConfig
 from src.sources.viog.viog import (
+    _annualize_df,
+    annualize_trailing_sum,
     apply_filters,
     cf_filter_one_sided,
     compute_gaps,
@@ -102,6 +107,73 @@ class TestLoadSeries:
     def test_no_nulls_in_Y(self, tmp_path):
         df = load_series(_make_excel(tmp_path))
         assert df["Y"].notna().all()
+
+
+# ── TestAnnualizeGDP ─────────────────────────────────────────────────
+
+class TestAnnualizeGDP:
+    """Suma móvil de ``window`` trimestres, paso previo opcional a los filtros."""
+
+    def test_rolling_sum_values(self):
+        s = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+        r = annualize_trailing_sum(s, window=4)
+        assert r.iloc[3] == 10.0  # 1+2+3+4
+        assert r.iloc[4] == 14.0  # 2+3+4+5
+        assert r.iloc[5] == 18.0  # 3+4+5+6
+
+    def test_first_window_minus_1_are_nan(self):
+        s = pd.Series(range(10), dtype=float)
+        r = annualize_trailing_sum(s, window=4)
+        assert r.iloc[:3].isna().all()
+        assert r.iloc[3:].notna().all()
+
+    def test_custom_window(self):
+        s = pd.Series([1.0] * 7)
+        r = annualize_trailing_sum(s, window=2)
+        assert pd.isna(r.iloc[0])
+        assert r.iloc[1] == 2.0
+
+    def test_preserves_index(self, synthetic_df):
+        r = annualize_trailing_sum(synthetic_df["Y"], window=4)
+        assert r.index.equals(synthetic_df.index)
+
+    def test_annualize_df_drops_warmup_rows_no_nan_left(self, synthetic_df):
+        window = 4
+        out = _annualize_df(synthetic_df, window=window)
+        assert len(out) == len(synthetic_df) - (window - 1)
+        assert out["Y"].notna().all()
+
+    def test_annualize_df_leaves_Y_ref_untouched(self, synthetic_df):
+        out = _annualize_df(synthetic_df, window=4)
+        pd.testing.assert_series_equal(
+            out["Y_ref"], synthetic_df["Y_ref"].loc[out.index], check_names=False
+        )
+
+    def test_annualize_df_matches_manual_rolling_sum(self, synthetic_df):
+        out = _annualize_df(synthetic_df, window=4)
+        expected = synthetic_df["Y"].rolling(4).sum().dropna()
+        np.testing.assert_allclose(out["Y"].to_numpy(), expected.to_numpy())
+
+    def test_viog_co_config_annualizes_usa_does_not(self):
+        assert VIOG_CO_CONFIG.annualize_series is True
+        assert VIOG_CONFIG.annualize_series is False
+        assert VIOG_CO_CONFIG.annualize_window == 4
+
+    def test_pib_co_1994q4_matches_dane_annual_sum(self):
+        """Verificación cruzada con el archivo real: el primer valor anualizado
+        útil (1994Q4) debe coincidir con la suma de los 4 trimestres de 1994."""
+        df = load_series(
+            INPUTS_DIR / VIOG_CO_CONFIG.input_filename,
+            series_col=VIOG_CO_CONFIG.series_col,
+            ref_col=VIOG_CO_CONFIG.ref_col,
+        )
+        raw = pd.read_excel(INPUTS_DIR / VIOG_CO_CONFIG.input_filename)
+        raw = raw.sort_values(["Year", "Quarter"]).reset_index(drop=True)
+        suma_1994 = raw["Value(Billions)"].iloc[0:4].sum()
+
+        out = _annualize_df(df, window=VIOG_CO_CONFIG.annualize_window)
+        val_1994q4 = out.loc[out.index == pd.Period("1994Q4", freq="Q"), "Y"].iloc[0]
+        assert abs(suma_1994 - val_1994q4) < 1e-6
 
 
 # ── TestApplyFilters ──────────────────────────────────────────────────
@@ -392,6 +464,46 @@ class TestRunVIOGPipeline:
         assert df["quarter"].isin([1, 2, 3, 4]).all()
 
 
+# ── TestRunVIOGPipelineColombia ───────────────────────────────────────
+
+class TestRunVIOGPipelineColombia:
+    """Pipeline completo con archivo real PIB_CO.xlsx, annualize_series=True.
+
+    Requiere statsmodels/scipy (no disponibles en el puente de dispositivo
+    ni en el contenedor de la nube sin red) — correr con el .venv del Mac.
+    """
+
+    @pytest.fixture(scope="class")
+    def pipeline_output(self, tmp_path_factory):
+        tmp = tmp_path_factory.mktemp("viog_co_out")
+        input_path = INPUTS_DIR / VIOG_CO_CONFIG.input_filename
+        output_path = tmp / VIOG_CO_CONFIG.processed_filename
+        df = run_viog_pipeline(
+            input_path, output_path,
+            series_col=VIOG_CO_CONFIG.series_col,
+            ref_col=VIOG_CO_CONFIG.ref_col,
+            cfg=VIOG_CO_CONFIG,
+        )
+        return df, output_path
+
+    def test_row_count_drops_by_window_minus_1(self, pipeline_output):
+        df, _ = pipeline_output
+        input_df = pd.read_excel(INPUTS_DIR / VIOG_CO_CONFIG.input_filename)
+        assert len(df) == len(input_df) - (VIOG_CO_CONFIG.annualize_window - 1)
+
+    def test_starts_1994q4(self, pipeline_output):
+        df, _ = pipeline_output
+        assert (int(df["year"].iloc[0]), int(df["quarter"].iloc[0])) == (1994, 4)
+
+    def test_no_ref_gap_column(self, pipeline_output):
+        df, _ = pipeline_output
+        assert "gap_ref" not in df.columns
+
+    def test_gap_viog_has_finite_values(self, pipeline_output):
+        df, _ = pipeline_output
+        assert df["gap_viog"].notna().any()
+
+
 # ── TestVIOGColombiaRunner ────────────────────────────────────────────
 
 class TestVIOGColombiaRunner:
@@ -426,3 +538,31 @@ class TestVIOGColombiaRunner:
         assert VIOG_CO_CONFIG.bk_low == VIOG_CONFIG.bk_low
         assert VIOG_CO_CONFIG.hp_lambda == VIOG_CONFIG.hp_lambda
         assert VIOG_CO_CONFIG.kalman_cycle_period_bounds == VIOG_CONFIG.kalman_cycle_period_bounds
+
+
+# ── TestRunColombiaUsesOwnConfig ──────────────────────────────────────
+
+class TestRunColombiaUsesOwnConfig:
+    """Regresión del hallazgo de auditoría 2026-08-21 (auditoria_src_2026-08-21.md):
+    ``_run_for_config`` no pasaba ``cfg=config`` a ``run_viog_pipeline``, así que
+    el VIOG-CO corría siempre con ``VIOG_CONFIG`` (USA). Era inocuo mientras las
+    dos configs no divergieran, pero ``annualize_series`` sí divergen — sin el
+    fix, el PIB de Colombia seguiría entrando en niveles trimestrales crudos."""
+
+    def test_run_for_config_passes_cfg_to_pipeline(self, monkeypatch, tmp_path):
+        from src.pipelines import run_viog as run_viog_module
+
+        captured: dict = {}
+
+        def fake_run_viog_pipeline(input_path, output_path, **kwargs):
+            captured.update(kwargs)
+            pd.DataFrame({"gap_viog": [0.0]}).to_csv(output_path, index=False)
+            return pd.DataFrame({"gap_viog": [0.0]})
+
+        monkeypatch.setattr(run_viog_module, "run_viog_pipeline", fake_run_viog_pipeline)
+        monkeypatch.setattr(run_viog_module, "PROCESSED_DIR", tmp_path)
+        monkeypatch.setattr(run_viog_module, "OUTPUTS_DIR", tmp_path)
+
+        run_viog_module._run_for_config(VIOG_CO_CONFIG, plot_subdir="viog_colombia_test")
+
+        assert captured.get("cfg") is VIOG_CO_CONFIG

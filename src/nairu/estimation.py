@@ -103,6 +103,39 @@ def _copy_outputs(src_dir: Path, dst_dir: Path) -> None:
     logger.info("[NAIRU] Outputs copiados a %s", dst_dir)
 
 
+def _needs_estimation(data_path: Path, existing_csv: Path, package_dir: Path) -> bool:
+    """Decide si toca (re)estimar, o si el CSV existente ya está al día.
+
+    Fix 2026-09-01 (auditoria_src_2026-08-21.md): antes solo se comparaba
+    el mtime de ``Data_NAIRU.xlsx`` contra el CSV de salida -- un cambio en
+    el CÓDIGO del modelo (``model_core.py``, ``estimation.py``) no disparaba
+    re-estimación aunque cambiara el resultado. Mordía justo al arreglar el
+    off-by-one del suavizador de Kalman: sin este fix, corregir
+    ``model_core.py`` no habría bastado para que se regenerara
+    ``nairu_colombia.csv``. Ahora también se compara el mtime más reciente
+    de los ``.py`` de ``package_dir`` (el paquete ``src/nairu/`` completo:
+    este archivo + ``model_core.py``, y cualquiera que se agregue a futuro).
+
+    Parameters
+    ----------
+    data_path:
+        Excel de entrada (``Data_NAIRU.xlsx``).
+    existing_csv:
+        CSV de salida ya publicado (``nairu_colombia.csv``), si existe.
+    package_dir:
+        Directorio a inspeccionar en busca de ``.py`` más nuevos que el CSV
+        (en producción, ``Path(__file__).resolve().parent`` = ``src/nairu/``;
+        en tests, un ``tmp_path`` con archivos sintéticos).
+    """
+    if not existing_csv.exists():
+        return True
+    csv_mtime = existing_csv.stat().st_mtime
+    if data_path.stat().st_mtime > csv_mtime:
+        return True
+    source_mtime = max(p.stat().st_mtime for p in package_dir.glob("*.py"))
+    return source_mtime > csv_mtime
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # API pública
 # ═══════════════════════════════════════════════════════════════════════
@@ -117,8 +150,11 @@ def build_outputs(
     ----------
     * Si ``Data_NAIRU.xlsx`` es más nuevo que ``nairu_colombia.csv``
       (o este no existe) → re-estima con los datos actualizados.
-    * Si ``nairu_colombia.csv`` ya existe y es más reciente → omite la
-      re-estimación.
+    * Si algún ``.py`` de ``src/nairu/`` (el modelo o este orquestador) es
+      más nuevo que ``nairu_colombia.csv`` → también re-estima (fix
+      2026-09-01: antes un cambio de código nunca disparaba re-estimación).
+    * Si ``nairu_colombia.csv`` ya existe y es más reciente que ambos →
+      omite la re-estimación.
 
     Parameters
     ----------
@@ -145,8 +181,10 @@ def build_outputs(
     existing_csv = output_dir / _MAIN_CSV
 
     # ── Decidir si re-estimar ─────────────────────────────────────────
-    needs_estimation = not existing_csv.exists() or (
-        data_path.stat().st_mtime > existing_csv.stat().st_mtime
+    needs_estimation = _needs_estimation(
+        data_path=data_path,
+        existing_csv=existing_csv,
+        package_dir=Path(__file__).resolve().parent,
     )
 
     if not needs_estimation:

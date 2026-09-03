@@ -59,8 +59,14 @@ def _resample_last(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
 
 
 def _pct_change(s: pd.Series) -> pd.Series:
-    """Variación porcentual trimestre a trimestre (fracción)."""
-    return s.pct_change()
+    """Variación porcentual trimestre a trimestre (fracción).
+
+    Fix 2026-09-01: fill_method=None explícito (ver src/merge.py para el
+    detalle del bug) -- si alguna columna tiene un hueco interior, ahora
+    se propaga NaN en vez de fabricar una variación contra un valor
+    rellenado hacia adelante.
+    """
+    return s.pct_change(fill_method=None)
 
 
 # ═══════════════════════════════════════════════════════════════════════

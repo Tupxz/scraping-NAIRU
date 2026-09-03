@@ -5,6 +5,9 @@ Por defecto opera sobre PIB_USA.xlsx con columnas PIB / Potential_PIB.
 
 Pasos:
   1. load_series      — Carga Excel, construye PeriodIndex trimestral.
+  1b. annualize_trailing_sum (opcional, cfg.annualize_series) — suma móvil
+      de cfg.annualize_window trimestres sobre Y antes de filtrar; ver
+      VIOGConfig.annualize_series / _annualize_df.
   2. apply_filters    — BK, CF, Butterworth, BHP, Kalman/UCM.
   3. compute_gaps     — Logaritmos y brechas (ln serie − ln tendencia).
   4. compute_viog_weights — Ponderadores VIOG y 1/VIOG por error acumulado.
@@ -99,6 +102,61 @@ def load_series(
 # Alias para compatibilidad con código anterior
 def load_pib_usa(path: Path) -> pd.DataFrame:
     return load_series(path, series_col="PIB", ref_col="Potential_PIB")
+
+
+# ── 1b. Anualización (opcional, previa a los filtros) ──────────────────
+
+def annualize_trailing_sum(series: pd.Series, window: int = 4) -> pd.Series:
+    """Anualiza una serie trimestral de flujo: suma móvil de ``window`` trimestres.
+
+        Y_anual[t] = Y[t] + Y[t-1] + ... + Y[t-(window-1)]
+
+    Convención habitual en cuentas nacionales colombianas (DANE/Banrep) para
+    leer un flujo trimestral en unidades "año móvil" sin pasar por un ajuste
+    estacional formal (X-13-ARIMA / TRAMO-SEATS): al sumar siempre
+    ``window`` trimestres consecutivos, la estacionalidad se cancela por
+    construcción. Es DISTINTO de una tasa anualizada tipo SAAR (EE.UU.:
+    ×4 el trimestre) y de un remuestreo a frecuencia anual (que perdería la
+    resolución trimestral) — aquí se conserva un punto por trimestre, cada
+    uno representando el acumulado de los últimos ``window``.
+
+    Parameters
+    ----------
+    series: Serie trimestral de flujo (niveles, no tasas), ordenada
+            cronológicamente ascendente.
+    window: Número de trimestres a sumar (default 4 = "trimestre actual +
+            3 anteriores").
+
+    Returns
+    -------
+    Serie del mismo largo e índice que ``series``. Los primeros
+    ``window - 1`` valores son NaN (no hay historia suficiente para sumar).
+    """
+    return series.rolling(window=window, min_periods=window).sum()
+
+
+def _annualize_df(df: pd.DataFrame, window: int) -> pd.DataFrame:
+    """Anualiza ``df["Y"]`` (suma móvil) y descarta las filas de warm-up.
+
+    Solo se anualiza ``Y`` (la serie observada) — ``Y_ref``, si existe, se
+    deja tal cual: es una tendencia de potencial ya suavizada (función de
+    producción / CBO), no un flujo que tenga sentido acumular trimestre a
+    trimestre.
+
+    A diferencia de los otros filtros del módulo (que enmascaran su warm-up
+    con NaN y conservan el largo original — ver ``bk_K``, ``cf_min_obs``,
+    ``kalman_burnin_periods``), aquí las filas de warm-up se ELIMINAN del
+    DataFrame en vez de dejarse en NaN: ``bkfilter``, ``cffilter`` y
+    ``scipy.signal.filtfilt`` operan sobre el arreglo completo y no tienen
+    forma de "saltarse" un NaN intercalado (a diferencia del Kalman, que sí
+    lo tolera) — con un solo NaN en cualquier posición, ``filtfilt`` devuelve
+    NaN en TODA la salida. Descartar las ``window - 1`` filas sin historia
+    suficiente aplica el mismo criterio de warm-up del resto del módulo, sin
+    romper los filtros que exigen un arreglo denso.
+    """
+    df = df.copy()
+    df["Y"] = annualize_trailing_sum(df["Y"], window=window)
+    return df.iloc[window - 1:].copy()
 
 
 # ── 2. Filtros ────────────────────────────────────────────────────────
@@ -418,7 +476,8 @@ def plot_filters(
     has_ref = "Y_ref" in df.columns
 
     # Crecimiento YoY del PIB (equivalente a Variation del notebook)
-    variation = df["Y"].pct_change(4)
+    # Fix 2026-09-01: fill_method=None explícito (ver src/merge.py).
+    variation = df["Y"].pct_change(4, fill_method=None)
 
     def _save_show(fig: plt.Figure, name: str) -> None:
         plt.tight_layout()
@@ -705,6 +764,13 @@ def run_viog_pipeline(
         cfg = VIOG_CONFIG
     logger.info("[VIOG] Cargando %s (serie=%s, ref=%s)", input_path, series_col, ref_col)
     df = load_series(input_path, series_col=series_col, ref_col=ref_col)
+    if cfg.annualize_series:
+        n_before = len(df)
+        df = _annualize_df(df, window=cfg.annualize_window)
+        logger.info(
+            "[VIOG] Y anualizada (suma móvil %d trimestres): %d -> %d obs (%s - %s)",
+            cfg.annualize_window, n_before, len(df), df.index[0], df.index[-1],
+        )
     df = apply_filters(df, cfg=cfg)
     df = compute_gaps(df)
     df = compute_viog_weights(df)

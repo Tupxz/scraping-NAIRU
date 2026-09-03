@@ -246,8 +246,16 @@ def merge_all_sources(
     # Solo se calculan si las columnas base están presentes en el merge.
     if "ipc_index" in merged.columns:
         # IPC: variación interanual y mensual reconstruida del propio índice.
-        merged["ipc_yoy"] = merged["ipc_index"].pct_change(12) * 100
-        merged["ipc_mom"] = merged["ipc_index"].pct_change(1) * 100
+        # Fix 2026-09-01 (auditoria_src_2026-08-21.md, Fase 1 del plan de
+        # limpieza): fill_method="pad" (default legacy de pandas <3.0, con
+        # FutureWarning) rellenaba huecos de ipc_index ANTES de calcular el
+        # % de variación. El merge outer con Inf_Goal (que se publica con
+        # anticipación) crea filas futuras con ipc_index=NaN -- el padding
+        # inventaba ipc_yoy/ipc_mom ahí en vez de dejarlos NaN (confirmado:
+        # 6 meses de 2026-07 a 2026-12 con ipc_yoy fabricado). fill_method=
+        # None (ya es el default en pandas>=3.0) deja el NaN propagarse.
+        merged["ipc_yoy"] = merged["ipc_index"].pct_change(12, fill_method=None) * 100
+        merged["ipc_mom"] = merged["ipc_index"].pct_change(1, fill_method=None) * 100
     if "Inf_Rate" in merged.columns and "Inf_Goal" in merged.columns:
         # Brecha de inflación: desviación de la observada vs la meta BANREP.
         merged["inflation_gap"] = merged["Inf_Rate"] - merged["Inf_Goal"]

@@ -126,12 +126,19 @@ def _run_for_config(
             return
         raise FileNotFoundError(msg)
 
+    # cfg=config: antes NO se pasaba y run_viog_pipeline caía siempre a
+    # VIOG_CONFIG (USA) por defecto (hallazgo de la auditoria 2026-08-21,
+    # confirmado en auditoria_src_2026-08-21.md). Era inocuo mientras
+    # VIOG_CO_CONFIG no divergiera econometricamente de VIOG_CONFIG, pero
+    # deja de serlo con VIOG_CO_CONFIG.annualize_series=True: sin este fix
+    # el PIB de Colombia seguiria entrando en niveles trimestrales crudos.
     df = run_viog_pipeline(
         input_path, output_path,
         series_col=config.series_col,
         ref_col=config.ref_col,
         source_label=config.source_label,
         plot=True, plot_dir=plot_dir,
+        cfg=config,
     )
     print(f"[VIOG] {len(df)} observaciones guardadas en {output_path}")
     print(f"[VIOG] Gráficas guardadas en {plot_dir}")

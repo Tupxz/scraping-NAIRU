@@ -90,14 +90,31 @@ jobs:
       - name: Construir Data_NAIRU.xlsx
         run: python -m src.main --nairu-dataset
 
-      - name: Estimar NAIRU / NAICU
-        env:
-          FORCE_REESTIMATE: ${{ github.event.inputs.force_reestimate || 'false' }}
+      # PAUSADO 2026-09-01: model_core.py:1386-1392 tiene un off-by-one en el
+      # suavizador de Kalman (ver auditoria_src_2026-08-21.md) que corrompe la
+      # NAIRU publicada (~3pp en 2005-01, decae ~2 anios; banda 90% tambien
+      # afectada). Como esta corrida es mensual y estimation.py re-estima cada
+      # vez que Data_NAIRU.xlsx cambia (o sea casi siempre), dejar este paso
+      # activo republica el bug solo, todos los meses, sin que nadie lo pida.
+      # Pausado hasta que el fix de model_core.py tenga tests pasando (hoy
+      # src/nairu/ no tiene NINGUN test) — ver el tracker de limpieza del
+      # repo (plan por fases, Fase 0). `force_reestimate` tampoco salta esta
+      # pausa mientras el bloque de abajo siga comentado.
+      #
+      # Para reactivar cuando el fix este validado: descomentar el bloque de
+      # abajo y borrar el paso "PAUSADO" que lo reemplaza.
+      #
+      # - name: Estimar NAIRU / NAICU
+      #   env:
+      #     FORCE_REESTIMATE: ${{ github.event.inputs.force_reestimate || 'false' }}
+      #   run: |
+      #     if [ "$FORCE_REESTIMATE" = "true" ]; then
+      #       rm -f outputs/nairu/nairu_colombia.csv   # fuerza re-estimación
+      #     fi
+      #     python -m src.main --nairu-estim
+      - name: Estimar NAIRU / NAICU (PAUSADO — ver comentario arriba)
         run: |
-          if [ "$FORCE_REESTIMATE" = "true" ]; then
-            rm -f outputs/nairu/nairu_colombia.csv   # fuerza re-estimación
-          fi
-          python -m src.main --nairu-estim
+          echo "::warning title=Reestimacion NAIRU pausada::model_core.py tiene un bug conocido (off-by-one en el suavizador de Kalman, ver auditoria_src_2026-08-21.md) - la reestimacion automatica esta PAUSADA desde 2026-09-01. Se conserva outputs/nairu/nairu_colombia.csv tal como esta comiteado; el resto del pipeline sigue con ese archivo."
 
       - name: Merge dataset consolidado (resiliente)
         run: |
