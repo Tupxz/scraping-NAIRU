@@ -6,24 +6,28 @@ Antes de 2026-09-01 este módulo no tenía ningún test. Estos cubren el
 estado estacionario) se ancla en 2005-Q1 y su peso decae solo con la
 depreciación acumulada -- (1−δ_q)^84 ≈ 0,50 hacia 2026 -- sin ninguna
 tabla que cuantifique ese riesgo. Se agregó ``k0_multiplier`` a
-``_build_capital_quarterly``/``load_and_align_sources`` y una nueva
-función ``compute_k0_sensitivity`` que corre el pipeline completo con
-K_0 perturbado ±10 %/±20 % y mide el efecto en PIB_pot/Brecha_CD.
+``_build_capital_quarterly`` y una función ``compute_k0_sensitivity`` que
+corría el pipeline completo con K_0 perturbado ±10 %/±20 % y medía el
+efecto en PIB_pot/Brecha_CD.
+
+Alineación metodológica con v3 (2026-09-10, ver CHANGELOG.md y
+docs/integracion_v3.md): el capital físico del pipeline principal pasó de
+PIM (con ancla K_0 asumida) al stock de capital productivo DANE (dato
+observado, sin ancla). ``compute_k0_sensitivity`` quedó RETIRADA (levanta
+``NotImplementedError``) porque su premisa -- cuantificar la sensibilidad
+a un K_0 que ya no existe en el pipeline principal -- dejó de aplicar, y
+porque dependía de firmas de ``src.production.factors``/``tfp``/
+``pib_potencial`` que cambiaron con la metodología v3.
+``_build_capital_quarterly`` en cambio es una utilidad PIM autocontenida
+(no llama a ``compute_all_factors``/etc.) y se conserva sin cambios, con
+sus tests intactos, como referencia de la metodología legada.
 
 Clases:
   TestBuildCapitalQuarterly  — k0_multiplier escala K linealmente y decae
                                geométricamente con (1-delta_q) en el tiempo
-  TestComputeK0Sensitivity   — validación de contrato (no requiere statsmodels)
-                               + integración completa (requiere statsmodels,
-                               solo corre si está instalado)
-
-Nota de entorno: ``compute_k0_sensitivity`` importa (indirectamente, vía
-``src.production.tfp``) ``statsmodels`` para el filtro BHP -- no
-disponible en todos los entornos de desarrollo (bloqueado por PyPI 403 en
-el contenedor de Cowork en la nube). Las pruebas que lo requieren usan
-``pytest.importorskip("statsmodels")``; ``_build_capital_quarterly`` en
-sí NO lo necesita (solo pandas/numpy), así que esas pruebas corren en
-cualquier entorno.
+                               (sigue vigente, metodología PIM autocontenida)
+  TestComputeK0Sensitivity   — validación de contrato + confirmación de que
+                               la función está retirada (NotImplementedError)
 """
 
 from __future__ import annotations
@@ -39,18 +43,6 @@ from src.pipelines.run_pib_potencial import (
     _build_capital_quarterly,
     compute_k0_sensitivity,
 )
-
-try:
-    import statsmodels  # noqa: F401
-    HAS_STATSMODELS = True
-except ImportError:
-    HAS_STATSMODELS = False
-
-_NEEDS_STATSMODELS = pytest.mark.skipif(
-    not HAS_STATSMODELS,
-    reason="requiere statsmodels (compute_tfp -> filtro BHP)",
-)
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -88,16 +80,14 @@ def _write_capital_sources(
     })
     pwt_df.to_csv(processed_dir / "pwt_colombia.csv", index=False)
 
-
 def _expected_k0_base(investment: float, depreciation_rate: float) -> tuple[float, float]:
     """Reproduce la fórmula de K_0 (Harberger) para una inversión CONSTANTE:
     g_q=0 (pct_change de una serie constante es 0 en todos los periodos
-    después del primero), i0=investment, delta_q=1-(1-delta)^0.25.
+    después del primero), i0=investment, delta_q=1-(1-depreciation_rate)^0.25.
     Devuelve (k0_base, delta_q)."""
     delta_q = 1.0 - (1.0 - depreciation_rate) ** 0.25
     k0_base = investment / (0.0 + delta_q)
     return k0_base, delta_q
-
 
 # ── TestBuildCapitalQuarterly ─────────────────────────────────────────────
 
@@ -153,7 +143,6 @@ class TestBuildCapitalQuarterly:
         r2 = _build_capital_quarterly(tmp_path, k0_multiplier=1.0)
         pd.testing.assert_frame_equal(r1, r2)
 
-
 # ── TestComputeK0Sensitivity ───────────────────────────────────────────────
 
 class TestComputeK0Sensitivity:
@@ -168,35 +157,11 @@ class TestComputeK0Sensitivity:
     def test_default_multipliers_include_1_0(self):
         assert 1.0 in K0_SENSITIVITY_MULTIPLIERS
 
-    @_NEEDS_STATSMODELS
-    def test_delta_columns_are_zero_at_baseline_multiplier(self):
-        # Integración completa con los datos reales del repo (requiere
-        # statsmodels -- solo corre si está instalado, p.ej. en el Mac).
-        # El trimestre más reciente puede venir con PIB/insumos incompletos
-        # (NaN, no fabricado -- ver Fase 1 de este mismo plan de limpieza)
-        # y por lo tanto también NaN en las columnas delta_*; se excluye
-        # con dropna, no es lo que este test verifica.
-        sens = compute_k0_sensitivity()
-        base = sens[sens["k0_multiplier"] == 1.0].dropna(subset=["delta_K_pot_pct"])
-        assert len(base) > 0
-        assert (base["delta_K_pot_pct"] == 0.0).all()
-        assert (base["delta_PIB_pot_pct"] == 0.0).all()
-        assert (base["delta_Brecha_CD_pp"] == 0.0).all()
-
-    @_NEEDS_STATSMODELS
-    def test_larger_k0_error_has_smaller_effect_far_from_2005(self):
-        # Verificación de la propiedad central del hallazgo: el efecto de
-        # una perturbación de K_0 sobre Brecha_CD debe DECAER con el tiempo
-        # (la depreciación acumulada diluye el error de K_0 -- ver también
-        # TestBuildCapitalQuarterly.test_perturbation_decays_geometrically).
-        sens = compute_k0_sensitivity()
-        extremo = (
-            sens[sens["k0_multiplier"] == sens["k0_multiplier"].max()]
-            .dropna(subset=["delta_Brecha_CD_pp"])
-            .sort_values("date")
-        )
-        efecto_abs = extremo["delta_Brecha_CD_pp"].abs().to_numpy()
-        # No monótono estricto (el BHP puede introducir ruido de alta
-        # frecuencia), pero el efecto cerca del final debe ser claramente
-        # menor que al principio de la serie.
-        assert efecto_abs[-5:].mean() < efecto_abs[:5].mean()
+    def test_retired_raises_not_implemented(self):
+        # Alineación v3 (2026-09-10): el capital físico del pipeline
+        # principal ya no tiene ancla K_0 (viene del stock DANE observado),
+        # así que esta función quedó retirada -- ver docstring del módulo
+        # y CHANGELOG.md. La validación de 1.0 en multipliers sigue
+        # ocurriendo ANTES de levantar el error (no se salta el contrato).
+        with pytest.raises(NotImplementedError, match="retirada"):
+            compute_k0_sensitivity()

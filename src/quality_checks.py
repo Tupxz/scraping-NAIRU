@@ -975,7 +975,10 @@ def run_pib_potencial_checks(df: pd.DataFrame) -> bool:
     logger.info("─── Validaciones PIB Potencial ───")
 
     # 1. Columnas mínimas
-    requeridas = {"PIB", "PIB_pot", "Brecha_CD", "PIB_tend_BHP", "Brecha_BHP", "alpha", "A_pot"}
+    # Nota (alineación v3, 2026-09-10): "PIB" (nivel) pasó a "idx_pib" (índice
+    # base 100) -- el motor de PIB potencial ahora trabaja en índices, no en
+    # niveles de pesos. Ver src/production/factors.py y docs/integracion_v3.md.
+    requeridas = {"idx_pib", "PIB_pot", "Brecha_CD", "PIB_tend_BHP", "Brecha_BHP", "alpha", "A_pot"}
     faltantes = requeridas - set(df.columns)
     if faltantes:
         raise QualityCheckError(

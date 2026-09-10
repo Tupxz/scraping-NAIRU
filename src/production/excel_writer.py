@@ -23,7 +23,7 @@ import pandas as pd
 logger = logging.getLogger("nairu_pipeline.production.excel_writer")
 
 OUTPUT_FILENAME = "PIB_Potencial_Colombia.xlsx"
-PIPELINE_VERSION = "0.3.0"
+PIPELINE_VERSION = "0.4.0"  # metodología alineada con v3 Módulo 2 (ver CHANGELOG [0.5.6])
 
 # ── Paleta de colores (ARGB sin #) ────────────────────────────────────────────
 COLOR_HEADER_BG   = "FF1F3864"   # azul oscuro EAFIT
@@ -34,33 +34,46 @@ COLOR_SECTION_BG  = "FF2F5496"   # azul medio (sub-encabezados)
 COLOR_SECTION_FG  = "FFFFFFFF"
 
 # ── Definición de columnas de la hoja Trimestral ──────────────────────────────
+#
+# Alineación con v3 (2026-09-10, ver docs/integracion_v3.md): el motor de PIB
+# potencial pasó de NIVELES (miles de personas, millones COP) a ÍNDICES base
+# 100 en ``factors.BASE_QUARTER``, construidos sobre sumas móviles de 4
+# trimestres. Por eso columnas como "L Obs./L Potencial" o "K Usado/K
+# Potencial" (antes en miles de personas / millones COP) se reemplazan por
+# ``idx_L``/``idx_L_star`` e ``idx_K``/``idx_K_star`` (índice, base=100). El
+# PIB observado trimestral en niveles (``V_pib``) se conserva para contexto,
+# separado del índice anualizado (``idx_pib``) que entra a la función de
+# producción -- no son la misma magnitud y no deben leerse como comparables
+# celda a celda.
 
 TRIMESTRAL_COLS: list[dict[str, Any]] = [
     # (col_df, encabezado, ancho, formato_excel)
     dict(col="date",                         header="Fecha",              width=12, fmt="YYYY-MM-DD"),
     dict(col="year",                         header="Año",                width=7,  fmt="0"),
     dict(col="quarter",                      header="Trimestre",          width=11, fmt="0"),
-    dict(col="PIB",                          header="PIB Obs.\n(MM COP 2017)", width=16, fmt="#,##0.0"),
-    dict(col="PIB_tend_BHP",                 header="PIB Tend.\nBHP",    width=16, fmt="#,##0.0"),
+    dict(col="V_pib",                        header="PIB Obs.\nTrim. (niveles)", width=16, fmt="#,##0.0"),
+    dict(col="idx_pib",                      header="PIB Obs.\n(índice, base=100)", width=14, fmt="#,##0.0"),
+    dict(col="PIB_tend_BHP",                 header="PIB Tend.\nBHP (índice)", width=14, fmt="#,##0.0"),
     dict(col="Brecha_BHP",                   header="Brecha BHP\n(%)",   width=12, fmt="0.00"),
-    dict(col="K",                            header="Capital K\n(MM COP 2017)", width=16, fmt="#,##0.0"),
-    dict(col="UCI",                          header="UCI Obs.\n(%)",     width=11, fmt="0.00"),
-    dict(col="NAICU_q",                      header="NAICU*\n(%)",       width=11, fmt="0.00"),
-    dict(col="K_usado",                      header="K Usado\n(MM COP 2017)", width=16, fmt="#,##0.0"),
-    dict(col="K_pot",                        header="K Potencial\n(MM COP 2017)", width=16, fmt="#,##0.0"),
-    dict(col="PET",                          header="PET\n(miles)",      width=12, fmt="#,##0.0"),
-    dict(col="TGP",                          header="TGP\n(%)",          width=11, fmt="0.00"),
-    dict(col="TD",                           header="TD Obs.\n(%)",      width=11, fmt="0.00"),
-    dict(col="NAIRU_q",                      header="NAIRU*\n(%)",       width=11, fmt="0.00"),
-    dict(col="L_obs",                        header="L Obs.\n(miles)",   width=13, fmt="#,##0.0"),
-    dict(col="L_pot",                        header="L Potencial\n(miles)", width=13, fmt="#,##0.0"),
-    dict(col="alpha",                        header="Alpha\n(cap/PIB)",  width=11, fmt="0.000"),
-    dict(col="compensation_employees",       header="Remun.\nAsalar.",   width=14, fmt="#,##0.0"),
-    dict(col="gross_operating_surplus",      header="Exc. Bruto\nExplot.", width=14, fmt="#,##0.0"),
-    dict(col="mixed_income",                 header="Ingreso\nMixto",    width=13, fmt="#,##0.0"),
+    dict(col="K",                            header="Capital K\nDANE (niveles)", width=16, fmt="#,##0.0"),
+    dict(col="icu",                          header="ICU Obs.\n(%)",     width=11, fmt="0.00"),
+    dict(col="naicu",                        header="NAICU*\n(%)",       width=11, fmt="0.00"),
+    dict(col="idx_K",                        header="K Obs.\n(índice, base=100)", width=14, fmt="#,##0.0"),
+    dict(col="idx_K_star",                   header="K Potencial\n(índice, base=100)", width=14, fmt="#,##0.0"),
+    dict(col="pet",                          header="PET\n(miles)",      width=12, fmt="#,##0.0"),
+    dict(col="tgp",                          header="TGP\n(%)",          width=11, fmt="0.00"),
+    dict(col="td",                           header="TD Obs.\n(%)",      width=11, fmt="0.00"),
+    dict(col="tgp_star",                     header="TGP*\n(%)",         width=11, fmt="0.00"),
+    dict(col="nairu",                        header="NAIRU*\n(%)",       width=11, fmt="0.00"),
+    dict(col="jornada",                      header="Jornada legal\n(h/sem)", width=12, fmt="0"),
+    dict(col="idx_L",                        header="L Obs.\n(índice, base=100)", width=14, fmt="#,##0.0"),
+    dict(col="idx_L_star",                   header="L Potencial\n(índice, base=100)", width=14, fmt="#,##0.0"),
+    dict(col="alpha",                        header="Alpha\n(cap/PIB, CBO)", width=11, fmt="0.000"),
+    dict(col="BQ_ra",                        header="Remun.\nAsalar.",   width=14, fmt="#,##0.0"),
+    dict(col="BS_ebe",                       header="Exc. Bruto\nExplot.", width=14, fmt="#,##0.0"),
     dict(col="A_obs",                        header="PTF Obs.\n(A)",     width=12, fmt="0.0000"),
-    dict(col="A_pot",                        header="PTF Tend.\n(A_pot)", width=12, fmt="0.0000"),
-    dict(col="PIB_pot",                      header="PIB Potencial\n(MM COP 2017)", width=16, fmt="#,##0.0"),
+    dict(col="A_pot",                        header="PTF* Tend.\nCBO (A_pot)", width=12, fmt="0.0000"),
+    dict(col="PIB_pot",                      header="PIB Potencial\n(índice, base=100)", width=16, fmt="#,##0.0"),
     dict(col="Brecha_CD",                    header="Brecha CD\n(%)",    width=12, fmt="0.00"),
 ]
 
@@ -296,36 +309,55 @@ def write_pib_potencial_excel(
     # ── Hoja 3: Supuestos ─────────────────────────────────────────────────
     ws_sup = wb.create_sheet("Supuestos")
     supuestos = {
+        "Metodología":
+            "Alineada con legacy/pib_potencial_integrado_v3.py (Módulo 2, "
+            "config. v2) — ver docs/integracion_v3.md",
+        "Ancla de índices (BASE_QUARTER)":
+            "Todos los índices (idx_*) valen 100 en este trimestre; ver "
+            "src/production/factors.py para la justificación (huecos "
+            "reales de datos: PIB DANE desde 2005-Q1 sin historia previa, "
+            "GEIH sin dato jul-ago/2006)",
         "Lambda HP (datos trimestrales)":
-            "1600  (Hodrick & Prescott, 1997 — estándar trimestral)",
-        "Alpha de respaldo (sin datos ingreso)":
-            "0.40  (participación del capital; calibrado en Boceto manual)",
-        "Fuente NAIRU*":
-            "Kalman biestado — src/nairu/model_core.py",
-        "Fuente NAICU*":
-            "ANDI EOIC (capacity_utilization) — Kalman biestado",
-        "Factor Trabajo L_obs":
-            "PET × (TGP/100) × (1 − TD/100)  [miles de personas]",
-        "Factor Trabajo L_pot":
-            "PET × (TGP/100) × (1 − NAIRU*/100)  [miles de personas]",
-        "Factor Capital K_usado":
-            "K_PWT × (UCI/100)  [millones COP 2017]",
-        "Factor Capital K_pot":
-            "K_PWT × (NAICU*/100)  [millones COP 2017]",
-        "Alpha dinámico (post 2016-Q1)":
-            "(EBE + IM) / (RA + EBE + IM)  — enfoque ingreso DANE",
-        "PTF tendencial A_pot":
-            "HP(A_obs, λ=1600)  — tendencia de largo plazo",
-        "PIB Potencial (Cobb-Douglas)":
-            "A_pot × K_pot^alpha × L_pot^(1−alpha)",
+            "1600  (Hodrick & Prescott, 1997 — estándar trimestral; una sola "
+            "pasada, no Boosted-HP)",
+        "TGP* (participación potencial)":
+            "OLS en niveles: TGP = tendencia por tramos (picos del ciclo "
+            "BBQ) + brecha_u + MA8(brecha_u) + brecha_icu + MA8(brecha_icu)",
+        "Factor Trabajo (idx_L, idx_L_star)":
+            "Horas trabajadas (Ocupados/Ocupados* × jornada legal, netas de "
+            "vacaciones y festivos efectivos), suma móvil 4T, índice base 100",
+        "Jornada legal":
+            "Ley 2101 de 2021 — 48h hasta 2023-Q2, 47/46/44/42h desde "
+            "sep-2023/2024/2025/2026",
+        "Capital humano (idx_hc)":
+            "PWT (human_capital), extrapolación OLS anclada tras el último "
+            "año observado, interpolación intra-anual",
+        "Factor Capital (idx_K, idx_K_star)":
+            "Stock de capital productivo DANE (observado, anual → trimestral "
+            "por interpolación PCHIP), × (ICU/100) u (NAICU*/100), suma móvil "
+            "4T, índice base 100 — NO es Inventario Permanente (PIM)",
+        "Alpha (participación del capital)":
+            "EBE / (RA + EBE)  — estilo CBO, ventana 2016-Q1 → T (primer "
+            "trimestre con datos de ingreso DANE)",
+        "PTF observada (ptf / A_obs)":
+            "idx_pib / (idx_K^alpha × idx_LH^(1−alpha))",
+        "PTF tendencial estructural (ptf_star / A_pot)":
+            "OLS de ln(PTF) sobre tendencia por tramos (rampas-meseta "
+            "ancladas en picos BBQ) + brecha_u (contemp. y rezagada) + "
+            "dummies de pandemia — PTF* = ajustado sin términos cíclicos",
+        "PIB Potencial (principal, pib_pot / PIB_pot)":
+            "PTF* × idx_K_star^alpha × idx_LH_star^(1−alpha)  [índice base 100]",
         "Brecha CD (%)":
-            "(PIB − PIB_pot) / PIB_pot × 100",
-        "Brecha HP (%)":
-            "(PIB − HP_trend(PIB)) / HP_trend(PIB) × 100",
-        "Inicio de la serie":
-            "2005-Q1  (primer trimestre con todas las fuentes disponibles)",
-        "Depreciación trimestral":
-            "delta_q = 1 − (1 − delta_anual)^(1/4)  — Ley de acumulación PWT",
+            "(idx_pib / PIB_pot − 1) × 100",
+        "Brecha BHP (%, referencia)":
+            "(idx_pib / HP_trend(idx_pib) − 1) × 100  — sin pasar por la "
+            "función de producción",
+        "Fuente NAIRU*/NAICU*/ICU":
+            "Kalman biestado — src/nairu/model_core.py "
+            "(outputs/nairu/nairu_colombia.csv)",
+        "Inicio de la serie de insumos":
+            "2005-Q1  (primer trimestre con PIB DANE disponible); los "
+            "índices solo están definidos desde BASE_QUARTER (ver arriba)",
     }
     _write_supuestos(ws_sup, supuestos)
 

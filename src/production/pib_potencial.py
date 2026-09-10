@@ -1,27 +1,43 @@
 """Cálculo del PIB Potencial Colombia y las brechas del producto.
 
-Implementa dos metodologías complementarias:
+Metodología alineada con ``legacy/pib_potencial_integrado_v3.py`` (Módulo 2,
+configuración v2). Todo se calcula sobre ÍNDICES base 100 en ``BASE_QUARTER``
+(ver ``src/production/factors.py`` para la justificación de por qué el ancla
+NO es 2005Q1 como en v3 original, sino 2007Q3, con datos reales del repo).
 
-1. **Cobb-Douglas (CD):** usa la PTF tendencial y los factores potenciales.
+Tres brechas del producto, todas construidas con la misma función Cobb-Douglas
+pero variantes en QUÉ tendencia de PTF usan (o ninguna):
 
-       PIB_pot   = A_pot × K_pot^alpha × (H · L_pot)^(1 − alpha)
-       Brecha_CD = (PIB − PIB_pot) / PIB_pot × 100
+    Brecha_CD  (principal) — usa ``ptf_star`` (tendencia ESTRUCTURAL estilo
+        CBO, con tramos anclados en los picos del ciclo BBQ). Es el indicador
+        económico principal del pipeline.
 
-2. **Boosted Hodrick-Prescott (BHP):** tendencia estadística del PIB observado
-   con el filtro HP iterado (Phillips & Shi, 2021).
+           pib_pot   = ptf_star × idx_K_star^alpha × idx_LH_star^(1-alpha)
+           Brecha_CD = (idx_pib / pib_pot − 1) × 100
 
-       PIB_tend_BHP = bhp_trend(PIB, lambda=1600, iterations=3)
-       Brecha_BHP   = (PIB − PIB_tend_BHP) / PIB_tend_BHP × 100
+    brecha_pot_hp (diagnóstico) — igual fórmula pero con ``ptf_hp`` (PTF
+        tendencial puramente estadística) en vez de ``ptf_star``. Aísla
+        cuánto de la brecha CD viene de usar una tendencia de PTF
+        estructural en vez de una puramente estadística.
 
-La brecha CD es el indicador principal del pipeline (tiene interpretación
-económica). La brecha BHP se incluye como referencia y chequeo de consistencia.
+    Brecha_BHP (referencia) — brecha puramente estadística del PIB mismo
+        (sin pasar por la función de producción): tendencia HP de una sola
+        pasada sobre ``idx_pib``.
+
+           Brecha_BHP = (idx_pib / idx_trend − 1) × 100
+
+``PIB_pot``/``Brecha_CD``/``PIB_tend_BHP``/``Brecha_BHP``/``A_obs``/``A_pot``
+se conservan como nombres de columna (alias) por compatibilidad con
+``excel_writer.py`` y ``quality_checks.py`` — su FÓRMULA cambió (ver arriba),
+no solo su nombre.
 
 Columnas que produce ``compute_pib_potencial``
 ----------------------------------------------
-    PIB_pot        — PIB Potencial (miles MM COP 2017, Cobb-Douglas)
-    Brecha_CD      — Brecha del producto CD (%, positivo = sobre-calentamiento)
-    PIB_tend_BHP   — Tendencia BHP del PIB (miles MM COP 2017)
-    Brecha_BHP     — Brecha del producto BHP (%, positivo = sobre-calentamiento)
+    pib_pot, pib_pot_hp             — PIB potencial, índice base 100 (principal y ref. HP)
+    brecha_pot, brecha_pot_hp       — brechas correspondientes, FRACCIÓN (no %)
+    idx_trend, brecha_hp            — tendencia HP del PIB observado y su brecha (fracción)
+    PIB_pot, PIB_tend_BHP           — alias de pib_pot / idx_trend (índice, base 100)
+    Brecha_CD, Brecha_BHP           — alias de brecha_pot / brecha_hp, en % (no fracción)
 """
 
 from __future__ import annotations
@@ -30,44 +46,76 @@ import logging
 
 import pandas as pd
 
-from src.production.tfp import boosted_hp_filter, BHP_ITERATIONS, HP_LAMBDA_QUARTERLY
+from src.production.tfp import HP_LAMBDA_QUARTERLY, hp_filter
 
 logger = logging.getLogger("nairu_pipeline.production.pib_potencial")
 
 
-def compute_pib_potencial(
+def calcular_tendencia_hp_producto(
     df: pd.DataFrame,
+    T: pd.Timestamp,
+    base_quarter: pd.Timestamp,
     lamb: float = HP_LAMBDA_QUARTERLY,
-    iterations: int = BHP_ITERATIONS,
 ) -> pd.DataFrame:
-    """Calcula el PIB Potencial y las brechas del producto.
+    """Tendencia HP (una sola pasada) del PIB anualizado, indexada.
 
-    El DataFrame de entrada debe haber pasado por ``compute_all_factors``
-    y ``compute_tfp`` previamente (es decir, contener las columnas que
-    esos módulos generan).
+    Sirve de comparación puramente estadística (sin pasar por la función de
+    producción) — la brecha correspondiente es ``Brecha_BHP``.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Requiere columnas: ``PIB``, ``A_pot``, ``K_pot``, ``L_pot``, ``alpha``.
-        Opcional: ``H`` (capital humano; si falta se asume H = 1).
-    lamb : float
-        Lambda del filtro BHP para la brecha estadística. Default: 1600.
-    iterations : int
-        Iteraciones del filtro BHP. Default: 3.
+        Requiere ``date``, ``W_pib_ann``, ``idx_pib`` (de ``factors.calcular_producto``).
 
     Returns
     -------
     pd.DataFrame
-        Copia con columnas ``PIB_pot``, ``Brecha_CD``,
-        ``PIB_tend_BHP`` y ``Brecha_BHP`` añadidas.
+        Copia con columna ``idx_trend`` añadida.
+    """
+    df = df.copy()
+    base_val = float(df.loc[df["date"] == base_quarter, "W_pib_ann"].iloc[0])
+
+    muestra_mask = (df["date"] >= base_quarter) & (df["date"] <= T)
+    muestra = df.loc[muestra_mask].copy()
+    _, tendencia = hp_filter(muestra["W_pib_ann"], lamb=lamb)
+    df.loc[muestra_mask, "hp_trend"] = tendencia.values
+    df["idx_trend"] = 100 * df["hp_trend"] / base_val
+    return df
+
+
+def compute_pib_potencial(
+    df: pd.DataFrame,
+    T: pd.Timestamp,
+    base_quarter: pd.Timestamp,
+) -> pd.DataFrame:
+    """Calcula el PIB Potencial y las tres brechas del producto.
+
+    El DataFrame de entrada debe haber pasado por ``factors.compute_all_factors``
+    y ``tfp.compute_tfp`` previamente.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Requiere: ``idx_pib``, ``idx_K_star``, ``idx_LH_star``, ``alpha``,
+        ``ptf_star``, ``ptf_hp``, ``W_pib_ann``.
+    T : pd.Timestamp
+        Último trimestre completo (límite superior de la muestra).
+    base_quarter : pd.Timestamp
+        Ancla de índices (límite inferior de la muestra).
+
+    Returns
+    -------
+    pd.DataFrame
+        Copia con ``pib_pot``, ``pib_pot_hp``, ``brecha_pot``,
+        ``brecha_pot_hp``, ``idx_trend``, ``brecha_hp`` añadidas, más los
+        alias ``PIB_pot``, ``Brecha_CD``, ``PIB_tend_BHP``, ``Brecha_BHP``.
 
     Raises
     ------
     KeyError
         Si alguna columna requerida no está presente.
     """
-    _requeridas = {"PIB", "A_pot", "K_pot", "L_pot", "alpha"}
+    _requeridas = {"idx_pib", "idx_K_star", "idx_LH_star", "alpha", "ptf_star", "ptf_hp", "W_pib_ann"}
     _faltantes = _requeridas - set(df.columns)
     if _faltantes:
         raise KeyError(
@@ -76,34 +124,39 @@ def compute_pib_potencial(
         )
 
     df = df.copy()
+    muestra_mask = (df["date"] >= base_quarter) & (df["date"] <= T)
+    k_star = df.loc[muestra_mask, "idx_K_star"]
+    lh_star = df.loc[muestra_mask, "idx_LH_star"]
+    alpha = df.loc[muestra_mask, "alpha"]
 
-    # ── 1. PIB Potencial Cobb-Douglas ─────────────────────────────────────
-    k_pot = df["K_pot"].where(df["K_pot"] > 0)
-    l_pot = df["L_pot"].where(df["L_pot"] > 0)
-    alpha = df["alpha"]
+    # ── 1. PIB potencial principal (PTF* estructural CBO) ────────────────
+    df.loc[muestra_mask, "pib_pot"] = (
+        df.loc[muestra_mask, "ptf_star"] * (k_star ** alpha) * (lh_star ** (1.0 - alpha))
+    )
+    df.loc[muestra_mask, "brecha_pot"] = df.loc[muestra_mask, "idx_pib"] / df.loc[muestra_mask, "pib_pot"] - 1.0
 
-    # Trabajo potencial efectivo: H · L_pot (mismo capital humano que en A_obs,
-    # para que la PTF y el PIB potencial sean consistentes). H = 1 si no existe.
-    h = df["H"] if "H" in df.columns else 1.0
-    l_pot_ef = h * l_pot
+    # ── 2. PIB potencial alternativo (PTF HP, diagnóstico) ────────────────
+    df.loc[muestra_mask, "pib_pot_hp"] = (
+        df.loc[muestra_mask, "ptf_hp"] * (k_star ** alpha) * (lh_star ** (1.0 - alpha))
+    )
+    df.loc[muestra_mask, "brecha_pot_hp"] = df.loc[muestra_mask, "idx_pib"] / df.loc[muestra_mask, "pib_pot_hp"] - 1.0
 
-    df["PIB_pot"] = df["A_pot"] * (k_pot ** alpha) * (l_pot_ef ** (1.0 - alpha))
+    # ── 3. Tendencia HP del PIB observado (estadística pura) ─────────────
+    df = calcular_tendencia_hp_producto(df, T=T, base_quarter=base_quarter)
+    df.loc[muestra_mask, "brecha_hp"] = df.loc[muestra_mask, "idx_pib"] / df.loc[muestra_mask, "idx_trend"] - 1.0
 
-    # ── 2. Brecha CD ──────────────────────────────────────────────────────
-    df["Brecha_CD"] = (df["PIB"] - df["PIB_pot"]) / df["PIB_pot"] * 100.0
-
-    # ── 3. Tendencia BHP del PIB y brecha estadística ────────────────────
-    _, trend_pib = boosted_hp_filter(df["PIB"], lamb=lamb, iterations=iterations)
-    df["PIB_tend_BHP"] = trend_pib.values
-    df["Brecha_BHP"]   = (df["PIB"] - df["PIB_tend_BHP"]) / df["PIB_tend_BHP"] * 100.0
+    # ── Alias de compatibilidad (excel_writer.py, quality_checks.py) ─────
+    df["PIB_pot"] = df["pib_pot"]
+    df["Brecha_CD"] = 100.0 * df["brecha_pot"]
+    df["PIB_tend_BHP"] = df["idx_trend"]
+    df["Brecha_BHP"] = 100.0 * df["brecha_hp"]
 
     logger.info(
-        "PIB Potencial: rango [%.0f, %.0f] MM COP 2017 | "
-        "Brecha_CD: media=%.2f%%, std=%.2f%% | "
-        "Brecha_BHP: media=%.2f%%, std=%.2f%%",
-        df["PIB_pot"].min(), df["PIB_pot"].max(),
-        df["Brecha_CD"].mean(), df["Brecha_CD"].std(),
-        df["Brecha_BHP"].mean(), df["Brecha_BHP"].std(),
+        "PIB Potencial: idx_pib/pib_pot en %s→%s | "
+        "Brecha_CD: media=%.2f%%, std=%.2f%% | Brecha_BHP: media=%.2f%%, std=%.2f%%",
+        base_quarter.date(), T.date(),
+        df["Brecha_CD"].mean(skipna=True), df["Brecha_CD"].std(skipna=True),
+        df["Brecha_BHP"].mean(skipna=True), df["Brecha_BHP"].std(skipna=True),
     )
     return df
 
@@ -114,18 +167,23 @@ QUARTERLY_OUTPUT_COLS: list[str] = [
     "date",
     # Contexto temporal
     "year", "quarter",
-    # Insumos macroeconómicos
-    "PIB",
-    "K", "UCI", "NAICU_q", "H",
-    "TD", "TGP", "PET", "NAIRU_q",
-    "compensation_employees", "gross_operating_surplus", "mixed_income",
-    # Factores calculados
-    "alpha",
-    "L_obs", "L_pot",
-    "K_usado", "K_pot",
+    # Insumos macroeconómicos (niveles, tal como llegan de data/processed)
+    "V_pib", "K", "icu", "naicu", "nairu",
+    "pet", "tgp", "td",
+    "BQ_ra", "BS_ebe",
+    # Mercado laboral y participación
+    "brecha_u", "ma_brecha_u", "brecha_icu", "ma_brecha_icu",
+    "tgp_star", "jornada", "festivos_q",
+    # Factores calculados (índices, base 100 en BASE_QUARTER)
+    "alpha", "alpha_t",
+    "idx_L", "idx_L_star",
+    "idx_hc", "idx_LH", "idx_LH_star",
+    "idx_K", "idx_K_star",
+    "idx_pib",
     # PTF
-    "A_obs", "A_pot", "A_cycle",
+    "ptf", "ptf_hp", "ptf_star", "A_obs", "A_pot", "A_cycle",
     # PIB Potencial y brechas
-    "PIB_pot", "Brecha_CD",
-    "PIB_tend_BHP", "Brecha_BHP",
+    "pib_pot", "pib_pot_hp", "brecha_pot", "brecha_pot_hp",
+    "idx_trend", "brecha_hp",
+    "PIB_pot", "Brecha_CD", "PIB_tend_BHP", "Brecha_BHP",
 ]

@@ -1,20 +1,30 @@
 """Cálculo de la Productividad Total de Factores (PTF) observada y tendencial.
 
-La PTF (también llamada A o Residuo de Solow) se calcula como:
+La PTF (Residuo de Solow) se calcula, en el motor v3 (índices base 100), como:
 
-    A_obs = PIB / (K_usado^alpha × (H · L_obs)^(1 − alpha))
+    ptf = idx_pib / (idx_K^alpha × idx_LH^(1-alpha))
 
-donde H es el índice de capital humano (PWT hc), dentro del término de trabajo.
+Dos tendencias de la PTF están disponibles, ambas producidas por
+``compute_tfp``:
 
-La tendencia de la PTF se obtiene con el filtro Boosted Hodrick-Prescott (BHP):
+    ptf_hp   — filtro Hodrick-Prescott de una sola pasada (λ=1600) sobre
+               ``ptf``. Es la tendencia "atemporal"/estadística, usada solo
+               como referencia de comparación (columna ``pib_pot_hp`` /
+               ``brecha_pot_hp`` en ``pib_potencial.py``).
+    ptf_star — tendencia ESTRUCTURAL estilo CBO (Shackleton, 2018): regresión
+               OLS de ln(PTF) sobre una tendencia por tramos (rampas-meseta
+               ancladas en los picos del ciclo BBQ) más términos cíclicos
+               (brecha de desempleo, contemporánea y rezagada) y dummies de
+               pandemia. PTF* = valor ajustado con los términos cíclicos y
+               dummies en cero. Es la que efectivamente entra al PIB
+               potencial (Cambio 2 de SPEC_V2.md — reemplaza al filtro BHP
+               puramente estadístico que usaba este módulo antes de la
+               alineación con v3).
 
-    A_pot = bhp_trend(A_obs, lambda=1600, iterations=3)
-
-El BHP aplica el filtro HP iterativamente sobre el ciclo residual, extrayendo
-tendencias de mayor frecuencia en cada pasada (Phillips & Shi, 2021).
-``lambda = 1600`` es el valor estándar para datos trimestrales.
-El filtro se aplica sobre los valores no nulos de la serie; los extremos con
-NaN se reindexan al final.
+``hp_filter``/``boosted_hp_filter`` se conservan como utilidades generales
+(el motor de PIB potencial ya no llama a ``boosted_hp_filter`` — v3 usa HP de
+una sola pasada — pero se mantienen disponibles/exportadas para quien las
+necesite).
 """
 
 from __future__ import annotations
@@ -23,12 +33,23 @@ import logging
 
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
 from statsmodels.tsa.filters.hp_filter import hpfilter
+
+from src.production.business_cycle import construir_variables_ciclo
 
 logger = logging.getLogger("nairu_pipeline.production.tfp")
 
 HP_LAMBDA_QUARTERLY: float = 1600.0
 BHP_ITERATIONS: int = 3          # iteraciones por defecto del Boosted HP
+
+# Dummies de pandemia (Cambio 1 v2, ver SPEC_V2.md): una por trimestre; las
+# series de PTF son sumas móviles 4T, por lo que el choque de 2020Q2 se
+# "arrastra" hasta 2021Q1.
+PANDEMIC_DUMMIES: list[pd.Timestamp] = [
+    pd.Timestamp("2020-06-01"), pd.Timestamp("2020-09-01"),
+    pd.Timestamp("2020-12-01"), pd.Timestamp("2021-03-01"),
+]
 
 
 # ── HP Filter (base) ──────────────────────────────────────────────────────────
@@ -95,6 +116,10 @@ def boosted_hp_filter(
     residuo tras ``iterations`` aplicaciones; la tendencia es la serie
     original menos ese ciclo.
 
+    Nota: el motor de PIB potencial (``compute_tfp``) NO usa esta función —
+    v3 usa HP de una sola pasada (``hp_filter``) para sus columnas de
+    referencia ``ptf_hp``/``idx_trend``. Se conserva como utilidad general.
+
     Maneja NaN al inicio/fin de la serie excluyéndolos del filtro y
     reindexando la tendencia al índice original.
 
@@ -144,94 +169,175 @@ def boosted_hp_filter(
 
 # ── PTF observada ─────────────────────────────────────────────────────────────
 
-def compute_tfp_observed(df: pd.DataFrame) -> pd.DataFrame:
-    """Calcula la PTF observada (Residuo de Solow).
+def compute_tfp_observed(df: pd.DataFrame, T: pd.Timestamp, base_quarter: pd.Timestamp) -> pd.DataFrame:
+    """Calcula la PTF observada (Residuo de Solow) sobre índices base 100.
 
     Fórmula
     -------
-    A_obs = PIB / (K_usado^alpha × (H · L_obs)^(1 − alpha))
+    ptf = idx_pib / (idx_K^alpha × idx_LH^(1-alpha))
 
-    donde ``H`` es el índice de capital humano (PWT hc). Si la columna ``H`` no
-    está presente, se asume ``H = 1`` (trabajo en personas, sin ajuste).
+    Solo se calcula en la muestra ``[base_quarter, T]`` (fuera de esa
+    ventana los índices no están definidos de forma comparable).
 
     Parameters
     ----------
     df : pd.DataFrame
-        Requiere columnas: ``PIB``, ``K_usado``, ``L_obs``, ``alpha``.
-        Opcional: ``H`` (capital humano).
+        Requiere ``date``, ``idx_pib``, ``idx_K``, ``idx_LH``, ``alpha``.
 
     Returns
     -------
     pd.DataFrame
-        Copia con columna ``A_obs`` añadida. Será NaN donde algún insumo sea
-        NaN o donde ``K_usado`` o ``L_obs`` sean cero o negativos.
+        Copia con columna ``ptf`` añadida (alias: ``A_obs``).
     """
     df = df.copy()
+    muestra_mask = (df["date"] >= base_quarter) & (df["date"] <= T)
 
-    # Protección contra divisiones por cero o valores negativos
-    k = df["K_usado"].where(df["K_usado"] > 0)
-    l = df["L_obs"].where(df["L_obs"] > 0)
-    pib = df["PIB"].where(df["PIB"] > 0)
-    alpha = df["alpha"]
-
-    # Trabajo efectivo en unidades de eficiencia: L_ef = H · L (capital humano
-    # dentro del término de trabajo, como en la Función de Producción de los
-    # profesores). H = índice PWT hc; si la columna no existe, H = 1 (sin efecto).
-    h = df["H"] if "H" in df.columns else 1.0
-    l_ef = h * l
-
-    df["A_obs"] = pib / (k ** alpha * l_ef ** (1.0 - alpha))
-
-    n_nulo = df["A_obs"].isna().sum()
-    if n_nulo > 0:
-        logger.warning("A_obs tiene %d valores NaN (insumos faltantes o cero).", n_nulo)
-
-    logger.debug(
-        "PTF observada: media=%.4f, min=%.4f, max=%.4f",
-        df["A_obs"].mean(), df["A_obs"].min(), df["A_obs"].max(),
+    df["ptf"] = np.nan
+    df.loc[muestra_mask, "ptf"] = (
+        df.loc[muestra_mask, "idx_pib"]
+        / (df.loc[muestra_mask, "idx_K"] ** df.loc[muestra_mask, "alpha"]
+           * df.loc[muestra_mask, "idx_LH"] ** (1 - df.loc[muestra_mask, "alpha"]))
     )
+    df["A_obs"] = df["ptf"]  # alias de compatibilidad
+
+    n_nulo = df.loc[muestra_mask, "ptf"].isna().sum()
+    if n_nulo > 0:
+        logger.warning("ptf tiene %d valores NaN dentro de la muestra %s→%s.",
+                        n_nulo, base_quarter.date(), T.date())
     return df
 
 
 # ── PTF tendencial ────────────────────────────────────────────────────────────
 
+class ResultadoRegPTF:
+    """Resultado de la regresión estructural de tendencia de PTF (diagnóstico)."""
+
+    __slots__ = ("params", "bse", "tvalues", "pvalues", "r_squared", "nobs",
+                 "knots", "dummies", "modelo")
+
+    def __init__(self, params, bse, tvalues, pvalues, r_squared, nobs, knots, dummies, modelo=None):
+        self.params, self.bse = params, bse
+        self.tvalues, self.pvalues = tvalues, pvalues
+        self.r_squared, self.nobs = r_squared, nobs
+        self.knots, self.dummies, self.modelo = knots, dummies, modelo
+
+    def tabla(self) -> pd.DataFrame:
+        return pd.DataFrame({
+            "Coeficiente": self.params, "Error Est.": self.bse,
+            "t": self.tvalues, "p-valor": self.pvalues,
+        })
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"ResultadoRegPTF(r_squared={self.r_squared:.4f}, nobs={self.nobs}, knots={len(self.knots)})"
+
+
+def estimar_ptf_tendencia_cbo(
+    df: pd.DataFrame,
+    T: pd.Timestamp,
+    base_quarter: pd.Timestamp,
+    picos_bbq: list[pd.Timestamp],
+    pandemic_dummies: list[pd.Timestamp] = PANDEMIC_DUMMIES,
+) -> tuple[pd.Series, ResultadoRegPTF]:
+    """Tendencia de PTF estilo CBO (Shackleton, 2018, ecuación 29 adaptada):
+
+        ln(PTF_t) = b0 + b1*tau_t + Σ_j gamma_j*S_j(tau_t)
+                    + phi0*gap_t + phi1*gap_{t-1} + Σ_m delta_m*D_m,t + eps_t
+
+    ``tau_t`` = índice entero de trimestre desde ``base_quarter``.
+    ``gap_t`` = brecha_u (TD − NAIRU, en puntos porcentuales).
+    ``S_j`` = rampas-meseta ancladas en los picos del ciclo BBQ (``picos_bbq``).
+    ``D_m`` = dummies puntuales de pandemia.
+
+    PTF*_t (tendencia potencial, sin cíclicos ni dummies), para todos los
+    trimestres de la muestra:
+
+        PTF*_t = exp(b0 + b1*tau_t + Σ_j gamma_j*S_j(tau_t))
+
+    Returns
+    -------
+    (ptf_star, ResultadoRegPTF)
+        ``ptf_star`` indexado por fecha.
+    """
+    muestra_mask = (df["date"] >= base_quarter) & (df["date"] <= T)
+    d = df.loc[muestra_mask, ["date", "ptf", "brecha_u"]].copy().sort_values("date").reset_index(drop=True)
+    d["tau"] = range(len(d))
+    d["ln_ptf"] = np.log(d["ptf"])
+    d["gap"] = d["brecha_u"]
+    d["gap_lag1"] = d["gap"].shift(1)
+
+    picos_muestra = [pd.Timestamp(k) for k in picos_bbq if base_quarter <= pd.Timestamp(k) <= T]
+    cyc = construir_variables_ciclo(d["date"], picos_muestra)
+    knot_cols = list(cyc.columns)
+    for c in knot_cols:
+        d[c] = cyc[c].values
+
+    for dt_dummy in pandemic_dummies:
+        dt_label = pd.Timestamp(dt_dummy)
+        d[f"dummy_{dt_label.date()}"] = (d["date"] == dt_label).astype(float)
+
+    estim = d.dropna(subset=["ln_ptf", "gap_lag1"]).copy()
+
+    dummy_cols = [c for c in d.columns if c.startswith("dummy_")]
+    regresor_cols = ["tau"] + knot_cols + ["gap", "gap_lag1"] + dummy_cols
+
+    X = sm.add_constant(estim[regresor_cols])
+    y = estim["ln_ptf"]
+    modelo = sm.OLS(y, X, missing="raise").fit()
+
+    resultado = ResultadoRegPTF(
+        params=modelo.params, bse=modelo.bse, tvalues=modelo.tvalues, pvalues=modelo.pvalues,
+        r_squared=modelo.rsquared, nobs=int(modelo.nobs),
+        knots=list(picos_bbq), dummies=list(pandemic_dummies), modelo=modelo,
+    )
+
+    ln_ptf_star = modelo.params["const"] + modelo.params["tau"] * d["tau"]
+    for c in knot_cols:
+        ln_ptf_star = ln_ptf_star + modelo.params[c] * d[c]
+    ptf_star = np.exp(ln_ptf_star)
+    ptf_star.index = d["date"]
+
+    logger.info("PTF* (CBO): R²=%.4f, nobs=%d, %d nudos BBQ", resultado.r_squared, resultado.nobs, len(knot_cols))
+    return ptf_star, resultado
+
+
 def compute_tfp_trend(
     df: pd.DataFrame,
-    lamb: float = HP_LAMBDA_QUARTERLY,
-    iterations: int = BHP_ITERATIONS,
+    T: pd.Timestamp,
+    base_quarter: pd.Timestamp,
+    picos_bbq: list[pd.Timestamp],
 ) -> pd.DataFrame:
-    """Calcula la PTF tendencial con el filtro Boosted HP (BHP).
-
-    Aplica el filtro BHP sobre ``A_obs`` para extraer la tendencia de largo
-    plazo de la productividad. Esta tendencia (``A_pot``) se usa como proxy
-    de la PTF potencial en el cálculo del PIB potencial.
+    """Calcula ambas tendencias de PTF: ``ptf_hp`` (HP, referencia) y
+    ``ptf_star`` (estructural CBO — la que entra al PIB potencial).
 
     Parameters
     ----------
     df : pd.DataFrame
-        Requiere columna ``A_obs`` (generada por ``compute_tfp_observed``).
-    lamb : float
-        Lambda del filtro BHP. Default: 1600 (trimestral).
-    iterations : int
-        Número de iteraciones del BHP. Default: 3.
+        Requiere columna ``ptf`` (generada por ``compute_tfp_observed``).
 
     Returns
     -------
     pd.DataFrame
-        Copia con columnas ``A_pot`` (tendencia) y ``A_cycle`` (ciclo) añadidas.
+        Copia con ``ptf_hp``, ``ptf_star`` añadidas (alias: ``A_pot`` =
+        ``ptf_star``, ``A_cycle`` = ``ptf`` − ``ptf_star``).
     """
+    if "ptf" not in df.columns:
+        raise KeyError("Se requiere la columna 'ptf'. Llame compute_tfp_observed primero.")
     df = df.copy()
+    muestra_mask = (df["date"] >= base_quarter) & (df["date"] <= T)
 
-    if "A_obs" not in df.columns:
-        raise KeyError("Se requiere la columna 'A_obs'. Llame compute_tfp_observed primero.")
+    muestra = df.loc[muestra_mask].copy()
+    _, tendencia_hp = hp_filter(muestra["ptf"], lamb=HP_LAMBDA_QUARTERLY)
+    df.loc[muestra_mask, "ptf_hp"] = tendencia_hp.values
 
-    _, trend = boosted_hp_filter(df["A_obs"], lamb=lamb, iterations=iterations)
-    df["A_pot"]   = trend.values
-    df["A_cycle"] = df["A_obs"] - df["A_pot"]
+    ptf_star, _reg_ptf = estimar_ptf_tendencia_cbo(df, T, base_quarter, picos_bbq)
+    df.loc[muestra_mask, "ptf_star"] = df.loc[muestra_mask, "date"].map(ptf_star)
+
+    df["A_pot"] = df["ptf_star"]              # alias de compatibilidad
+    df["A_cycle"] = df["ptf"] - df["ptf_star"]  # alias de compatibilidad
 
     logger.debug(
-        "PTF tendencial (BHP, λ=%.0f, iter=%d): media=%.4f, ciclo std=%.4f",
-        lamb, iterations, df["A_pot"].mean(), df["A_cycle"].std(),
+        "PTF tendencial: ptf_hp media=%.4f, ptf_star media=%.4f",
+        df["ptf_hp"].mean(skipna=True), df["ptf_star"].mean(skipna=True),
     )
     return df
 
@@ -240,28 +346,31 @@ def compute_tfp_trend(
 
 def compute_tfp(
     df: pd.DataFrame,
-    lamb: float = HP_LAMBDA_QUARTERLY,
-    iterations: int = BHP_ITERATIONS,
+    T: pd.Timestamp,
+    base_quarter: pd.Timestamp,
+    picos_bbq: list[pd.Timestamp],
 ) -> pd.DataFrame:
-    """Calcula A_obs y A_pot en un solo paso.
+    """Calcula ``ptf``, ``ptf_hp`` y ``ptf_star`` en un solo paso.
 
-    Equivale a llamar ``compute_tfp_observed`` seguido de ``compute_tfp_trend``
-    con el filtro Boosted HP.
+    Equivale a llamar ``compute_tfp_observed`` seguido de ``compute_tfp_trend``.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Requiere: ``PIB``, ``K_usado``, ``L_obs``, ``alpha``.
-    lamb : float
-        Lambda BHP. Default: 1600.
-    iterations : int
-        Iteraciones BHP. Default: 3.
+        Requiere: ``idx_pib``, ``idx_K``, ``idx_LH``, ``alpha``, ``brecha_u``.
+    T : pd.Timestamp
+        Último trimestre completo (límite superior de la muestra de estimación).
+    base_quarter : pd.Timestamp
+        Ancla de índices (límite inferior de la muestra de estimación).
+    picos_bbq : list[pd.Timestamp]
+        Picos del ciclo BBQ (nudos de la tendencia por tramos de PTF*).
 
     Returns
     -------
     pd.DataFrame
-        DataFrame con columnas ``A_obs``, ``A_pot``, ``A_cycle`` añadidas.
+        DataFrame con columnas ``ptf``, ``A_obs``, ``ptf_hp``, ``ptf_star``,
+        ``A_pot``, ``A_cycle`` añadidas.
     """
-    df = compute_tfp_observed(df)
-    df = compute_tfp_trend(df, lamb=lamb, iterations=iterations)
+    df = compute_tfp_observed(df, T=T, base_quarter=base_quarter)
+    df = compute_tfp_trend(df, T=T, base_quarter=base_quarter, picos_bbq=picos_bbq)
     return df
