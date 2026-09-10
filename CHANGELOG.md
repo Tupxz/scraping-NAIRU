@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.8] — 2026-09-10
+
+### Cambiado
+- Rediseño completo de `docs/index.html`: identidad visual estilo Universidad EAFIT (negro `#000000` + azul `#146AEF`, tipografía Inter, bloques a todo el ancho en vez de tarjetas con sombra) en lugar de la paleta genérica anterior, y reorganización de 3 a 4 pestañas — se separó "Mercado laboral y precios" de "Datos originales" porque ya había quedado muy cargada.
+
+### Agregado
+- Pestaña nueva "Mercado laboral y precios": además de NAIRU/NAICU/TGP* (movidas desde "Datos originales"), gráfica de brecha de inflación y la curva de Phillips estimada por el modelo (brecha de inflación vs. brecha laboral, degradado temporal punto a punto, línea de tendencia OLS).
+- Pestaña "PIB Potencial": gráfica de descomposición del crecimiento potencial interanual (capital/trabajo/PTF, usando `contrib_capital`/`contrib_trabajo`/`contrib_ptf` de `[0.5.7]`), gráfica de PTF observada vs. tendencial, y KPI de crecimiento del PIB potencial.
+- Pestaña "Datos originales": gráfica de los factores de producción (capital y trabajo, observado vs. potencial) y filas nuevas en la tabla de estadísticas descriptivas.
+
+### Nota
+- Revisado con el usuario en una vista previa (Artifact) antes de guardarse en el repo.
+
 ## [0.5.7] — 2026-09-10
 
 ### Corregido
