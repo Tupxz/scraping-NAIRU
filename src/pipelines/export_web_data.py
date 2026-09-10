@@ -9,6 +9,29 @@ Uso
     python -m src.main --export-web
     # o directamente:
     from src.pipelines.export_web_data import run; run()
+
+Nota (2026-09-10, alineación v3 — ver CHANGELOG.md [0.5.6] y
+docs/integracion_v3.md): el motor de PIB potencial pasó de niveles
+(PIB/K_usado/K_pot/L_obs/L_pot en pesos o personas) a ÍNDICES base=100
+(idx_pib/idx_K/idx_K_star/idx_L/idx_L_star). PIB_EXPORT_COLS se actualizó
+para leer los nombres de columna nuevos — las columnas viejas (PIB,
+K_usado, K_pot, L_obs, L_pot, UCI, NAICU_q, TD, NAIRU_q) ya no existen en
+outputs/pib_potencial/pib_potencial_colombia.csv, así que con el mapa
+anterior _read_and_rename las descartaba en silencio (no fallaba, porque
+solo selecciona las columnas presentes) y el CSV exportado quedaba con
+menos de la mitad de las columnas esperadas, sin avisar.
+
+También se corrigió la fecha trimestral: la columna "date" del CSV del
+pipeline usa la convención de v3 (mes de CIERRE del trimestre — p. ej.
+"2026-03-01" para 2026-Q1), mientras el resto del repo (NAIRU mensual,
+VIOG trimestral) usa el mes de INICIO (convención QS de pandas — p. ej.
+"2026-01-01" para 2026-Q1). Usar "date" tal cual habría desalineado el
+eje de tiempo del PIB potencial 2 meses respecto a las demás series en
+cualquier gráfica combinada. Aquí "fecha" se reconstruye siempre desde
+year/quarter (ambas columnas SÍ son confiables) en convención QS-inicio,
+igual que el resto del repo — no se toca la columna "date" original del
+pipeline (eso es un cambio de superficie más amplio, fuera de alcance de
+esta exportación).
 """
 
 from __future__ import annotations
@@ -51,26 +74,32 @@ NAIRU_EXPORT_COLS = {
     "icu_gap":           "brecha_uci",
 }
 
+# Nombres vigentes en outputs/pib_potencial/pib_potencial_colombia.csv desde
+# la realineación v3 (2026-09-10). "year"/"quarter" se leen aparte para
+# reconstruir "fecha" (ver docstring del módulo) y no se listan aquí.
 PIB_EXPORT_COLS = {
-    "date":          "fecha",
-    "year":          "anio",
-    "quarter":       "trimestre",
-    "PIB":           "pib_obs",
-    "PIB_pot":       "pib_pot",
-    "PIB_tend_BHP":  "pib_bhp",
-    "Brecha_CD":     "brecha_cd",
-    "Brecha_BHP":    "brecha_bhp",
-    "alpha":         "alpha",
-    "A_obs":         "ptf_obs",
-    "A_pot":         "ptf_pot",
-    "K_usado":       "k_usado",
-    "K_pot":         "k_pot",
-    "L_obs":         "l_obs",
-    "L_pot":         "l_pot",
-    "UCI":           "uci",
-    "NAICU_q":       "naicu_q",
-    "TD":            "td",
-    "NAIRU_q":       "nairu_q",
+    "V_pib":         "pib_cop",       # PIB observado, millones de pesos (serie "original", sin transformar)
+    "idx_pib":       "pib_idx",       # PIB observado, índice base=100 (2007-Q3)
+    "PIB_pot":       "pib_pot_idx",   # PIB potencial, índice base=100
+    "PIB_tend_BHP":  "pib_bhp_idx",   # PIB tendencial (Boosted-HP), índice base=100
+    "Brecha_CD":     "brecha_cd",     # % — Cobb-Douglas estructural (idx_pib/PIB_pot - 1)
+    "Brecha_BHP":    "brecha_bhp",    # % — estadística (HP), referencia secundaria
+    "alpha":         "alpha",         # participación del capital, estilo CBO (EBE/(RA+EBE))
+    "A_obs":         "ptf_obs",       # productividad total de los factores, observada
+    "A_pot":         "ptf_pot",       # PTF, tendencia estructural (BBQ + OLS)
+    "idx_K":         "k_idx",         # capital observado, índice (stock DANE)
+    "idx_K_star":    "k_pot_idx",     # capital potencial, índice
+    "idx_L":         "l_idx",         # trabajo observado, índice de horas
+    "idx_L_star":    "l_pot_idx",     # trabajo potencial, índice de horas (con TGP*)
+    "idx_LH":        "lh_idx",        # trabajo observado x capital humano (insumo real de la función Cobb-Douglas)
+    "idx_LH_star":   "lh_pot_idx",    # trabajo potencial x capital humano (insumo real de la función Cobb-Douglas)
+    "icu":           "uci",           # utilización de capacidad instalada (ANDI)
+    "naicu":         "naicu_q",       # NAICU trimestral (promedio del NAICU mensual)
+    "td":            "td",            # tasa de desempleo observada
+    "nairu":         "nairu_q",       # NAIRU trimestral
+    "tgp":           "tgp",           # tasa global de participación observada
+    "tgp_star":      "tgp_star",      # TGP potencial/tendencial
+    "pet":           "pet",           # población en edad de trabajar, miles
 }
 
 # VIOG: brecha del producto por filtros (las brechas vienen en fracción log → ×100 = %)
@@ -92,15 +121,19 @@ VIOG_START = "1994-01-01"  # ventana completa del empalme (antes 2005)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _read_and_rename(path: Path, col_map: dict) -> pd.DataFrame:
+def _read_and_rename(path: Path, col_map: dict, extra_cols: tuple[str, ...] = ()) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(
             f"Archivo no encontrado: {path}\n"
             "Ejecuta el pipeline correspondiente antes de --export-web."
         )
     df = pd.read_csv(path)
-    cols_present = {k: v for k, v in col_map.items() if k in df.columns}
-    df = df[list(cols_present.keys())].rename(columns=cols_present)
+    wanted = list(extra_cols) + list(col_map.keys())
+    cols_present = [c for c in wanted if c in df.columns]
+    missing = [c for c in wanted if c not in df.columns]
+    if missing:
+        logger.warning("[export-web] %s: columnas ausentes, se omiten: %s", path.name, missing)
+    df = df[cols_present].rename(columns=col_map)
     return df
 
 
@@ -139,13 +172,37 @@ def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
 
     # ── 2. PIB Potencial trimestral ───────────────────────────────────
     if PIB_CSV.exists():
-        pib = _read_and_rename(PIB_CSV, PIB_EXPORT_COLS)
-        # Índice 2005=100 para el gráfico de niveles
-        base = pib.loc[pib["anio"] == 2005, "pib_obs"].mean()
-        if base and base > 0:
-            for col in ["pib_obs", "pib_pot", "pib_bhp"]:
-                if col in pib.columns:
-                    pib[f"{col}_idx"] = (pib[col] / base * 100).round(2)
+        pib = _read_and_rename(PIB_CSV, PIB_EXPORT_COLS, extra_cols=("year", "quarter"))
+        # "fecha" reconstruida desde year/quarter en convención QS-inicio
+        # (ver docstring del módulo) — NO se usa la columna "date" original.
+        pib.insert(
+            0,
+            "fecha",
+            pd.to_datetime({
+                "year": pib["year"].astype(int),
+                "month": (pib["quarter"].astype(int) - 1) * 3 + 1,
+                "day": 1,
+            }).dt.strftime("%Y-%m-%d"),
+        )
+        pib = pib.rename(columns={"year": "anio", "quarter": "trimestre"})
+
+        # Contribuciones al crecimiento potencial interanual (4 trimestres), en pp.
+        # Identidad contable de crecimiento: si contrib_capital+contrib_trabajo+contrib_ptf
+        # no suma ~crecimiento_potencial, algo en la exportación está mal — por eso se deja
+        # crecimiento_potencial calculado de forma INDEPENDIENTE (directo de pib_pot_idx, no
+        # como suma de las 3 contribuciones) para poder comparar ambos.
+        import numpy as np
+        if {"k_pot_idx", "lh_pot_idx", "ptf_pot", "alpha", "pib_pot_idx"}.issubset(pib.columns):
+            ln_k  = np.log(pib["k_pot_idx"].astype(float))
+            ln_lh = np.log(pib["lh_pot_idx"].astype(float))
+            ln_a  = np.log(pib["ptf_pot"].astype(float))
+            ln_pot = np.log(pib["pib_pot_idx"].astype(float))
+            alpha = pib["alpha"].astype(float)
+            pib["contrib_capital"] = alpha * ln_k.diff(4) * 100
+            pib["contrib_trabajo"] = (1 - alpha) * ln_lh.diff(4) * 100
+            pib["contrib_ptf"]     = ln_a.diff(4) * 100
+            pib["crecimiento_potencial"] = ln_pot.diff(4) * 100
+
         pib = _round_floats(pib)
         out_pib = docs_data_dir / "pib_trimestral.csv"
         pib.to_csv(out_pib, index=False)
@@ -207,6 +264,8 @@ def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
     if pib is not None and len(pib):
         meta["latest_brecha_cd"]  = _last_valid(pib, "brecha_cd")
         meta["latest_brecha_bhp"] = _last_valid(pib, "brecha_bhp")
+        meta["latest_pib_idx"]      = _last_valid(pib, "pib_idx")
+        meta["latest_pib_pot_idx"]  = _last_valid(pib, "pib_pot_idx")
         meta["last_obs_pib"]      = str(pib["fecha"].max())[:10]
     if viog is not None and len(viog):
         meta["latest_brecha_viog"] = _last_valid(viog, "viog")

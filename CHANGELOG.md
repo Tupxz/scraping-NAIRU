@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.7] — 2026-09-10
+
+### Corregido
+- `src/pipelines/export_web_data.py`: `PIB_EXPORT_COLS` todavía tenía nombres de columna previos a la realineación v3 (`PIB`, `K_usado`, `K_pot`, `L_obs`, `L_pot`, `UCI`, `NAICU_q`, `TD`, `NAIRU_q`, ver `[0.5.6]`) — `_read_and_rename` los omitía en silencio (sin error ni warning) si no existían, así que `docs/data/pib_trimestral.csv` habría quedado sin el PIB observado y sin la mayor parte del contexto de mercado laboral. Se actualizó el mapeo a los nombres reales (`idx_pib`, `idx_K`/`idx_K_star`, `idx_L`/`idx_L_star`, `idx_LH`/`idx_LH_star`, `icu`, `naicu`, `td`, `nairu`, `tgp`/`tgp_star`, `pet`, etc.) y ahora se registra un warning explícito si una columna esperada falta, en vez de omitirla sin dejar rastro.
+- Convención de fecha trimestral: el pipeline crudo fecha cada trimestre por su último mes (fin-de-trimestre, p. ej. "2026-03-01" para 2026-T1) mientras el resto de los datos de la página (NAIRU mensual, VIOG) usa inicio-de-trimestre (convención QS de pandas, "2026-01-01" para 2026-T1) — desalineaba el eje temporal del PIB frente a las demás series hasta por 2 meses. Se reconstruye `fecha` desde `year`/`quarter` en vez de confiar en la columna `date` cruda.
+
+### Agregado
+- `idx_LH`/`idx_LH_star` (trabajo: horas × capital humano) al export de `pib_trimestral.csv`.
+- Descomposición del crecimiento potencial interanual (`contrib_capital`, `contrib_trabajo`, `contrib_ptf`, `crecimiento_potencial`; diferencias logarítmicas a 4 trimestres, en pp) — identidad `contrib_capital + contrib_trabajo + contrib_ptf ≈ crecimiento_potencial` verificada sobre los datos reales (diferencia máxima ≈1e-4, ruido de redondeo).
+
+### Nota
+- Motivado por el rediseño de `docs/index.html` (identidad visual EAFIT, más gráficas — descomposición del crecimiento, PTF observada/tendencial, factores de producción, brecha de inflación, curva de Phillips) — el HTML en sí todavía no se comitea, pendiente de aprobación del usuario sobre el diseño.
+
 ## [0.5.6] — 2026-09-10
 
 ### Cambiado
