@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.9] — 2026-09-11
+
+### Corregido
+- `docs/index.html`: tooltip con fecha equivocada en gráficas cuyas series tienen huecos de datos en fechas distintas (ej. TGP: la GEIH tiene un hueco real en 2006-07, mes en que `tgp` es nulo pero `tgp_star` no) — el modo `hovermode: 'x unified'` de Plotly, al no encontrar un punto válido de una serie en la fecha exacta, mostraba el valor más cercano de esa serie pero bajo el encabezado de fecha de la OTRA serie, aparentando una fecha incorrecta. Se auditaron todos los grupos de gráficas multi-serie de la página (PIB grande, brechas, descomposición, PTF, factores, TGP) y todos tenían al menos algún desfase de fechas nulas entre series. Corregido globalmente cambiando `hovermode` de `'x unified'` a `'closest'` en `baseLayout()`, que siempre muestra el punto (fecha, valor) real de la serie que se está tocando — elimina esta clase de error en todas las gráficas presentes y futuras, no solo en TGP.
+
+### Agregado
+- Pestaña "Comparación de metodologías": las tarjetas de referencia CARF, MFMP 2025, Banrep, FMI y OCDE ahora son enlaces (`<a>`) al informe oficial real de cada fuente (URLs verificadas por búsqueda web), y se abren en pestaña nueva. La tarjeta de la estimación propia del modelo ("Este modelo") se mantiene sin enlace, para distinguir visualmente estimación propia de referencias externas.
+
+### Nota
+- Motivado por retroalimentación directa del usuario: un error visible en el tooltip de la gráfica de TGP, y su pedido de poder acceder con un clic a los informes de las demás fuentes citadas en la comparación.
+
 ## [0.5.8] — 2026-09-10
 
 ### Cambiado

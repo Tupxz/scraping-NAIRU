@@ -260,12 +260,18 @@
     border-radius: var(--radius);
     box-shadow: var(--shadow);
     padding: 1rem 1.2rem;
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow .15s, transform .15s, border-color .15s;
   }
   .ref-card.mine { border: 1.5px solid var(--blue); background: var(--blue-mist); }
+  .ref-card[href]:hover { border-color: var(--blue); box-shadow: 0 5px 16px rgba(0,0,0,.12); transform: translateY(-2px); }
   .ref-card .ref-value { font-size: 1.4rem; font-weight: 800; color: var(--blue-deep); }
   .ref-card.mine .ref-value { color: var(--blue); }
   .ref-card .ref-name { font-size: .84rem; font-weight: 700; margin-top: .3rem; }
   .ref-card .ref-detail { font-size: .76rem; color: var(--muted); margin-top: .25rem; line-height: 1.45; }
+  .ref-card .ref-link-hint { font-size: .72rem; font-weight: 700; color: var(--blue); margin-top: .55rem; }
 
   /* ── Download section (bloque azul) ─────────────────── */
   .download-section {
@@ -624,7 +630,11 @@ function baseLayout(opts = {}) {
     yaxis: { gridcolor: '#eceff5', zeroline: false, tickfont: { size: 11 } },
     plot_bgcolor: '#ffffff',
     paper_bgcolor: '#ffffff',
-    hovermode: 'x unified',
+    // 'closest' (no 'x unified'): varias series de esta página tienen huecos reales
+    // en fechas distintas (p. ej. TGP en 2006-T3 por un hueco real de la GEIH) — en modo
+    // unificado Plotly puede mostrar, para la serie con hueco, el punto válido más cercano
+    // pero con la fecha de OTRA serie en el encabezado, aparentando una fecha equivocada.
+    hovermode: 'closest',
     font: { family: "'Inter', system-ui, sans-serif", size: 12 },
     ...opts,
   };
@@ -1061,18 +1071,28 @@ function renderReferencias() {
     });
   }
   refs.push(
-    { value: '2.6%', name: 'CARF (2026)', detail: 'Promedio 2026–2037. Comité Autónomo de la Regla Fiscal, actualización may-2026.' },
-    { value: '2.7–3.0%', name: 'MFMP 2025', detail: 'PIB 2.7% (2025), 3.0% (2026), ≈2.9% promedio 2027–2036. Marco Fiscal de Mediano Plazo, jun-2025.' },
-    { value: '2.7–2.8%', name: 'Banrep (ene-2026)', detail: 'Potencial 2.8% (2025–2026), 2.7% (2027). Informe de Política Monetaria.' },
-    { value: '≈2.75%', name: 'FMI (2025)', detail: 'Artículo IV, muy por debajo del 3.8% promedio de las 2 décadas previas.' },
-    { value: '<3%', name: 'OCDE (2024)', detail: 'Economic Survey — sin cifra puntual publicada.' },
+    { value: '2.6%', name: 'CARF (2026)', detail: 'Promedio 2026–2037. Comité Autónomo de la Regla Fiscal, informe al Congreso, abril-2026.',
+      url: 'https://www.carf.gov.co/documents/d/guest/informe-al-congreso-abril-2026' },
+    { value: '2.7–3.0%', name: 'MFMP 2025', detail: 'PIB 2.7% (2025), 3.0% (2026), ≈2.9% promedio 2027–2036. Marco Fiscal de Mediano Plazo, jun-2025.',
+      url: 'https://www.minhacienda.gov.co/documents/20119/2284557/MFMP+2025.pdf/9e63286c-f658-7a76-29ad-2512ead562e3?t=1752090754929' },
+    { value: '2.7–2.8%', name: 'Banrep (ene-2026)', detail: 'Potencial 2.8% (2025–2026), 2.7% (2027). Informe de Política Monetaria.',
+      url: 'https://www.banrep.gov.co/es/publicaciones-investigaciones/informe-politica-monetaria/enero-2026' },
+    { value: '≈2.75%', name: 'FMI (2025)', detail: 'Artículo IV, muy por debajo del 3.8% promedio de las 2 décadas previas.',
+      url: 'https://www.imf.org/en/publications/cr/issues/2025/09/29/colombia-2025-article-iv-consultation-press-release-staff-report-and-statement-by-the-570803' },
+    { value: '<3%', name: 'OCDE (2024)', detail: 'Economic Survey — sin cifra puntual publicada.',
+      url: 'https://www.oecd.org/en/publications/2024/09/oecd-economic-surveys-colombia-2024_7b382d76.html' },
   );
-  document.getElementById('ref-grid').innerHTML = refs.map(r => `
-    <div class="ref-card${r.mine ? ' mine' : ''}">
+  document.getElementById('ref-grid').innerHTML = refs.map(r => {
+    const tag = r.url ? 'a' : 'div';
+    const attrs = r.url ? ` href="${r.url}" target="_blank" rel="noopener noreferrer"` : '';
+    return `
+    <${tag} class="ref-card${r.mine ? ' mine' : ''}"${attrs}>
       <div class="ref-value">${r.value}</div>
       <div class="ref-name">${r.name}</div>
       <div class="ref-detail">${r.detail}</div>
-    </div>`).join('');
+      ${r.url ? '<div class="ref-link-hint">Ver informe ↗</div>' : ''}
+    </${tag}>`;
+  }).join('');
 }
 
 /* ─── Arrancar ────────────────────────────────────────────────────────── */
