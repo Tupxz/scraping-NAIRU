@@ -359,7 +359,7 @@
       <div class="kpi-card"><div class="value" id="kpi-crecimiento">—</div><div class="label">Crecimiento del PIB potencial</div><div class="hint" id="kpi-crecimiento-hint">Interanual</div></div>
       <div class="kpi-card"><div class="value" id="kpi-brecha-cd">—</div><div class="label">Brecha del PIB (Cobb-Douglas)</div><div class="hint">PIB observado vs. potencial, % del potencial</div></div>
       <div class="kpi-card"><div class="value" id="kpi-brecha-bhp">—</div><div class="label">Brecha del PIB (BHP, referencia)</div><div class="hint">Filtro estadístico Hodrick-Prescott</div></div>
-      <div class="kpi-card"><div class="value" id="kpi-alpha">—</div><div class="label">Participación del capital (α)</div><div class="hint">Estilo CBO: EBE / (remuneración + EBE)</div></div>
+      <div class="kpi-card"><div class="value" id="kpi-alpha">—</div><div class="label">Peso del capital en la producción</div><div class="hint" id="kpi-alpha-hint">De cada $100 que produce la economía, esta parte remunera al capital (maquinaria, infraestructura); el resto, al trabajo.</div></div>
       <div class="kpi-card"><div class="value" id="kpi-ultimo-trim">—</div><div class="label">Último trimestre con dato</div><div class="hint" id="kpi-ultimo-trim-hint">&nbsp;</div></div>
     </div>
 
@@ -732,7 +732,7 @@ function renderLede() {
   const badgeText = arriba ? 'por encima' : 'por debajo';
   el.innerHTML = `Según el modelo estructural Cobb-Douglas, la economía colombiana está operando
     <span class="badge ${badgeClass}">${fmtSigned(brecha)}% ${badgeText}</span>
-    de su potencial en <b>${quarterLabel(row.anio, row.trimestre)}</b> (α = ${fmt(row.alpha * 100, 1)}% de participación del capital).
+    de su potencial en <b>${quarterLabel(row.anio, row.trimestre)}</b>.
     ${arriba ? 'Una brecha positiva sugiere una economía operando en niveles de actividad elevados, con posible presión sobre precios.'
               : 'Una brecha negativa sugiere holgura en la economía — capacidad sin utilizar respecto a su nivel potencial.'}`;
 }
@@ -749,6 +749,12 @@ function renderKPIs() {
   bhpEl.textContent = brechaBhp !== null ? fmtSigned(brechaBhp) + '%' : '—';
   bhpEl.className = 'value' + (brechaBhp !== null ? (brechaBhp >= 0 ? ' pos' : ' neg') : '');
   document.getElementById('kpi-alpha').textContent = row.alpha !== null ? fmt(row.alpha * 100, 1) + '%' : '—';
+  const alphaHintEl = document.getElementById('kpi-alpha-hint');
+  if (row.alpha !== null) {
+    const capPct = Math.round(row.alpha * 100);
+    const labPct = 100 - capPct;
+    alphaHintEl.textContent = `De cada $100 que produce la economía, ≈$${capPct} remuneran al capital (maquinaria, infraestructura) y ≈$${labPct} al trabajo.`;
+  }
   document.getElementById('kpi-ultimo-trim').textContent = quarterLabel(row.anio, row.trimestre);
   document.getElementById('kpi-ultimo-trim-hint').textContent = row.fecha;
 
@@ -794,6 +800,12 @@ function drawPIBGrande(years) {
   Plotly.newPlot('chart-pib-grande', traces, baseLayout({
     yaxis: { title: 'Índice (2007-T3 = 100)' },
     xaxis: { rangeslider: { visible: true, thickness: .07 }, showgrid: false },
+    // Leyenda ARRIBA del área de graficación (y>1, no y:-0.16 como en baseLayout()):
+    // este es el único gráfico con rangeslider, y la posición por defecto de la leyenda
+    // (debajo del eje x) cae encima de la franja del rangeslider y no se alcanza a ver
+    // — confirmado visualmente en captura de pantalla (bug reportado por el usuario).
+    margin: { t: 34, r: 18, b: 44, l: 52 },
+    legend: { orientation: 'h', y: 1.16, x: 0.5, xanchor: 'center', font: { size: 11 } },
   }), CONF);
 }
 
@@ -1073,14 +1085,14 @@ function renderReferencias() {
   refs.push(
     { value: '2.6%', name: 'CARF (2026)', detail: 'Promedio 2026–2037. Comité Autónomo de la Regla Fiscal, informe al Congreso, abril-2026.',
       url: 'https://www.carf.gov.co/documents/d/guest/informe-al-congreso-abril-2026' },
-    { value: '2.7–3.0%', name: 'MFMP 2025', detail: 'PIB 2.7% (2025), 3.0% (2026), ≈2.9% promedio 2027–2036. Marco Fiscal de Mediano Plazo, jun-2025.',
-      url: 'https://www.minhacienda.gov.co/documents/20119/2284557/MFMP+2025.pdf/9e63286c-f658-7a76-29ad-2512ead562e3?t=1752090754929' },
-    { value: '2.7–2.8%', name: 'Banrep (ene-2026)', detail: 'Potencial 2.8% (2025–2026), 2.7% (2027). Informe de Política Monetaria.',
+    { value: '2.9%', name: 'MFMP 2026', detail: 'Promedio de mediano plazo. Para años puntuales: 2.6% (2026) y 2.2% (2027). Marco Fiscal de Mediano Plazo, radicado en el Congreso en jun-2026.',
+      url: 'https://www.minhacienda.gov.co/pol%C3%ADtica-fiscal/marco-fiscal-de-mediano-plazo/2026' },
+    { value: '2.7–2.8%', name: 'Banrep (2026)', detail: 'Potencial 2.8% (2025–2026), 2.7% (2027). Informe de Política Monetaria, enero-2026 — última estimación explícita publicada por el Emisor (no repetida en los informes de abril y julio).',
       url: 'https://www.banrep.gov.co/es/publicaciones-investigaciones/informe-politica-monetaria/enero-2026' },
-    { value: '≈2.75%', name: 'FMI (2025)', detail: 'Artículo IV, muy por debajo del 3.8% promedio de las 2 décadas previas.',
+    { value: '≈2.75%', name: 'FMI (2025)', detail: 'Artículo IV, muy por debajo del 3.8% promedio de las 2 décadas previas. Sigue siendo su consulta más reciente con Colombia.',
       url: 'https://www.imf.org/en/publications/cr/issues/2025/09/29/colombia-2025-article-iv-consultation-press-release-staff-report-and-statement-by-the-570803' },
-    { value: '<3%', name: 'OCDE (2024)', detail: 'Economic Survey — sin cifra puntual publicada.',
-      url: 'https://www.oecd.org/en/publications/2024/09/oecd-economic-surveys-colombia-2024_7b382d76.html' },
+    { value: '2.1–2.4%', name: 'OCDE (2026)', detail: 'PIB 2.4% (2026), 2.1% (2027) — desaceleración por condiciones financieras más restrictivas. OECD Economic Outlook, jun-2026.',
+      url: 'https://www.oecd.org/en/publications/oecd-economic-outlook-volume-2026-issue-1_2d1956f0-en/full-report/colombia_c7e18be5.html' },
   );
   document.getElementById('ref-grid').innerHTML = refs.map(r => {
     const tag = r.url ? 'a' : 'div';

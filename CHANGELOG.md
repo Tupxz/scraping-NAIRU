@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.10] — 2026-09-17
+
+### Cambiado
+- `docs/index.html`, tarjeta KPI "Participación del capital (α)" → "Peso del capital en la producción": se quitó la jerga técnica ("Estilo CBO: EBE/(remuneración+EBE)") y se reemplazó por una frase en lenguaje llano y dinámica, calculada del propio valor de α: "De cada $100 que produce la economía, ≈$N remuneran al capital... y ≈$(100-N) al trabajo." Se quitó también la mención "(α = N% de participación del capital)" del párrafo diagnóstico superior (lede), que quedaba duplicada y en jerga.
+- Gráfica "PIB observado, potencial y tendencial": la leyenda no se veía (confirmado visualmente) porque su posición por defecto (debajo del eje x, `y:-0.16`) coincide con la franja del rangeslider de fechas, que solo tiene esta gráfica. Se movió la leyenda arriba del área de graficación (`y:1.16`) solo para esta gráfica.
+
+### Actualizado
+- Pestaña "Comparación de metodologías", tarjetas de referencia institucionales: MFMP actualizado de la edición 2025 a la 2026 (radicada en el Congreso jun-2026: 2.6% en 2026, 2.2% en 2027, 2.9% promedio de mediano plazo) y OCDE actualizado de la Economic Survey 2024 (sin cifra puntual) al Economic Outlook de jun-2026 (2.4% en 2026, 2.1% en 2027). CARF y FMI se revisaron y siguen siendo su publicación más reciente, sin cambios. Banrep se dejó en su edición de enero-2026 tras confirmar (revisando las ediciones de abril y julio) que sigue siendo la última vez que el Emisor publicó esa cifra explícita de crecimiento potencial; se aclaró esto en el texto de la tarjeta.
+
+### Nota
+- Motivado por retroalimentación directa del usuario sobre las tres tarjetas/gráficas de esta ronda. Revisado con el usuario en una vista previa (Artifact) antes de guardarse en el repo.
+
 ## [0.5.9] — 2026-09-11
 
 ### Corregido
