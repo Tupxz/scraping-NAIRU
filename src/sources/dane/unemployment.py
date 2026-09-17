@@ -217,7 +217,7 @@ def _detect_month_row(
         if idx >= len(df_raw):
             break
         row_vals = {
-            str(v).strip().lower()
+            re.sub(r"[^a-záéíóúñ]", "", str(v).strip().lower())
             for v in df_raw.iloc[idx]
             if pd.notna(v)
         }
@@ -355,6 +355,17 @@ def _build_date_columns(
 
         # Leer mes
         raw_month = str(month_values[col_idx]).strip().lower() if pd.notna(month_values[col_idx]) else ""
+        # Fix 2026-09-17: el DANE marca con un asterisco los meses del
+        # empalme ECH→GEIH (jul-2006 y ago-2006 en el anexo desestacio-
+        # nalizado: "Jul*", "Ago*" -- la GEIH arrancó el 7-ago-2006,
+        # reemplazando la ECH; ver notas metodológicas de Banrep sobre
+        # series históricas de mercado laboral). Sin normalizar, "jul*"/
+        # "ago*" no calzan con ninguna clave de `month_map` y esos 2
+        # meses se pierden en silencio -- aunque el DANE sí publica un
+        # valor desestacionalizado real para ambos, dentro de su serie
+        # larga y continua (12.04 % y 13.05 % respectivamente). Se quita
+        # cualquier caracter que no sea letra antes de buscar en el mapa.
+        raw_month = re.sub(r"[^a-záéíóúñ]", "", raw_month)
         month_num = month_map.get(raw_month)
         if month_num is None:
             continue

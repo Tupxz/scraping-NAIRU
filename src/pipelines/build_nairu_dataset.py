@@ -111,24 +111,47 @@ def build_nairu_dataset(
     df.insert(0, "Year", df["Date"].dt.year)
     df.insert(1, "Month", df["Date"].dt.month)
 
-    # ── Filtrar rango: mantener solo filas donde las series clave existen
-    before = len(df)
-    mask = df[REQUIRED_COLS].notna().all(axis=1)
-    df = df[mask].reset_index(drop=True)
-    logger.info(
-        "[NAIRU-dataset] Filas antes/después de filtrar nulos clave: %d → %d",
-        before, len(df),
-    )
+    # ── Filtrar rango: núcleo (series clave completas, desde 2004-01)
+    # + 12 meses previos "semilla" que solo aportan TES ─────────────────
+    # Fix 2026-09-17 (ventana completa del paper: 264 obs, 2004-01→2025-12):
+    # src/nairu/model_core.py::load_and_prepare_data() construye
+    # expected_inflation_current_period desplazando 12 meses
+    # (EXPECTATIONS_HORIZON_MONTHS) la relación de Fisher calculada con
+    # TES_Rate_1yr_COP/UVR. El núcleo del dataset (con Unemp_Desest/
+    # Inf_Rate/ICU completos) arranca en 2004-01, pero ese desplazamiento
+    # de 12 meses solo puede tener valores no nulos desde 2004-01 si el
+    # dataset también incluye TES de los 12 meses previos (2003-01 a
+    # 2003-12) -- si no, el propio desplazamiento recorta otros 12 meses
+    # adicionales del inicio de la muestra (confirmado empíricamente:
+    # 2005-01/250 obs en vez de 2004-01/264 obs, la ventana que reporta
+    # el paper). tes_banrep_colombia.csv sí tiene esos 12 meses de 2003
+    # (fuente Banrep), así que se conservan como filas "semilla": el
+    # resto de columnas queda NaN en ellas (no hay series de desempleo/
+    # inflación/ICU tan atrás), pero eso no afecta el resultado -- el
+    # .dropna() final de load_and_prepare_data() las descarta de todos
+    # modos, una vez que ya cumplieron su único propósito de alimentar
+    # el desplazamiento de 12 meses. SEED_MONTHS replica
+    # EXPECTATIONS_HORIZON_MONTHS de model_core.py (no se importa ese
+    # módulo aquí para no acoplar este pipeline al de estimación; si ese
+    # valor cambia, este debe cambiar junto).
+    CORE_START = pd.Timestamp("2004-01-01")
+    SEED_MONTHS = 12
+    SEED_START = CORE_START - pd.DateOffset(months=SEED_MONTHS)
+    TES_COLS = ["TES_Rate_1yr_COP", "TES_Rate_1yr_UVR"]
 
-    # ── Guard de fecha mínima: nunca antes de 2004-01-01 ─────────────
-    # ICU (ANDI EOIC) es la serie más antigua del modelo y arranca en 2004.
-    before2 = len(df)
-    df = df[df["Date"] >= "2004-01-01"].reset_index(drop=True)
-    if len(df) < before2:
-        logger.warning(
-            "[NAIRU-dataset] Descartadas %d filas anteriores a 2004-01-01",
-            before2 - len(df),
-        )
+    before = len(df)
+    core_mask = df[REQUIRED_COLS].notna().all(axis=1) & (df["Date"] >= CORE_START)
+    tes_seed_mask = (
+        (df["Date"] >= SEED_START)
+        & (df["Date"] < CORE_START)
+        & df[TES_COLS].notna().all(axis=1)
+    )
+    df = df[core_mask | tes_seed_mask].sort_values("Date").reset_index(drop=True)
+    logger.info(
+        "[NAIRU-dataset] Filas antes/después de filtrar (núcleo 2004-01+ "
+        "+ semilla TES %d meses previos): %d → %d",
+        SEED_MONTHS, before, len(df),
+    )
 
     # ── Guardar ───────────────────────────────────────────────────────
     out.parent.mkdir(parents=True, exist_ok=True)

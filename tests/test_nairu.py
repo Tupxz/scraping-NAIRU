@@ -271,14 +271,24 @@ class TestKalmanSmootherRegression:
         or not (OUTPUTS_DIR / "nairu" / "nairu_mle_coefficients.csv").exists(),
         reason="requiere Data_NAIRU.xlsx y nairu_mle_coefficients.csv reales del repo",
     )
-    def test_matches_published_nairu_2006_01_with_published_coefficients(self):
+    def test_matches_published_nairu_2004_03_with_published_coefficients(self):
         # "Golden master": reproduce kalman_filter_and_smoother con los
         # coeficientes YA publicados (sin re-estimar el MLE) y verifica el
-        # valor esperado para 2006-01 -- el primer registro utilizable tras
-        # la Fase 2 (antes de alinear con v3, la ventana muestral arrancaba
-        # en 2005-01 por no replicar el recorte de las columnas ma24 no
-        # usadas -- ver docstring de model_core.py, punto 4). Corre contra
-        # datos y coeficientes REALES, así que también protege
+        # valor esperado para 2004-03 -- el primer registro utilizable tras
+        # el Fix 2026-09-17 (ventana completa del paper metodológico, ver
+        # docstring de model_core.py, puntos 6-8: se retiró el recorte de
+        # ma24 y se añadieron 12 meses "semilla" de TES 2003 + los 2 meses
+        # de desempleo de jul/ago-2006 que un bug de parseo del Excel del
+        # DANE perdía). El paper reporta 264 obs desde 2004-01; esta ventana
+        # llega a 262 desde 2004-03 porque el ICU (ANDI EOIC) del repo no
+        # tiene datos antes de 2004-01 y unemployment_lag2/icu_lag2
+        # necesitan 2 meses previos -- ver conversación con el usuario
+        # sobre este último detalle. El valor final de NAIRU/NAICU (dic-
+        # 2025) con esta ventana coincide con el del paper (9.46 % / 79.2 %
+        # aprox.), así que el filtro "olvida" esos 2 meses iniciales, pero
+        # el valor de ARRANQUE (este test) sí depende de dónde empieza la
+        # muestra -- por eso el valor esperado cambia con la ventana. Corre
+        # contra datos y coeficientes REALES, así que también protege
         # transversalmente contra una regresión futura en la ventana
         # muestral, la separación ancla/medición o el rezago distribuido de
         # ICU -- cualquiera de esas rompería este valor de forma visible.
@@ -299,11 +309,11 @@ class TestKalmanSmootherRegression:
         data_df = model_core.load_and_prepare_data(INPUTS_DIR / "Data_NAIRU.xlsx")
         model_data = model_core.build_model_data(data_df)
 
-        assert str(model_data.dates.iloc[0])[:7] == "2006-01"
+        assert str(model_data.dates.iloc[0])[:7] == "2004-03"
 
         nairu, _, _, _ = model_core.kalman_filter_and_smoother(params, model_data)
 
-        assert nairu[0] == pytest.approx(11.972239933106922, abs=1e-4)
+        assert nairu[0] == pytest.approx(12.066397753619556, abs=1e-4)
 
 
 # ── TestCovidAnchorInterpolation ─────────────────────────────────────────

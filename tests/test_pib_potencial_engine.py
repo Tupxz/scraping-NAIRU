@@ -249,6 +249,19 @@ class TestAgainstV3Baseline:
     de código distintas (v3 monolítico vs. motor modular) que pueden diferir
     en el ORDEN de operaciones de punto flotante -- ya verificado que en la
     práctica concuerdan a ~1e-13, ver docs/integracion_v3.md.
+
+    CONOCIDO ROTO desde 2026-09-17 (ver CHANGELOG [0.5.11]): la línea base
+    (tests/fixtures/baseline_v3/) se generó ejecutando pib_potencial_integrado_v3.py
+    con la ventana NAIRU/NAICU vieja (238 obs, 2006-01), que el fix de esa
+    fecha corrigió a 264 obs, 2004-01 (ver docstring de model_core.py,
+    puntos 6-8). Como NAIRU/NAICU alimentan brecha_u/brecha_icu y, por esa vía,
+    prácticamente todas las columnas de esta clase (idx_L_star, idx_K_star,
+    ptf_star, pib_pot, brecha_pot, ...), las 13 columnas comparadas aquí
+    fallan de forma esperada hasta que alguien regenere la línea base
+    volviendo a correr v3.py (sin editarlo) contra los datos ya corregidos
+    -- tarea pendiente, no incluida en el fix de esa fecha por su tamaño
+    (necesita reconstruir el script "adaptador de datos" de la Fase 0, que
+    no quedó guardado en el repo). No es una regresión de otra cosa.
     """
 
     @classmethod

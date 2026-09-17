@@ -41,20 +41,13 @@ Dos detalles adicionales, descubiertos al verificar esto contra la
 referencia (ejecutándola directamente sobre Data_NAIRU.xlsx -- ver
 verify_v3alignment.py) y NO obvios con solo leer el código de v3:
 
-4) La ventana muestral debe empezar en 2006-01, no en 2005-01. En v3,
-   load_and_prepare_data() es una función GENÉRICA compartida por todas las
-   variantes de espec (incluida "ma24", que este repo no usa), y su
-   .dropna() se aplica sobre TODAS las columnas que calcula -- incluida
-   unemployment_ma24/icu_ma24 (media móvil de 24 meses), aunque la spec
-   final ("hysteresis" + "distributed_lag") no las use para nada. Esas 2
-   columnas tienen 24 NaN iniciales (más que cualquier otro rezago de este
-   módulo, que como mucho tiene 12 por expected_inflation_current_period),
-   así que terminan siendo las que de verdad determinan dónde empieza la
-   muestra utilizable -- para CUALQUIER espec, la use o no. Por eso este
-   módulo también las calcula e incluye en la selección de columnas de
-   load_and_prepare_data(), aunque ModelData/_kalman_pass nunca las toquen:
-   es la única forma de reproducir exactamente los mismos 238 registros
-   (2006-01 a 2025-12) que usa v3.
+4) [SUPERADO por el Fix 2026-09-17 más abajo] La ventana muestral se fijó
+   originalmente en 2006-01 (238 obs) reproduciendo un recorte de v3
+   (unemployment_ma24/icu_ma24, ver punto 6) que no aporta nada a la spec
+   adoptada. Esa ventana NO es la que reporta el paper metodológico de
+   este proyecto (264 obs, 2004-01 a 2025-12) -- se mantuvo mientras el
+   objetivo era solo igualar v3 bit a bit. Al pedir además igualar el
+   paper, el recorte de v3 dejó de ser deseable y se retiró.
 5) BEST_START_PARAMS_V3 (ver estimate_parameters) es, en la propia v3, un
    punto "ya hallado" por barridos externos (phi_sweep/sigma_sweep/
    naicu_grid) que v3 documenta como el óptimo publicado ("converge de
@@ -83,10 +76,51 @@ verify_v3alignment.py) y NO obvios con solo leer el código de v3:
    fit.success, sino que valida directamente np.isfinite(fit.params) y que
    la verosimilitud en ese punto no esté penalizada (ver el comentario ahí).
 
-Verificado (verify_v3alignment.py, verify_full_pipeline.py): con estos 5
-puntos, nairu_estimate/naicu_estimate y sus bandas de 95% coinciden con la
-salida de estimar_nairu_naicu_estructural_v3() a 1e-15 (ruido de punto
-flotante) en las 238 observaciones, en ambos entornos numpy (<2.0 y >=2.0).
+Verificado (verify_v3alignment.py, verify_full_pipeline.py): con los
+puntos 1-3 y 5, nairu_estimate/naicu_estimate y sus bandas de 95% coinciden
+con la salida de estimar_nairu_naicu_estructural_v3() a 1e-15 (ruido de
+punto flotante) en las 238 observaciones de esa ventana (2006-01 a
+2025-12), en ambos entornos numpy (<2.0 y >=2.0). Esa comparación bit-a-bit
+contra v3 sigue siendo válida como verificación de la MECÁNICA del filtro
+(Kalman/RTS), independiente de qué ventana muestral se use.
+
+Fix 2026-09-17 (ventana completa del paper metodológico "Estimación del
+PIB potencial para Colombia con enfoque de función de producción de la
+CBO", sección 4.1, Cuadro 5 -- N=264, 2004-01 a 2025-12; decisión del
+usuario, no un ajuste automático): tres cambios, todos de ventana muestral
+o de calidad de datos, ninguno de metodología del filtro:
+
+6) Se retira unemployment_ma24/icu_ma24 (ver punto 4 arriba): dejaba de
+   tener sentido en cuanto el objetivo pasó de "igualar v3 bit a bit" a
+   "igualar el paper". Sin ese recorte, el límite de la ventana pasa a
+   ser expected_inflation_current_period (desplazamiento de
+   EXPECTATIONS_HORIZON_MONTHS=12 meses sobre la relación de Fisher
+   construida con TES a 1 año). Solo con esto, la ventana llega a 2005-01
+   (250 obs) -- todavía no a 2004-01/264 obs.
+7) src/pipelines/build_nairu_dataset.py conservaba únicamente filas desde
+   2004-01 (Data_NAIRU.xlsx no tenía nada anterior), aunque
+   tes_banrep_colombia.csv sí tiene TES_Rate_1yr_COP/UVR válidos desde
+   2003-01. Sin esos 12 meses previos, el desplazamiento de 12 meses del
+   punto 6 no puede tener valores no nulos antes de 2005-01. Se añadieron
+   como filas "semilla" (solo TES, el resto NaN -- se descartan en el
+   .dropna() de esta función tras alimentar el desplazamiento). Con esto,
+   la ventana ya alcanza 2004-01.
+8) dane_labor_colombia.csv (desempleo, fuente del insumo Unemp_Desest)
+   tenía un hueco real de 2 meses -- jul-2006 y ago-2006 -- no por falta
+   de dato del DANE (sí publica un valor desestacionalizado para ambos:
+   12.04 % y 13.05 %) sino porque el DANE marca esos 2 meses con un
+   asterisco ("Jul*", "Ago*") en el Excel del anexo GEIH desestacionalizado
+   -- es el punto de empalme ECH→GEIH (la GEIH arrancó el 7-ago-2006) -- y
+   src/sources/dane/unemployment.py los descartaba al no encontrar "jul*"/
+   "ago*" en month_map. Corregido normalizando el texto del mes antes de
+   buscarlo. Sin este fix, aun con los puntos 6 y 7 la ventana habría
+   llegado a 264 MESES pero con un hueco interno de 2 (262 observaciones
+   útiles), no a las 264 observaciones reales que reporta el paper.
+
+BEST_START_PARAMS_V3 (punto 5) no cambia: sus 14 coeficientes libres
+coinciden dígito a dígito con el Cuadro 5 del paper (ver CHANGELOG), así
+que sirven sin modificación también sobre la ventana corregida -- solo
+cambian los DATOS que el filtro recorre, no los parámetros.
 """
 
 from __future__ import annotations
@@ -1365,36 +1399,27 @@ def load_and_prepare_data(path: Path) -> pd.DataFrame:
     # ModelData.unemployment_hysteresis_anchor DESPUÉS de build_model_data(),
     # no en esta función.
 
-    # Fix 2026-09-03 (alineación v3): unemployment_ma24/icu_ma24 NO los usa
-    # ningún cálculo de este módulo (_kalman_pass, para la spec
-    # "hysteresis" + "distributed_lag", nunca los toca -- solo los usaría la
-    # variante de tendencia "ma24", que este repo no implementa). Se calculan
-    # aquí de todos modos, y se incluyen en la selección de columnas de
-    # abajo, SOLO para reproducir la ventana muestral exacta de v3: en la
-    # referencia, load_and_prepare_data() es una función genérica que
-    # comparten TODAS las variantes de espec (incluida "ma24"), y su
-    # .dropna() se aplica sobre TODAS las columnas -- incluida esta media
-    # móvil de 24 meses -- sin importar cuál variante se vaya a estimar
-    # después. Eso recorta las primeras 24 observaciones de CUALQUIER
-    # corrida, incluida "hysteresis" + "distributed_lag" (que no las
-    # necesita). Sin este recorte, la muestra empieza 12 meses antes
-    # (2005-01 en vez de 2006-01: el máximo NaN inicial pasa a ser el de
-    # expected_inflation_current_period, 12 meses, en vez de este, 24) y
-    # BEST_START_PARAMS_V3 dejó de ser el óptimo para esa muestra distinta
-    # -- confirmado empíricamente: con la ventana de 250 obs (2005-01) el
-    # optimizador no converge (ABNORMAL_TERMINATION_IN_LNSRCH) partiendo de
-    # esa semilla, y las estimaciones de nivel inicial (NAIRU/NAICU en
-    # t=0) difieren de la referencia aunque el filtro converja al mismo
-    # punto hacia el final de la muestra (el filtro "olvida" el estado
-    # inicial con el tiempo). Con la ventana correcta (238 obs, 2006-01) el
-    # optimizador converge de inmediato desde la semilla, como documenta el
-    # comentario de v3 ("converge de inmediato porque ya es el óptimo").
-    df["unemployment_ma24"] = (
-        df[UNEMPLOYMENT_COL].shift(1).rolling(window=24, min_periods=24).mean()
-    )
-    df["icu_ma24"] = (
-        df[ICU_COL].shift(1).rolling(window=24, min_periods=24).mean()
-    )
+    # Fix 2026-09-17 (ventana completa del paper: 264 obs, 2004-01→2025-12):
+    # se elimina el cálculo de unemployment_ma24/icu_ma24 y sus columnas en
+    # model_df. El fix 2026-09-03 (alineación v3, ver docstring del módulo)
+    # las había dejado SOLO para reproducir el recorte muestral de v3 vía
+    # su .dropna() compartido entre variantes de espec -- pero ningún
+    # cálculo de este módulo las usa (_kalman_pass, para la spec
+    # "hysteresis" + "distributed_lag" adoptada, nunca las toca; solo las
+    # usaría la variante de tendencia "ma24", que este repo no implementa).
+    # El paper (Documento metodológico, sección 4.1, Cuadro 5) reporta una
+    # muestra de 264 observaciones (2004-01 a 2025-12, N=264) para la spec
+    # adoptada -- no las 238 (2006-01) que resultaban de este recorte -- así
+    # que se retira. Ahora el límite de la ventana lo determina
+    # expected_inflation_current_period (desplazamiento de
+    # EXPECTATIONS_HORIZON_MONTHS=12 meses sobre la relación de Fisher), que
+    # junto con la fila "semilla" de TES de 2003 añadida en
+    # src/pipelines/build_nairu_dataset.py (ver ese archivo) alcanza
+    # exactamente 2004-01. BEST_START_PARAMS_V3 se re-validó empíricamente
+    # sobre esta ventana corregida (ver CHANGELOG) y sigue siendo el punto
+    # de partida usado directamente como resultado final, por las mismas
+    # razones de multimodalidad/sensibilidad numérica ya documentadas más
+    # abajo en estimate_parameters().
 
     model_df = df[
         [
@@ -1406,8 +1431,6 @@ def load_and_prepare_data(path: Path) -> pd.DataFrame:
             "unemployment_current",
             "unemployment_lag1",
             "unemployment_lag2",
-            "unemployment_ma24",
-            "icu_ma24",
             "icu_current",
             "icu_lag1",
             "icu_lag2",
