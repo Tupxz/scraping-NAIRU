@@ -32,6 +32,17 @@ year/quarter (ambas columnas SÍ son confiables) en convención QS-inicio,
 igual que el resto del repo — no se toca la columna "date" original del
 pipeline (eso es un cambio de superficie más amplio, fuera de alcance de
 esta exportación).
+
+Nota (2026-10-15, curva de Phillips parcial — ver CHANGELOG.md [0.5.12] y
+src/nairu/phillips.py): nairu_monthly.csv gana 2 columnas para la gráfica
+"Curva de Phillips" del tablero — dg_inf (cambio mensual de la brecha de
+inflación, la dependiente real del modelo) y phillips_parcial (dg_inf menos
+lo que explican todos los regresores salvo el bloque desempleo/NAIRU, que se
+grafica contra brecha_laboral). meta.json gana phillips_sum_beta_u y
+phillips_sum_beta_u_p (pendiente agregada del modelo y su p-valor, para la
+leyenda). Se calculan aquí, no en el navegador, porque necesitan los
+regresores crudos de nairu_colombia.csv y los coeficientes del MLE; si
+nairu_mle_coefficients.csv no existe se omiten (con warning).
 """
 
 from __future__ import annotations
@@ -45,12 +56,19 @@ from pathlib import Path
 import pandas as pd
 
 from src.config import OUTPUTS_DIR, PROCESSED_DIR
+from src.nairu.phillips import (
+    coefficients_from_table,
+    load_coefficient_table,
+    partial_phillips,
+    unemployment_slope_summary,
+)
 
 logger = logging.getLogger("nairu_pipeline.export_web")
 
 DOCS_DATA_DIR = Path(__file__).resolve().parents[2] / "docs" / "data"
 
 NAIRU_CSV   = OUTPUTS_DIR / "nairu" / "nairu_colombia.csv"
+NAIRU_COEF_CSV = OUTPUTS_DIR / "nairu" / "nairu_mle_coefficients.csv"
 PIB_CSV     = OUTPUTS_DIR / "pib_potencial" / "pib_potencial_colombia.csv"
 VIOG_CSV    = PROCESSED_DIR / "viog_colombia.csv"
 
@@ -165,6 +183,31 @@ def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
 
     # ── 1. NAIRU mensual ──────────────────────────────────────────────
     nairu = _read_and_rename(NAIRU_CSV, NAIRU_EXPORT_COLS)
+
+    # Curva de Phillips parcial (ver src/nairu/phillips.py): Δ(brecha de inflación)
+    # menos todo lo que el modelo explica con regresores distintos del bloque
+    # desempleo/NAIRU. Necesita los regresores crudos de nairu_colombia.csv (que
+    # NAIRU_EXPORT_COLS no exporta) y los coeficientes del MLE, así que se calcula
+    # aquí y no en el navegador.
+    phillips_slope = None
+    if NAIRU_COEF_CSV.exists():
+        coef_table = load_coefficient_table(NAIRU_COEF_CSV)
+        partial = partial_phillips(pd.read_csv(NAIRU_CSV), coefficients_from_table(coef_table))
+        if len(partial) != len(nairu):
+            raise ValueError(
+                f"Curva de Phillips parcial: {len(partial)} filas calculadas vs "
+                f"{len(nairu)} exportadas de {NAIRU_CSV.name}."
+            )
+        nairu["dg_inf"] = partial["dg_inf"].to_numpy()
+        nairu["phillips_parcial"] = partial["phillips_parcial"].to_numpy()
+        phillips_slope = unemployment_slope_summary(coef_table)
+    else:
+        warnings.warn(
+            f"{NAIRU_COEF_CSV} no encontrado — la curva de Phillips parcial no se "
+            "exporta; ejecuta --nairu-estim primero.",
+            stacklevel=2,
+        )
+
     nairu = _round_floats(nairu)
     out_nairu = docs_data_dir / "nairu_monthly.csv"
     nairu.to_csv(out_nairu, index=False)
@@ -270,6 +313,12 @@ def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
     if viog is not None and len(viog):
         meta["latest_brecha_viog"] = _last_valid(viog, "viog")
         meta["last_obs_viog"]      = str(viog["fecha"].max())[:10]
+    if phillips_slope is not None:
+        # Pendiente agregada del modelo (Σβ_u) y su p-valor, para la leyenda de la
+        # curva de Phillips parcial: el tablero no los recalcula.
+        meta["phillips_sum_beta_u"] = round(phillips_slope["sum_beta_u"], 4)
+        p_value = phillips_slope["p_value"]
+        meta["phillips_sum_beta_u_p"] = round(p_value, 3) if p_value is not None else None
 
     out_meta = docs_data_dir / "meta.json"
     out_meta.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")

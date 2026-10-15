@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.12] — 2026-10-15
+
+### Cambiado
+- `docs/index.html`, pestaña "Mercado laboral y precios", tarjeta "Curva de Phillips estimada": se reemplazó por la curva de Phillips **parcial** ("efecto del desempleo aislado"). La anterior graficaba el NIVEL de la brecha de inflación (básica − meta) contra la brecha laboral, que no es lo que el modelo estima: la dependiente de la ecuación de medición es el CAMBIO mensual de esa brecha, Δg_t = g_t − g_{t-1}. La gráfica nueva muestra, para cada mes, Δg_t menos lo que explican todos los regresores salvo el bloque desempleo/NAIRU (rezagos de Δg, expectativas, choque petrolero y bloque ICU/NAICU), contra la brecha laboral actual (desempleo − NAIRU). Color por año (azul claro = antiguo, azul oscuro = reciente), ajuste OLS de la nube, pendiente agregada que estimó el modelo (Σβ_u, con su significancia) y último dato; el tooltip muestra también el Δg_t observado. Sin datos (CSV viejo) la tarjeta muestra un aviso en vez de fallar; sin la pendiente del modelo en `meta.json` se omite solo esa línea. En pantallas angostas el contenedor es más alto (la leyenda ocupa tres filas).
+
+### Agregado
+- `src/nairu/phillips.py` (nuevo): cálculo de la curva de Phillips parcial a partir de `outputs/nairu/nairu_colombia.csv` y los coeficientes de `nairu_mle_coefficients.csv`. Escribe la ecuación fila a fila tal como está en el paper (el MISMO nivel u*_t / c*_t resta a los 3 rezagos de desempleo / ICU) y reproduce, a 1e-15, el gráfico revisado antes en Python.
+- `src/pipelines/export_web_data.py`: `docs/data/nairu_monthly.csv` gana las columnas `dg_inf` (Δg_t) y `phillips_parcial`; `docs/data/meta.json` gana `phillips_sum_beta_u` y `phillips_sum_beta_u_p` (pendiente agregada del modelo y su p-valor). Se calculan en el export —no en el navegador— para que la gráfica se actualice sola al reestimar. Si falta `nairu_mle_coefficients.csv` se omiten con un warning. Las 14 columnas que ya consumía el tablero no cambian (verificado exacto).
+- `tests/test_phillips_partial.py` (26 tests): identidad con datos sintéticos generados fila a fila (el parcial recupera exactamente bloque de desempleo + error), mismo NAIRU contemporáneo para los 3 rezagos, bloque ICU con NAICU (no NAIRU), propagación de NaN, errores claros por columnas/coeficientes faltantes, lectura de la tabla del MLE, integración del export con CSV sintéticos y consistencia de `docs/data/` publicado contra un recálculo desde `outputs/`. Se verificó con mutaciones (6 errores plausibles introducidos a propósito, todos detectados).
+
+### Nota
+- Pedido directo del usuario ("pon esa gráfica de los residuales en la página ... en vez de la actual"), después de revisar la gráfica en Python y de corregir que el eje vertical debía ser Δ(básica − meta), no el nivel.
+- Hallazgo a tener presente al leerla: la nube es casi plana (pendiente OLS −0.0058, R² = 0.001; n = 262, 2004-03 a 2025-12). La pendiente agregada del modelo, Σβ_u = −0.0201, tiene el signo teórico pero NO es significativa al 10% (p = 0.118), así que el bloque de desempleo explica muy poco de Δg_t en esta especificación. Se verificó que no es un artefacto del suavizado: con el estado predicho a un paso, el filtrado o el suavizado el R² de la nube es ≈ 0 en los tres casos, y usar la combinación exacta de los 3 rezagos en vez del mes actual tampoco lo cambia. La leyenda lo dice con el p-valor real, sin maquillarlo.
+- `tests/fixtures/baseline_v3/` (13 tests de `TestAgainstV3Baseline`) y las 2 fallas de `tests/test_viog.py::TestComputeVIOGWeights` siguen pendientes, igual que en [0.5.11]; este cambio no las toca.
+
 ## [0.5.11] — 2026-09-17
 
 ### Corregido

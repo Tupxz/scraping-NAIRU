@@ -314,6 +314,7 @@
     .charts-grid { grid-template-columns: 1fr; }
     .chart-card .plotly-container { height: 280px; }
     .chart-card.big .plotly-container { height: 340px; }
+    #chart-phillips { height: 520px; }  /* leyenda de 3 filas + barra de color: necesita más alto */
     .download-section { padding: 1.8rem 1.2rem 2rem; }
   }
 </style>
@@ -464,8 +465,8 @@
       <div class="chart-card big wide">
         <div class="card-header">
           <div>
-            <div class="card-title">Curva de Phillips estimada</div>
-            <div class="card-desc">Brecha de inflación vs. brecha laboral (desempleo − NAIRU) · cada punto es un mes; azul claro = más antiguo, azul oscuro = más reciente · línea punteada negra = tendencia</div>
+            <div class="card-title">Curva de Phillips estimada (efecto del desempleo aislado)</div>
+            <div class="card-desc">Cada punto es un mes · eje vertical: cambio mensual de la brecha de inflación (básica − meta) una vez descontados rezagos, expectativas, petróleo y capacidad instalada · eje horizontal: brecha laboral (desempleo − NAIRU) · azul claro = más antiguo, azul oscuro = más reciente</div>
           </div>
         </div>
         <div class="plotly-container" id="chart-phillips"></div>
@@ -688,7 +689,7 @@ async function loadAll() {
     renderNAICU();
     renderTGP();
     renderBrechaInf();
-    renderPhillips();
+    renderPhillips(meta);
     renderStatsTable();
     renderComparacion();
     renderVIOG();
@@ -953,44 +954,92 @@ function renderBrechaInf() {
   ], baseLayout({ yaxis: { title: 'Puntos porcentuales', ticksuffix: ' pp' } }), CONF);
 }
 
-/* ─── Tab 2: curva de Phillips estimada ───────────────────────────────── */
-function renderPhillips() {
-  const rows = NAIRU_ROWS.filter(r => r.brecha_inf !== null && r.brecha_laboral !== null);
-  if (!rows.length) return;
-  const x = toNum(rows, 'brecha_laboral');
-  const y = toNum(rows, 'brecha_inf');
-  const n = x.length;
-  const idx = rows.map((_, i) => i);
+/* ─── Tab 2: curva de Phillips estimada (efecto del desempleo aislado) ─── */
+// El modelo estima  Δg_t = α + ρ1·Δg_{t-1} + ρ2·Δg_{t-2} + γe·E_t + γo·O_t
+//                        + Σ_j β_u,j·(u_{t-j} − u*_t) + Σ_j β_c,j·(c_{t-j} − c*_t) + ε_t,
+// con g_t = inflación básica − meta: la dependiente es su CAMBIO mensual Δg_t (no su nivel).
+// Aquí se grafica Δg_t menos todo lo que explican los regresores distintos del bloque
+// desempleo/NAIRU (columna `phillips_parcial` de nairu_monthly.csv, calculada en
+// src/nairu/phillips.py) contra la brecha laboral actual u_t − u*_t (`brecha_laboral`).
+function renderPhillips(meta) {
+  const host = document.getElementById('chart-phillips');
+  const rows = NAIRU_ROWS.filter(r => r.phillips_parcial !== null && r.phillips_parcial !== undefined
+                                   && r.brecha_laboral !== null);
+  if (!rows.length) {
+    host.innerHTML = '<div class="state-msg"><span>Sin datos para la curva de Phillips: regenera los datos del tablero '
+      + '(<code>--nairu-estim</code> y luego <code>--export-web</code>).</span></div>';
+    return;
+  }
+  const num = v => (v === null || v === undefined || isNaN(+v)) ? null : +v;
+  const sgn = (v, d) => (v < 0 ? '−' : '') + Math.abs(v).toFixed(d);   // signo menos tipográfico
 
+  const x = toNum(rows, 'brecha_laboral');
+  const y = toNum(rows, 'phillips_parcial');
+  const n = x.length;
+  const fechas = rows.map(r => r.fecha.slice(0, 7));
+  const yearFrac = rows.map(r => { const p = r.fecha.split('-'); return +p[0] + (+p[1] - 1) / 12; });
+
+  // Ajuste OLS de esta nube (dos variables, sin más controles)
   const xbar = x.reduce((a, b) => a + b, 0) / n;
   const ybar = y.reduce((a, b) => a + b, 0) / n;
-  let num = 0, den = 0;
-  for (let i = 0; i < n; i++) { num += (x[i] - xbar) * (y[i] - ybar); den += (x[i] - xbar) ** 2; }
-  const slope = den !== 0 ? num / den : 0;
+  let sxy = 0, sxx = 0, syy = 0;
+  for (let i = 0; i < n; i++) {
+    sxy += (x[i] - xbar) * (y[i] - ybar);
+    sxx += (x[i] - xbar) ** 2;
+    syy += (y[i] - ybar) ** 2;
+  }
+  const slope = sxx !== 0 ? sxy / sxx : 0;
   const intercept = ybar - slope * xbar;
+  const r2 = (sxx !== 0 && syy !== 0) ? (sxy * sxy) / (sxx * syy) : 0;
+
   const xMin = Math.min(...x), xMax = Math.max(...x);
   const yMin = Math.min(...y), yMax = Math.max(...y);
-  const trendX = [xMin, xMax];
-  const trendY = trendX.map(v => intercept + slope * v);
+  const lineX = [xMin - 0.3, xMax + 0.3];
+
+  // Pendiente agregada que estimó el modelo (Σβ_u), anclada en el centroide de la nube.
+  const betaSum = meta ? num(meta.phillips_sum_beta_u) : null;
+  const betaP = meta ? num(meta.phillips_sum_beta_u_p) : null;
+  const sig = betaP === null ? '' : betaP < 0.01 ? ', signif. al 1%' : betaP < 0.05 ? ', signif. al 5%'
+            : betaP < 0.10 ? ', signif. al 10%' : ', no signif. al 10%';
+
+  // Barra de color: años redondos (cada 5) entre el primer y el último dato.
+  const y0 = Math.min(...yearFrac), y1 = Math.max(...yearFrac);
+  const tickvals = [];
+  for (let t = Math.ceil(y0 / 5) * 5; t <= y1; t += 5) tickvals.push(t);
 
   const traces = [
-    { x, y, mode: 'lines', line: { color: 'rgba(0,0,0,.15)', width: 1 }, showlegend: false, hoverinfo: 'skip' },
     { x: [0, 0], y: [yMin, yMax], mode: 'lines', line: { color: '#aab0c4', width: 1, dash: 'dot' }, showlegend: false, hoverinfo: 'skip' },
     { x: [xMin, xMax], y: [0, 0], mode: 'lines', line: { color: '#aab0c4', width: 1, dash: 'dot' }, showlegend: false, hoverinfo: 'skip' },
-    { x: trendX, y: trendY, name: 'Tendencia (OLS)', mode: 'lines', line: { color: '#000000', width: 2, dash: 'dash' } },
     { x, y, name: 'Mes', mode: 'markers', showlegend: false,
-      marker: { size: 6, color: idx, colorscale: [[0, '#B9CEFF'], [0.5, '#146AEF'], [1, '#001A5C']], line: { color: '#fff', width: .5 } },
-      text: rows.map(r => r.fecha),
-      hovertemplate: '%{text}<br>Brecha laboral: %{x:.2f} pp<br>Brecha inflación: %{y:.2f} pp<extra></extra>' },
-    { x: [x[n - 1]], y: [y[n - 1]], name: 'Último dato', mode: 'markers+text',
-      marker: { size: 12, color: '#146AEF', line: { color: '#000', width: 1.5 } },
-      text: [rows[n - 1].fecha], textposition: 'top center', textfont: { size: 10, color: '#000' } },
+      marker: {
+        size: 7, opacity: .9, line: { color: '#fff', width: .5 },
+        color: yearFrac, colorscale: [[0, '#B9CEFF'], [0.5, '#146AEF'], [1, '#001A5C']],
+        colorbar: { title: { text: 'Año', font: { size: 11 } }, thickness: 10, len: 0.7, outlinewidth: 0,
+                    tickvals, ticktext: tickvals.map(String), tickfont: { size: 10 } },
+      },
+      text: fechas, customdata: rows.map(r => num(r.dg_inf)),
+      hovertemplate: '%{text}<br>Brecha laboral: %{x:.2f} pp'
+        + '<br>Δ brecha de inflación (parcial): %{y:.2f} pp'
+        + '<br>Δ brecha de inflación observado: %{customdata:.2f} pp<extra></extra>' },
+    { x: lineX, y: lineX.map(v => intercept + slope * v), mode: 'lines', legendrank: 2,
+      name: `Ajuste OLS de esta nube (pendiente ${sgn(slope, 4)}, R² = ${r2.toFixed(3)})`,
+      line: { color: '#D9622B', width: 2.4 }, hoverinfo: 'skip' },
   ];
+  if (betaSum !== null) {
+    traces.push({ x: lineX, y: lineX.map(v => ybar + betaSum * (v - xbar)), mode: 'lines', legendrank: 1,
+      name: `Pendiente agregada del modelo (Σβ<sub>u</sub> = ${sgn(betaSum, 4)}${sig})`,
+      line: { color: '#5B6472', width: 1.8, dash: 'dash' }, hoverinfo: 'skip' });
+  }
+  traces.push({ x: [x[n - 1]], y: [y[n - 1]], name: `Último dato (${fechas[n - 1]})`, mode: 'markers', legendrank: 3,
+    marker: { size: 12, color: '#146AEF', line: { color: '#000', width: 1.5 } },
+    text: [fechas[n - 1]],
+    hovertemplate: '%{text}<br>Brecha laboral: %{x:.2f} pp<br>Δ brecha de inflación (parcial): %{y:.2f} pp<extra></extra>' });
+
   Plotly.newPlot('chart-phillips', traces, baseLayout({
-    margin: { t: 10, r: 18, b: 78, l: 62 },
-    legend: { orientation: 'h', y: -0.28, x: 0.5, xanchor: 'center', font: { size: 11 } },
-    xaxis: { title: 'Brecha laboral (desempleo − NAIRU), pp', showgrid: false, zeroline: false, tickfont: { size: 11 } },
-    yaxis: { title: 'Brecha de inflación (básica − meta), pp', gridcolor: '#eceff5', zeroline: false, tickfont: { size: 11 } },
+    margin: { t: 10, r: 18, b: 108, l: 62 },
+    legend: { orientation: 'h', y: -0.30, x: 0.5, xanchor: 'center', yanchor: 'top', font: { size: 11 } },
+    xaxis: { title: 'Brecha laboral actual: desempleo − NAIRU, pp', showgrid: false, zeroline: false, tickfont: { size: 11 } },
+    yaxis: { title: 'Δ brecha de inflación (parcial), pp', gridcolor: '#eceff5', zeroline: false, tickfont: { size: 11 } },
     hovermode: 'closest',
   }), CONF);
 }

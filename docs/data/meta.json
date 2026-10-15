@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-09-17 20:22",
+  "last_updated": "2026-10-15 21:30",
   "last_obs_nairu": "2025-12-01",
   "n_obs_monthly": 262,
   "n_obs_quarterly": 85,
@@ -14,5 +14,7 @@
   "latest_pib_pot_idx": 172.34,
   "last_obs_pib": "2026-01-01",
   "latest_brecha_viog": -0.18,
-  "last_obs_viog": "2026-01-01"
+  "last_obs_viog": "2026-01-01",
+  "phillips_sum_beta_u": -0.0201,
+  "phillips_sum_beta_u_p": 0.118
 }
