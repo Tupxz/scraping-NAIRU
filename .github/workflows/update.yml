@@ -35,13 +35,13 @@ jobs:
     steps:
       # 1. Clonar el repositorio (incluye data/processed/ cacheado)
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0   # historial completo para el push
 
       # 2. Python 3.11
       - name: Configurar Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -90,18 +90,16 @@ jobs:
       - name: Construir Data_NAIRU.xlsx
         run: python -m src.main --nairu-dataset
 
-      # PAUSADO 2026-09-01: model_core.py:1386-1392 tiene un off-by-one en el
-      # suavizador de Kalman (ver auditoria_src_2026-08-21.md) que corrompe la
-      # NAIRU publicada (~3pp en 2005-01, decae ~2 anios; banda 90% tambien
-      # afectada). Como esta corrida es mensual y estimation.py re-estima cada
-      # vez que Data_NAIRU.xlsx cambia (o sea casi siempre), dejar este paso
-      # activo republica el bug solo, todos los meses, sin que nadie lo pida.
-      # Pausado hasta que el fix de model_core.py tenga tests pasando (hoy
-      # src/nairu/ no tiene NINGUN test) — ver el tracker de limpieza del
-      # repo (plan por fases, Fase 0). `force_reestimate` tampoco salta esta
-      # pausa mientras el bloque de abajo siga comentado.
+      # PAUSADO desde 2026-09-01. El off-by-one del suavizador que motivó la
+      # pausa ya está corregido y con tests (tests/test_nairu.py), pero el
+      # modelo v3 de src/nairu/ será reemplazado por la especificación v7
+      # (docs/integracion_v7.md) y el ICU scrapeado no pasa de 2025-12, así
+      # que re-estimar hoy no agrega meses. Se usa la NAIRU publicada en
+      # outputs/nairu/nairu_colombia.csv (versionada en git desde 2026-10-22;
+      # antes outputs/ estaba ignorado completo y por eso falló la corrida
+      # del 2026-10-01 en --pib-potencial).
       #
-      # Para reactivar cuando el fix este validado: descomentar el bloque de
+      # Para reactivar (cuando v7 este integrado): descomentar el bloque de
       # abajo y borrar el paso "PAUSADO" que lo reemplaza.
       #
       # - name: Estimar NAIRU / NAICU
@@ -114,7 +112,14 @@ jobs:
       #     python -m src.main --nairu-estim
       - name: Estimar NAIRU / NAICU (PAUSADO — ver comentario arriba)
         run: |
-          echo "::warning title=Reestimacion NAIRU pausada::model_core.py tiene un bug conocido (off-by-one en el suavizador de Kalman, ver auditoria_src_2026-08-21.md) - la reestimacion automatica esta PAUSADA desde 2026-09-01. Se conserva outputs/nairu/nairu_colombia.csv tal como esta comiteado; el resto del pipeline sigue con ese archivo."
+          echo "::notice title=Reestimacion NAIRU pausada::Se usa la NAIRU publicada (outputs/nairu/nairu_colombia.csv) hasta integrar la especificacion v7 - ver docs/integracion_v7.md."
+          for f in outputs/nairu/nairu_colombia.csv outputs/nairu/nairu_mle_coefficients.csv; do
+            if [ ! -s "$f" ]; then
+              echo "::error title=Falta la NAIRU publicada::$f no existe en el repo. Comitearlo (o reactivar --nairu-estim) antes de correr --pib-potencial."
+              exit 1
+            fi
+          done
+          echo "NAIRU publicada: $(tail -1 outputs/nairu/nairu_colombia.csv | cut -d, -f1) (ultimo mes)"
 
       - name: Merge dataset consolidado (resiliente)
         run: |
@@ -133,7 +138,7 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add data/processed data/final docs/data
+          git add data/processed data/final docs/data outputs/nairu
 
           if git diff --cached --quiet; then
             echo "Sin cambios — nada que commitear."

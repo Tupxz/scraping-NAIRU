@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.5.13] — 2026-10-22
+
+### Cambiado
+- Limpieza del repo y preparación para integrar la especificación v7 (solo se movieron archivos; ningún cambio de código ni de cifras). Detalle completo de los movimientos en `docs/integracion_v7.md`, sección 5.
+  - Raíz: planes/revisiones de mayo–junio → `docs/archive/`; `Claude outputs/` → `docs/archive/claude_outputs/`.
+  - Material v7: `working_paper_v7.pdf` → `docs/paper/`; `nairu_estimates_v7.csv` y `pib_potencial_integrado_v7_series.csv` → `tests/fixtures/baseline_v7/`; `legacy/v7/` creado para recibir el script.
+  - `docs/`: prompts históricos → `docs/archive/prompts/`; primera nota del VIOG (con errores) y sus artefactos LaTeX → `docs/archive/viog_methodology_v1/`.
+  - `data/inputs/`: insumos sin uso en `src/` (`nairu_estimates_v6.csv`, `Kalman_filter.xlsx`, `Code1.do`, `Empleo/`) → `data/inputs/archive/`.
+  - `notebooks/` y `scripts/`: obsoletos y diagnósticos de una sola vez → `archive/`.
+- `.gitignore`: artefactos de compilación LaTeX y archivos de bloqueo de Office (`~$*`).
+- `README.md`: aviso de transición a v7 y estructura del repositorio actualizada.
+- `pyproject.toml`: versión sincronizada con el CHANGELOG (0.1.0 → 0.5.13).
+
+### Corregido
+- Workflow mensual (`update.yml`): la corrida automática del 2026-10-01 falló en `--pib-potencial` porque `outputs/` estaba ignorado completo y en GitHub no existía `outputs/nairu/nairu_colombia.csv` (la re-estimación automática está pausada). Desde la realineación v3 ese faltante es un error; antes (corrida del 2026-09-01) el código usaba en silencio el desempleo y el ICU observados como NAIRU/NAICU. Ahora `.gitignore` versiona `outputs/nairu/nairu_colombia.csv` y `outputs/nairu/nairu_mle_coefficients.csv` (el resto de `outputs/` sigue ignorado); el paso pausado verifica que existan y falla con un mensaje claro si no; el commit automático incluye `outputs/nairu`. Simulado sobre una copia limpia de los archivos versionados: `--nairu-dataset`, `--merge`, `--pib-potencial` y `--export-web` terminan sin error y regeneran `docs/data/` idéntico al publicado (solo cambia la fecha de `meta.json`).
+- Aviso de pausa actualizado: el bug del suavizador ya está corregido; la pausa sigue hasta integrar v7 (el ICU scrapeado no pasa de 2025-12, así que re-estimar no agrega meses).
+- `actions/checkout@v5` y `actions/setup-python@v6` en ambos workflows (las versiones anteriores usan Node 20, obsoleto en GitHub).
+- Pendiente sin resolver: en la misma corrida fallaron las descargas `--banrep` (inflación) y `--tes` (SUAMECA); el workflow siguió con los datos de septiembre. El log detallado exige iniciar sesión en GitHub.
+
+### Agregado
+- `docs/integracion_v7.md`: diferencias v3 → v7, inventario de insumos que pide v7 frente a lo que produce el scraping (faltan TRM, expectativas EME y salarios EMMET; el ICU no se actualiza — las 264 filas vienen del histórico de v6; el PIB arranca en 2005), lista de verificación para cuando llegue el script y registro de la limpieza.
+
+### Nota
+- Línea base de tests antes y después de la limpieza: 553 pasan, 15 fallan (13 de `TestAgainstV3Baseline` y 2 de `TestComputeVIOGWeights`, ya conocidos desde [0.5.11]).
+- El duplicado NFD de `data/inputs/Boceto Estimación PIB Potencial.xlsx` solo existe en el índice de git; se quita con `git rm --cached` (comando en `docs/integracion_v7.md`).
+
 ## [0.5.12] — 2026-10-15
 
 ### Cambiado

@@ -4,6 +4,11 @@
 [![python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](#3-instalación)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+> **Estado (2026-10-22):** el proyecto está en transición a la especificación **v7**
+> del working paper (`docs/paper/working_paper_v7.pdf`). El código de `src/` implementa
+> todavía la versión v3; varias secciones de este README describen etapas anteriores.
+> Qué falta para v7 y cómo integrarlo: [`docs/integracion_v7.md`](docs/integracion_v7.md).
+
 Pipeline reproducible que descarga, limpia, valida y consolida series macroeconómicas oficiales de Colombia para alimentar dos modelos:
 
 1. **NAIRU/NAICU** — Tasa de desempleo (y de capacidad instalada) consistente con inflación estable. Filtro de Kalman biestado en `src/nairu/`.
@@ -165,32 +170,36 @@ scraping-NAIRU/
 │   ├── config.py              # Dataclasses frozen con URLs, paths, rangos de validación
 │   ├── main.py                # CLI (argparse) — punto de entrada principal
 │   ├── io_utils.py            # save_csv, load_csv (con parse_dates), setup_logging
-│   ├── merge.py               # Outer-merge por date → nairu_dataset.csv (21 cols)
+│   ├── merge.py               # Outer-merge por date → data/final/nairu_dataset.csv
 │   ├── quality_checks.py      # Validaciones por fuente; QualityCheckError
-│   ├── sources/               # Una carpeta por fuente
-│   │   ├── andi/eoic.py       # PDF parsing (pdfplumber + fuzzy matching)
-│   │   ├── banrep/            # inflation.py, tes.py (API SUAMECA)
-│   │   ├── dane/              # unemployment, ipc, informality, gdp, gdp_historical
-│   │   │   └── common.py      # MONTH_ABBR_ES, MONTH_FULL_ES, make_dane_session()
-│   │   ├── fred/brent.py      # Brent (3 niveles de fallback: curl/requests/urllib)
-│   │   ├── pwt/pwt.py         # PWT 11.0 (formato wide/largo auto-detectado)
-│   │   └── viog/viog.py       # 5 filtros (BHP, BK, CF, Butterworth, Kalman LLT) + VIOG ponderado
-│   ├── nairu/                 # Modelo Kalman biestado para NAIRU/NAICU
-│   ├── production/            # Cobb-Douglas: factors.py, tfp.py, pib_potencial.py, excel_writer.py
-│   └── pipelines/             # run_*.py — un orquestador por fuente + run_all + run_merge
-├── tests/                     # 490 tests offline (CSVs sintéticos, sin red)
+│   ├── sources/               # Una carpeta por fuente (andi, banrep, dane, fred, pwt, viog)
+│   ├── nairu/                 # Bloque mensual NAIRU/NAICU (model_core, estimation, phillips)
+│   ├── production/            # Función de producción: factors, tfp, business_cycle, pib_potencial, excel_writer
+│   └── pipelines/             # run_*.py — un orquestador por fuente + merge + export_web_data
+├── tests/
+│   └── fixtures/
+│       ├── baseline_v3/       # Salidas congeladas de legacy/pib_potencial_integrado_v3.py
+│       └── baseline_v7/       # Salidas congeladas del script v7 (referencia a replicar)
+├── legacy/
+│   ├── pib_potencial_integrado_v3.py   # Spec ejecutable v3 (vigente en src/)
+│   ├── v7/                    # Aquí va pib_potencial_integrado_v7.py
+│   └── andi_agent/            # Agente ANDI anterior (no se usa)
 ├── data/
-│   ├── raw/                   # Cacheado de descargas (gitignored)
-│   ├── inputs/                # Inputs manuales (PIB_USA.xlsx, PIB_CO.xlsx)
+│   ├── raw/                   # Cacheado de descargas (casi todo gitignored)
+│   ├── inputs/                # Insumos manuales (PIB_CO, PIB_USA, Boceto, stock de capital, festivos, ICU histórico)
+│   │   └── archive/           # Insumos que ya no lee el código
 │   ├── processed/             # Un CSV por fuente
 │   └── final/                 # nairu_dataset.csv consolidado
 ├── docs/
-│   ├── prompts/               # Prompts para refactors guiados (PWT, code review)
-│   ├── bib/                   # Referencias econométricas
-│   └── *.pdf                  # NAIRU_estimation_process.pdf, etc.
-├── notebooks/                 # Exploración (VIOG.ipynb, validation_v6.ipynb)
-├── outputs/                   # Plots, reportes de pipelines, estimaciones NAIRU
-├── logs/                      # pipeline.log
+│   ├── index.html, data/      # Tablero (GitHub Pages)
+│   ├── paper/                 # Working paper vigente (v7)
+│   ├── integracion_v3.md      # Cómo se alineó src/ con v3
+│   ├── integracion_v7.md      # Inventario y checklist para v7
+│   ├── bib/                   # Bibliografía
+│   └── archive/               # Planes, revisiones y prompts históricos
+├── notebooks/                 # Exploración (archive/ para los obsoletos)
+├── scripts/archive/           # Diagnósticos de una sola vez
+├── outputs/                   # Salidas regenerables (gitignored)
 ├── pyproject.toml             # Fuente de verdad de dependencias
 └── requirements.txt           # Espejo compatible con pip install -r
 ```

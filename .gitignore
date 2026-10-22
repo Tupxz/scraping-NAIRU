@@ -21,7 +21,15 @@ andi_agent/.venv/
 andi_agent/__pycache__/
 
 # Pipeline outputs / reportes
-outputs/
+#   Todo outputs/ es regenerable EXCEPTO la NAIRU publicada: mientras la
+#   re-estimación automática esté pausada, el workflow mensual (update.yml)
+#   necesita estos dos CSV para --pib-potencial y --export-web. Sin ellos en
+#   el repo, la corrida del 2026-10-01 falló. Ver docs/integracion_v7.md.
+outputs/*
+!outputs/nairu/
+outputs/nairu/*
+!outputs/nairu/nairu_colombia.csv
+!outputs/nairu/nairu_mle_coefficients.csv
 
 # Scripts de análisis y calibración
 #   El CÓDIGO sí se versiona: es la evidencia metodológica del informe
@@ -258,3 +266,12 @@ legacy/**/data/
 _to_delete/
 *cowork_snapshot.tgz
 *_cowork_stage.tgz
+
+# ── Limpieza 2026-10-22 ─────────────────────────────────────────────────────
+# Artefactos de compilación LaTeX
+*.aux
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+# Archivos de bloqueo de Office
+~$*
