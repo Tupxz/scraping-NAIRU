@@ -79,6 +79,7 @@ jobs:
           scrape --banrep         # BANREP inflación (SUAMECA)
           scrape --tes            # BANREP TES Cero Cupón
           scrape --brent          # FRED Brent
+          scrape --trm            # SFC TRM diaria → promedio mensual (datos.gov.co)
           # NOTA: --viog-co NO se corre en automático. El filtro Kalman (UCM) de
           # VIOG-Colombia puede diverger con datos nuevos (dio un transitorio de
           # ~200% en 2005-Q1 al recomputar). El VIOG se mantiene estable desde su
