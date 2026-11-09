@@ -1,7 +1,7 @@
 """Configuración central del pipeline NAIRU Colombia.
 
 Define rutas, URLs y parámetros utilizados por todos los módulos.
-Fuentes: desempleo/TGP/PET GEIH (DANE), IPC (DANE), inflación (BANREP), Brent (FRED), PWT 11.0 (capital stock + capital humano).
+Fuentes: desempleo/TGP/PET GEIH (DANE), IPC (DANE), inflación (BANREP), Brent (FRED), TRM (SFC), PWT 11.0 (capital stock + capital humano).
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ RAW_BANREP_DIR: Path = RAW_DIR / "banrep"
 RAW_FRED_DIR: Path = RAW_DIR / "fred"
 RAW_ANDI_DIR: Path = RAW_DIR / "andi"
 RAW_PWT_DIR: Path = RAW_DIR / "pwt"
+RAW_SFC_DIR: Path = RAW_DIR / "sfc"
 OUTPUTS_DIR: Path = PROJECT_ROOT / "outputs"
 
 
@@ -678,6 +679,65 @@ class BrentConfig:
 BRENT_CONFIG = BrentConfig()
 
 
+# ── Configuración TRM (SFC vía datos.gov.co) ────────────────────────
+
+@dataclass(frozen=True)
+class TRMConfig:
+    """Configuración para la Tasa Representativa del Mercado (COP por USD).
+
+    La Superintendencia Financiera (SFC) publica la TRM diaria en el
+    portal de datos abiertos (Socrata, conjunto ``32sa-8pi3``).  Cada
+    registro trae ``valor``, ``unidad``, ``vigenciadesde`` y
+    ``vigenciahasta``: una misma TRM puede regir varios días calendario
+    (fines de semana y festivos), e incluso cruzar de un mes al siguiente
+    (p. ej. vigente del sábado 31-oct al martes 3-nov).
+
+    Promedio mensual (``ponderacion``):
+
+    - ``"dias_calendario"`` (por defecto): cada registro se expande a
+      todos los días de su vigencia y se promedian los días calendario
+      del mes.  Así cada día pesa igual y una vigencia que cruza de mes
+      se reparte entre los dos meses.
+    - ``"registro"``: promedio simple de los registros cuya
+      ``vigenciadesde`` cae en el mes (cada TRM publicada pesa igual,
+      sin importar cuántos días rija).
+
+    Solo se publican meses completos: todos sus días calendario deben
+    tener TRM vigente (el mes en curso queda fuera).
+    """
+
+    # ── Fuente ────────────────────────────────────────────────────
+    endpoint_url: str = "https://www.datos.gov.co/resource/32sa-8pi3.csv"
+    page_size: int = 5000          # filas por página ($limit / $offset)
+    start_date: str = "2001-01-01"  # primer mes publicado (ISO)
+    ponderacion: str = "dias_calendario"   # o "registro"
+    unidad_esperada: str = "COP"
+
+    # Error si la última vigencia descargada termina más de N días
+    # antes de hoy (portal desactualizado o descarga truncada).
+    max_dias_rezago: int = 15
+
+    # ── Archivos ──────────────────────────────────────────────────
+    raw_csv_filename: str = "trm_diaria_raw.csv"
+    processed_filename: str = "trm_cop_usd_promedio_mensual.csv"
+    # Copia para que legacy/v7/pib_potencial_integrado_v7.py corra tal
+    # cual (lo busca junto al script).  Ruta relativa a PROJECT_ROOT.
+    legacy_v7_copy: str = "legacy/v7/trm_cop_usd_promedio_mensual.csv"
+
+    # ── HTTP ──────────────────────────────────────────────────────
+    timeout: int = 60
+    max_retries: int = 3
+    http_headers: dict[str, str] = field(
+        default_factory=lambda: {
+            "Accept": "text/csv,*/*;q=0.9",
+            "User-Agent": "scraping-NAIRU/1.0 (pipeline de datos abiertos)",
+        }
+    )
+
+
+TRM_CONFIG = TRMConfig()
+
+
 # ── Configuración ANDI – Capacidad Instalada (EOIC) ─────────────────
 
 @dataclass(frozen=True)
@@ -864,6 +924,19 @@ ANDI_PROCESSED_COLUMNS: list[str] = [
 # Brent: rangos razonables (USD/barril)
 BRENT_PRICE_MIN: float = 0.01   # Precio > 0 (incluye colapso 2020)
 BRENT_PRICE_MAX: float = 200.0  # Máximo defensivo (pico histórico ~147)
+
+TRM_PROCESSED_COLUMNS: list[str] = [
+    "date",
+    "year",
+    "month",
+    "trm_cop_usd",
+    "source",
+    "download_date",
+]
+
+# TRM: rangos razonables (COP por USD; desde 2001 ~1.700–5.000)
+TRM_MIN: float = 1_000.0
+TRM_MAX: float = 10_000.0
 
 # ANDI: rangos razonables (porcentaje de utilización de capacidad instalada)
 CAPACITY_UTILIZATION_MIN: float = 30.0   # Mínimo plausible (crisis profunda)

@@ -25,13 +25,14 @@ from src.config import (
     RAW_DANE_DIR,
     RAW_FRED_DIR,
     RAW_PWT_DIR,
+    RAW_SFC_DIR,
 )
 
 
 def ensure_directories() -> None:
     """Crea los directorios necesarios si no existen."""
     for directory in (
-        RAW_DANE_DIR, RAW_BANREP_DIR, RAW_FRED_DIR, RAW_ANDI_DIR, RAW_PWT_DIR,
+        RAW_DANE_DIR, RAW_BANREP_DIR, RAW_FRED_DIR, RAW_ANDI_DIR, RAW_PWT_DIR, RAW_SFC_DIR,
         PROCESSED_DIR, LOGS_DIR, OUTPUTS_DIR,
     ):
         directory.mkdir(parents=True, exist_ok=True)
