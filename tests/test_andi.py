@@ -718,3 +718,34 @@ class TestAndiConfig:
         assert "capacity_utilization" in ANDI_PROCESSED_COLUMNS
         assert "date" in ANDI_PROCESSED_COLUMNS
         assert len(ANDI_PROCESSED_COLUMNS) == 6
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Histórico ICU (data/inputs/icu_historical.csv)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestLoadIcuHistorical:
+    """El histórico de la ANDI arranca en 2001-01 (no en 2004)."""
+
+    def test_conserva_2001_y_descarta_anteriores(self, tmp_path):
+        from src.sources.andi.eoic import _load_icu_historical
+
+        p = tmp_path / "icu.csv"
+        p.write_text(
+            "date,year,month,capacity_utilization,source,download_date\n"
+            "2000-12-01,2000,12,70.0,x,2026-11-09\n"
+            "2001-01-01,2001,1,63.903334,x,2026-11-09\n"
+            "2004-01-01,2004,1,71.9587,x,2026-05-05\n",
+            encoding="utf-8",
+        )
+        fechas = [r["date"] for r in _load_icu_historical(p)]
+        assert fechas == ["2001-01-01", "2004-01-01"]
+
+    def test_archivo_del_repo_sin_huecos_2001_2025(self):
+        from src.config import INPUTS_DIR
+
+        h = pd.read_csv(INPUTS_DIR / "icu_historical.csv", parse_dates=["date"])
+        meses = h["date"].dt.to_period("M")
+        assert meses.tolist() == list(pd.period_range("2001-01", "2025-12", freq="M"))
+        assert h["capacity_utilization"].notna().all()

@@ -54,6 +54,9 @@ _PERCENT_RE = re.compile(ANDI_CONFIG.percent_pattern)
 
 _MONTH_MAP: dict[str, int] = ANDI_CONFIG.month_map
 
+# Primer mes del histórico ICU de la ANDI (data/inputs/icu_historical.csv).
+ICU_HISTORICAL_START: str = "2001-01-01"
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # Capa 1 — Scraping: ANDIScraper
@@ -752,7 +755,7 @@ def _load_icu_historical(
 ) -> list[dict]:
     """Carga la serie ICU histórica semilla (data/inputs/icu_historical.csv).
 
-    Esta serie cubre 2004–2025 y sirve como base histórica para el pipeline
+    Esta serie cubre 2001–2025 y sirve como base histórica para el pipeline
     ANDI.  El pipeline solo necesita añadir observaciones **posteriores** a
     la última fecha de este archivo.
 
@@ -770,15 +773,17 @@ def _load_icu_historical(
         df = pd.read_csv(path)
         df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
 
-        # La EOIC solo existe desde 2004: descartar cualquier fila anterior.
-        pre2004_mask = df["date"] < "2004-01-01"
-        if pre2004_mask.any():
+        # El histórico de la ANDI arranca en 2001-01 (2001–2003 vienen del
+        # Data_NAIRU.xlsx del commit a30fb4b; v7 desestacionaliza con STL
+        # desde 2001).  Cualquier fila anterior es un error de la semilla.
+        pre_mask = df["date"] < ICU_HISTORICAL_START
+        if pre_mask.any():
             logger.warning(
                 "[ANDI] icu_historical.csv: descartando %d filas anteriores a "
-                "2004-01-01 (fechas incorrectas en la semilla).",
-                pre2004_mask.sum(),
+                "%s (fechas incorrectas en la semilla).",
+                pre_mask.sum(), ICU_HISTORICAL_START,
             )
-            df = df[~pre2004_mask].reset_index(drop=True)
+            df = df[~pre_mask].reset_index(drop=True)
 
         records = df[ANDI_PROCESSED_COLUMNS].to_dict("records")
         logger.info(
