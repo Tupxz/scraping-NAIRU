@@ -15,12 +15,15 @@ Pipeline de 3 capas:
    - ``"dias_calendario"`` (por defecto): cada registro se expande a los
      días de su vigencia y se promedian los días calendario del mes.  Un
      registro vigente del sábado 31-oct al martes 3-nov aporta 1 día a
-     octubre y 3 a noviembre.
+     octubre y 3 a noviembre.  Es la convención del promedio mensual de la
+     TRM del Banco de la República y la que usó el script del compañero
+     (``legacy/v7/download_trm_cop_usd.py`` en main).
    - ``"registro"``: promedio simple de los registros cuya
      ``vigenciadesde`` cae en el mes (ese mismo registro cuenta entero
      para octubre).
 
    Solo se publican meses completos (todos sus días con TRM vigente).
+   El promedio se guarda con 6 decimales.
 
 Salida: ``data/processed/trm_cop_usd_promedio_mensual.csv`` con
 ``date, year, month, trm_cop_usd, source, download_date`` y, para que
@@ -355,7 +358,7 @@ def limpiar_trm(
     """Recorta a ``config.start_date``, redondea y agrega metadatos."""
     inicio = pd.Timestamp(config.start_date).to_period("M").to_timestamp()
     df = df_mensual[df_mensual["date"] >= inicio].copy()
-    df["trm_cop_usd"] = df["trm_cop_usd"].round(4)
+    df["trm_cop_usd"] = df["trm_cop_usd"].round(6)
     df["year"] = df["year"].astype(int)
     df["month"] = df["month"].astype(int)
     df["source"] = FUENTE
