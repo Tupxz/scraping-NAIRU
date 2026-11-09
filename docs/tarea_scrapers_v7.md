@@ -46,6 +46,12 @@ Luego: 9 (Banrep, rompe el workflow) → 7 (ICU) → 2, 3 (entran a la estimaci�
 final) → 4 → 8 → 5, 6 (los lee el script; verificar si la especificación final
 los usa).
 
+## Estado
+
+| # | Estado | Detalle |
+|---|---|---|
+| 1 | ✅ 2026-11-09 | `--trm` → `data/processed/trm_cop_usd_promedio_mensual.csv` + copia en `legacy/v7/`. Promedio por **días calendario** (`TRMConfig.ponderacion`; alternativa `"registro"`), solo meses completos, 2001-01 → último mes cerrado. Sin CSV del compañero para comparar; ver `CHANGELOG.md` (Sin publicar). |
+
 ## Validación
 Los CSV originales del compañero están en `legacy/v7/datos/` (y su constructor de
 salarios en `legacy/v7/construir_salarios_emmet.py`, que lee el anexo EMMET y

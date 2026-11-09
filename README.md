@@ -111,6 +111,7 @@ python -m src.main --ipc             # IPC DANE
 python -m src.main --banrep          # Inflación (meta, observada, núcleo)
 python -m src.main --tes             # TES Cero Cupón
 python -m src.main --brent           # Brent FRED
+python -m src.main --trm             # TRM promedio mensual (SFC, datos.gov.co)
 python -m src.main --andi            # ANDI EOIC (incremental)
 python -m src.main --andi-backfill   # ANDI EOIC (reprocesar todos los PDFs)
 python -m src.main --pwt             # PWT 11.0 (capital + depreciación + capital humano)
@@ -227,6 +228,7 @@ Todos los tests son **offline**: usan CSVs sintéticos en `tmp_path`, sin llamad
 | `test_banrep_tes.py` | 40 | SUAMECA TES Cero Cupón, agregación diaria→mensual |
 | `test_andi.py` | 63 | Extracción de PDFs con fuzzy matching |
 | `test_brent.py` | 38 | 3 niveles de fallback FRED |
+| `test_trm.py` | 42 | Paginación datos.gov.co, vigencias continuas, promedio por días calendario |
 | `test_informality.py` | 30 | Reconstrucción de trimestres móviles |
 | `test_dane_gdp.py` | 28 | Parseo Cuadro 4, asignación Q→mes |
 | `test_merge_derived.py` | 16 | Variables derivadas ipc_yoy, ipc_mom, inflation_gap |

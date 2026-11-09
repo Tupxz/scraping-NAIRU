@@ -1,5 +1,22 @@
 # Changelog
 
+## [Sin publicar] — rama `scrapers-v7`
+
+### Agregado
+- Scraper de la **TRM promedio mensual** (COP por USD), insumo 1 de `docs/tarea_scrapers_v7.md` y el único que faltaba para correr `legacy/v7/pib_potencial_integrado_v7.py` (choque petrolero en pesos, `OIL_SHOCK_MODE = "cop"`).
+  - `src/sources/sfc/trm.py` (nuevo): descarga paginada (`$limit`/`$offset`, orden por `vigenciadesde`) del conjunto `32sa-8pi3` de datos.gov.co (Superintendencia Financiera). El total descargado se compara con `count(*)` del portal; si no coincide, error. Se exige que las vigencias sean continuas (cada una empieza el día siguiente al fin de la anterior: sin huecos ni traslapes), unidad `COP`, valores > 0 y que la última vigencia no tenga más de 15 días de rezago.
+  - **Regla del promedio mensual: días calendario.** Cada registro se expande a todos los días de su vigencia y se promedian los días del mes: cada día pesa igual, y una vigencia que cruza de mes (p. ej. sábado 31-oct → martes 3-nov-2026) aporta 1 día a octubre y 3 a noviembre. La alternativa "por registro" (promedio simple de las TRM con `vigenciadesde` en el mes) queda disponible con `TRMConfig.ponderacion = "registro"`. Diferencia entre ambas desde 2001: hasta ±0,64 % en el nivel mensual y hasta 0,72 pp en `fx_shock`; efecto en la NAIRU v7 de dic-2025: 0,0005 pp (ver Nota).
+  - Solo se publican **meses completos** (todos sus días calendario con TRM vigente): el mes en curso no entra con un promedio parcial.
+  - Salidas: `data/processed/trm_cop_usd_promedio_mensual.csv` (`date, year, month, trm_cop_usd, source, download_date`; 2001-01 → 2026-10, 310 meses) y la copia `legacy/v7/trm_cop_usd_promedio_mensual.csv` (`date, trm_cop_usd`) que el script v7 busca junto a sí. Crudo en `data/raw/sfc/trm_diaria_raw.csv`.
+  - `src/pipelines/run_trm.py`: valida **antes** de escribir; si falla la descarga, el parsing o un check, no se escribe ni el procesado ni la copia.
+  - `src/quality_checks.py`: `run_trm_checks` (columnas, nulos, rango 1.000–10.000, duplicados, meses consecutivos sin huecos y primer mes = 2001-01). `check_monthly_complete` es genérico (lo pueden usar los demás scrapers v7).
+  - `src/config.py`: `TRMConfig`, `TRM_PROCESSED_COLUMNS`, `TRM_MIN/MAX`, `RAW_SFC_DIR`. `src/main.py`: flag `--trm` (también en `--all`). `update.yml`: `scrape --trm` en el paso "Scrape fuentes".
+  - `tests/test_trm.py` (42 tests, offline): paginación y descarga truncada con un portal simulado, parsing y errores del CSV, continuidad de vigencias, promedio por días calendario y por registro contra cifras calculadas a mano, meses incompletos, checks de calidad y pipeline completo (incluye leer la copia exactamente como la lee v7). Fixture: extracto real de la API, 81 registros del 2024-11-28 al 2025-04-01 (`tests/fixtures/trm/`).
+
+### Nota
+- No hay CSV de TRM del compañero para comparar (ni su `download_trm_cop_usd.py`), así que la regla de promedio no se pudo contrastar contra la suya. Prueba indirecta: el paso 1 de v7 (NAIRU/NAICU) corrido sobre una copia con el `data/inputs/Data_NAIRU.xlsx` del repo da NAIRU dic-2025 = 8,5858 % con días calendario y 8,5863 % por registro; la línea base v7 es 8,6256 % (NAICU 77,704 vs 77,530). La regla de la TRM no explica la diferencia; viene de `Data_NAIRU.xlsx` (desempleo e ICU de dic-2025 no coinciden con los de la línea base: 8,38 vs 8,4 y 78,67 vs 78,65). Para verificar la línea base hace falta el `Data_NAIRU.xlsx` con el que se generó.
+- `pytest tests/`: 588 pasan, 22 fallan; las mismas 22 fallan en `9fa66fb` sin estos cambios (20 de `TestAgainstV3Baseline`, no 13 como dice `CLAUDE.md`, y 2 de `TestComputeVIOGWeights`).
+
 ## [0.5.13] — 2026-10-22
 
 ### Cambiado

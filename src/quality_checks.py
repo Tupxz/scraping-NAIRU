@@ -41,6 +41,9 @@ from src.config import (
     TES_RATE_MIN,
     TGP_MAX,
     TGP_MIN,
+    TRM_MAX,
+    TRM_MIN,
+    TRM_PROCESSED_COLUMNS,
     UNEMPLOYMENT_RATE_MAX,
     UNEMPLOYMENT_RATE_MIN,
 )
@@ -548,6 +551,84 @@ def run_brent_checks(df: pd.DataFrame) -> bool:
     check_date_continuity(df)
 
     logger.info("─── Todas las validaciones Brent pasaron ✓ ───")
+    return True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Validaciones de calidad para la TRM (SFC / datos.gov.co)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def check_trm_columns(df: pd.DataFrame) -> None:
+    """Verifica columnas esperadas del dataset TRM."""
+    missing = set(TRM_PROCESSED_COLUMNS) - set(df.columns)
+    if missing:
+        raise QualityCheckError(f"Columnas TRM faltantes: {missing}")
+    logger.info("✓ Validación de columnas TRM: OK")
+
+
+def check_trm_range(df: pd.DataFrame) -> None:
+    """Verifica que la TRM (COP por USD) esté en rango razonable."""
+    vals = df["trm_cop_usd"].dropna()
+    out_of_range = vals[(vals < TRM_MIN) | (vals > TRM_MAX)]
+    if not out_of_range.empty:
+        raise QualityCheckError(
+            f"Valores de trm_cop_usd fuera de rango [{TRM_MIN}, {TRM_MAX}]: "
+            f"{out_of_range.values[:5]}..."
+        )
+    logger.info("✓ Validación de rango TRM [%.0f, %.0f]: OK", TRM_MIN, TRM_MAX)
+
+
+def check_monthly_complete(
+    df: pd.DataFrame, start_date: str | None = None
+) -> None:
+    """Exige meses consecutivos sin huecos y, opcionalmente, el mes inicial.
+
+    A diferencia de ``check_date_continuity`` (que solo avisa), aquí un
+    hueco es un error: la serie se usa en diferencias mensuales.
+    """
+    meses = pd.to_datetime(df["date"]).dt.to_period("M").sort_values()
+    if meses.empty:
+        raise QualityCheckError("Serie mensual vacía.")
+    esperados = pd.period_range(meses.iloc[0], meses.iloc[-1], freq="M")
+    faltan = esperados.difference(pd.PeriodIndex(meses))
+    if len(faltan):
+        raise QualityCheckError(
+            f"Faltan {len(faltan)} meses en la serie: "
+            f"{[str(p) for p in faltan[:5]]}..."
+        )
+    if start_date is not None:
+        inicio = pd.Period(start_date, freq="M")
+        if meses.iloc[0] != inicio:
+            raise QualityCheckError(
+                f"La serie empieza en {meses.iloc[0]}, se esperaba {inicio}."
+            )
+    logger.info(
+        "✓ Validación de meses completos (%s → %s): OK",
+        meses.iloc[0], meses.iloc[-1],
+    )
+
+
+def run_trm_checks(df: pd.DataFrame, start_date: str | None = None) -> bool:
+    """Ejecuta todas las validaciones de calidad para la TRM mensual.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame TRM procesado.
+    start_date : str | None
+        Si se da, el primer mes de la serie debe ser el de esta fecha.
+    """
+    logger.info("─── Validaciones de calidad TRM ───")
+    logger.info("Dataset: %d filas × %d columnas", *df.shape)
+
+    check_trm_columns(df)
+    check_no_nulls_generic(df, ["date", "year", "month", "trm_cop_usd"])
+    check_trm_range(df)
+    check_no_duplicates(df)
+    check_monthly_complete(df, start_date)
+
+    logger.info("─── Todas las validaciones TRM pasaron ✓ ───")
     return True
 
 
