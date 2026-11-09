@@ -24,10 +24,22 @@
   - Efecto colateral: `unemployment_rate` también la leen `run_pib_potencial.py`, `build_production_function_dataset.py` y `merge.py`; ahora reciben la TD a 1 decimal (diferencia ≤ 0,05 pp frente a la calculada).
   - Tests: `tests/test_geih.py::TestTDPublicada` (14): redondeo como el anexo (8,25 → 8,3; 8,35 → 8,4), publicada vs calculada en un anexo sintético coherente, controles de calidad y, con la hoja real "Total nacional" del anexo de **ene-2026** (`tests/fixtures/geih/`), que la TD publicada reproduce el `Unemp_Desest` de `a30fb4b` en 301/301 meses. `tests/test_build_nairu_dataset.py` (4, nuevo): inicio 2001-01, usa la publicada, conserva ICU 2001–2003, Excel legible por v7. El fixture sintético con poblaciones de `test_geih.py` ahora tiene TD = desocupados/FL (antes eran incoherentes) y el de `test_pipeline.py` incluye la columna nueva.
 - `tests/test_nairu.py::test_matches_published_nairu_2004_03_with_published_coefficients` (golden master del modelo v3 sobre el `Data_NAIRU.xlsx` real) marcado con `pytest.mark.skip(reason="v3 se retira; ver docs/integracion_v7.md")`: con `Data_NAIRU.xlsx` desde 2001-01 la muestra v3 arranca en 2004-01, no en 2004-03, y el valor de arranque que fija el test ya no aplica.
+- `data/inputs/Data_NAIRU.xlsx` regenerado con el pipeline: 300 filas, 2001-01 → 2025-12, TD publicada del anexo vigente (sep-2026), ICU de la ANDI desde 2001, Brent FRED `POILBREUSDM`. Decisión del usuario: el pipeline automático usa la TD desestacionalizada **vigente** del DANE (no se congela el anexo de ene-2026) y el Brent de FRED; la réplica exacta del paper queda en el modo `--referencia` de `src/pipelines/run_v7.py` (rama main, con `data/inputs/archive/Data_NAIRU_2026-05-11_icu2001.xlsx`), no en el scraping.
 
 ### Nota
 - No hay CSV de TRM del compañero para comparar (ni su `download_trm_cop_usd.py`), así que la regla de promedio no se pudo contrastar contra la suya. Prueba indirecta: el paso 1 de v7 (NAIRU/NAICU) corrido sobre una copia con el `data/inputs/Data_NAIRU.xlsx` del repo da NAIRU dic-2025 = 8,5858 % con días calendario y 8,5863 % por registro; la línea base v7 es 8,6256 % (NAICU 77,704 vs 77,530). La regla de la TRM no explica la diferencia; viene de `Data_NAIRU.xlsx` (desempleo e ICU de dic-2025 no coinciden con los de la línea base: 8,38 vs 8,4 y 78,67 vs 78,65). Para verificar la línea base hace falta el `Data_NAIRU.xlsx` con el que se generó.
 - TD publicada del anexo vigente (sep-2026) frente a `Unemp_Desest` de `a30fb4b`: iguales 147 de 301 meses; 154 difieren (−0,5 a +0,4 pp; 138 dentro de 2004–2025). **Es una revisión del DANE, no un error del parser**: con el anexo de ene-2026 el mismo parser reproduce 301/301; el de dic-2025 coincide en 296/300 (solo la frontera); desde el anexo de feb-2026 el DANE reestimó la desestacionalización y cambió media historia (anexos feb, mar y sep-2026: 153, 152 y 147 coincidencias). Los anexos históricos se descargan de `https://www.dane.gov.co/files/operaciones/GEIH/anex-GEIH-Desestacionalizado-<mes><año>.xlsx`.
+- Paso 1 de v7 (NAIRU/NAICU) sobre una copia, con la TRM nueva, contra `tests/fixtures/baseline_v7/nairu_estimates_v7.csv` (264 meses, 2004-01 → 2025-12):
+
+  | `Data_NAIRU.xlsx` | NAIRU dic-2025 | NAICU dic-2025 | máx. \|dif\| NAIRU | máx. \|dif\| NAICU | máx. \|dif\| ICU desest. |
+  |---|---|---|---|---|---|
+  | `a30fb4b` tal cual | 8,6256 | 77,5298 | 2,0e-5 | 3,4e-6 | 2,6e-13 |
+  | pipeline (este commit) | 8,6092 | 77,4986 | 0,308 (2021-08) | 0,031 (2004-01) | 7,9e-5 |
+  | pipeline + desempleo de `a30fb4b` | 8,6256 | 77,5306 | 0,0037 (2004-01) | 0,0009 | 7,9e-5 |
+  | pipeline + Brent de `a30fb4b` | 8,6090 | 77,4977 | 0,309 | 0,032 | 7,9e-5 |
+  | pipeline + desempleo y Brent de `a30fb4b` | 8,6256 | 77,5298 | 3,5e-5 | 2,0e-6 | 7,9e-5 |
+
+  Línea base: 8,626 / 77,530. Las únicas diferencias son el desempleo (revisión del DANE de feb-2026, domina) y el Brent (el de `a30fb4b` es un promedio por días hábiles de una serie diaria que no es `POILBREUSDM` ni `DCOILBRENTEU`); las TES del repo no cambian nada (solo recortan la muestra). Con ambos insumos de `a30fb4b`, el resto del pipeline (ICU desde 2001, inflación, TES, TRM) reproduce la línea base a 3,5e-5, lo que además valida la TRM por días calendario.
 - `pytest tests/`: 588 pasan, 22 fallan; las mismas 22 fallan en `9fa66fb` sin estos cambios (20 de `TestAgainstV3Baseline`, no 13 como dice `CLAUDE.md`, y 2 de `TestComputeVIOGWeights`).
 
 ## [0.5.13] — 2026-10-22
