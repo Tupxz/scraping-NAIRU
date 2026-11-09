@@ -42,6 +42,7 @@ from src.config import (
     RAW_BANREP_DIR,
 )
 from src.io_utils import save_csv
+from src.sources.banrep.tls import montar_tls_banrep
 
 logger = logging.getLogger("nairu_pipeline.banrep.tes")
 
@@ -67,6 +68,8 @@ def create_session(
     """
     session = requests.Session()
     session.headers.update(config.http_headers)
+    # SUAMECA no envía el certificado intermedio desde 2026-09-11; ver tls.py.
+    montar_tls_banrep(session)
 
     logger.info("Warm-up SUAMECA (TES): %s", config.warmup_url)
     resp = session.get(config.warmup_url, timeout=config.timeout)
