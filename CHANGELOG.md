@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0] — 2026-11-09
+
+### Agregado
+- **Especificación v7 integrada al pipeline** (`src/v7/`, `src/pipelines/run_v7.py`).
+  - `src/v7/motor.py`: copia literal de `legacy/v7/pib_potencial_integrado_v7.py`; el único cambio es que la raíz de insumos y salidas sale de la variable de entorno `V7_ROOT`. Se regenera con `python scripts/sync_motor_v7.py` si el script de referencia cambia (un test exige que la copia siga siendo literal).
+  - `src/v7/insumos.py`: arma la carpeta de insumos del motor. Modo `referencia` = insumos exactos de la línea base; modo `repo` = construidos desde `data/processed/` y `data/inputs/`, usando la referencia solo para lo que el scraping aún no produce (TRM hasta fusionar `scrapers-v7`; EME, EMMET, subempleo, TGP, vacantes; VA petróleo-gas e impuestos menos subvenciones) y registrando la fuente de cada archivo. `Data_NAIRU.xlsx` del repo solo se acepta si su ICU arranca en 2001-01 y su desempleo es la TD publicada por el DANE (decisión del usuario).
+  - `python -m src.pipelines.run_v7 [--referencia]`: corre los pasos 1–3 del motor (~40 s) y deja salidas en `outputs/v7/` (o `outputs/v7_referencia/`) con `fuentes_insumos.json` y `resumen_v7.json`.
+  - `data/inputs/archive/Data_NAIRU_2026-05-11_icu2001.xlsx`: insumo exacto de la línea base, recuperado del commit `a30fb4b`. `legacy/v7/trm_cop_usd_promedio_mensual.csv`: copia de la TRM generada en `scrapers-v7`.
+  - `tests/test_v7.py` (13 tests): la copia del motor es literal; fechas trimestrales; validación de `Data_NAIRU`; estructura de la carpeta de insumos en ambos modos; y **reproducción de la línea base** — NAIRU/NAICU mensual a 1e-4 pp (observado 3e-5, por la TRM) y las 59 columnas trimestrales a rtol 1e-5. NAIRU dic-2025 8,6256 %, NAICU 77,530, brecha 2025T4 −0,10 %, contraste con filtros RMSE 0,71 pp / corr 0,87 / 0,95 / 0,95, idéntico al paper.
+
+### Hallazgo (pendiente de decisión)
+- En modo `repo`, con el PIB desestacionalizado del DANE vigente (descarga del 2026-11-01), Bry-Boschan fecha un pico adicional en **2008T3** (además de 2019T4 y 2023T1). Ese nudo extra cambia la tendencia de la PTF: brecha 2025T4 −0,24 % (vs −0,10 %) y el contraste con los filtros empeora (RMSE 1,08 pp, corr niveles 0,74, banda 8–20 años 0,69). Causa: el DANE reestima el ajuste estacional en cada publicación y revisa toda la historia (±0,5 % en niveles; en 2008T2 el crecimiento pasa de +0,93 % a −0,01 %). Verificado aislando insumos: con el PIB de la referencia se vuelve exactamente a la línea base. Hay que decidir si los picos se fijan (como el quiebre de 2014T3) o se re-fechan con cada vintage.
+
 ## [0.5.13] — 2026-10-22
 
 ### Cambiado

@@ -51,3 +51,17 @@ Los CSV originales del compañero están en `legacy/v7/datos/` (y su constructor
 salarios en `legacy/v7/construir_salarios_emmet.py`, que lee el anexo EMMET y
 `banrep_ipc_indice_mensual.csv`). Comparar cada serie scrapeada contra la suya alineando por año-mes; diferencias solo en la
 frontera (revisiones del DANE/Banrep) son aceptables.
+
+
+## Hallazgo 2026-11-09 — insumos exactos de la línea base
+
+`data/inputs/archive/Data_NAIRU_2026-05-11_icu2001.xlsx` (recuperado del commit
+`a30fb4b`) es el insumo de la línea base v7:
+- `Unemp_Desest` = TD desestacionalizada publicada por el DANE (1 decimal):
+  coincide exacto con la línea base en 264/264 meses. La versión actual de
+  `build_nairu_dataset.py` la reemplazó por desocupados/FL calculada (hasta 0,5 pp
+  de diferencia) → **volver a la TD publicada** (decisión del usuario).
+- `ICU` 2001-01 → 2025-12. Los meses 2001–2003 vienen de la ANDI y no están en
+  `icu_historical.csv` → **agregarlos al histórico** (son datos de la ANDI, no se
+  scrapean). Con eso el STL de v7 reproduce el ICU desestacionalizado de la línea
+  base a 8e-5.
