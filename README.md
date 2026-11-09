@@ -114,6 +114,7 @@ python -m src.main --brent           # Brent FRED
 python -m src.main --trm             # TRM promedio mensual (SFC, datos.gov.co)
 python -m src.main --andi            # ANDI EOIC (incremental)
 python -m src.main --andi-backfill   # ANDI EOIC (reprocesar todos los PDFs)
+python -m src.main --andi-ia         # ANDI EOIC con respaldo IA (claude -p, haiku) — SOLO LOCAL
 python -m src.main --pwt             # PWT 11.0 (capital + depreciación + capital humano)
 python -m src.main --dane-gdp        # PIB trimestral DANE
 python -m src.main --informality     # Informalidad GEIH-EISS

@@ -13,6 +13,7 @@ Uso:
     python -m src.main --andi           # Solo ANDI EOIC (incremental)
     python -m src.main --andi-backfill  # ANDI EOIC (backfill completo)
     python -m src.main --andi-reprocess # ANDI EOIC (reprocesar PDFs locales)
+    python -m src.main --andi-ia        # ANDI EOIC con respaldo IA (claude -p), SOLO LOCAL
     python -m src.main --all            # Todos los pipelines de datos + merge (rápido, ~20s)
     python -m src.main --nairu-dataset  # Construir Data_NAIRU.xlsx desde fuentes del repo
     python -m src.main --nairu-estim    # Estimar NAIRU/NAICU (costoso, requiere --nairu-dataset)
@@ -48,6 +49,7 @@ def run_pipeline(
     run_andi: bool = False,
     andi_backfill: bool = False,
     andi_reprocess: bool = False,
+    andi_ia: bool = False,
     run_nairu_dataset: bool = False,
     run_nairu_estimation: bool = False,
     run_merge: bool = False,
@@ -121,7 +123,14 @@ def run_pipeline(
 
         if run_andi:
             from src.pipelines import run_andi as andi_pipeline
-            andi_pipeline.run(backfill=andi_backfill)
+            respaldo = None
+            if andi_ia:
+                # Respaldo manual con IA: solo local, nunca en CI ni en update.yml.
+                from src.sources.andi.respaldo_ia import consultar_claude, en_ci
+                if en_ci():
+                    raise RuntimeError("--andi-ia es solo local: no corre en CI / GitHub Actions.")
+                respaldo = consultar_claude
+            andi_pipeline.run(backfill=andi_backfill, respaldo_ia=respaldo)
 
         if andi_reprocess:
             from src.sources.andi.eoic import reprocess_local_pdfs
@@ -228,6 +237,11 @@ def main() -> None:
         help="Ejecutar pipeline ANDI EOIC en modo backfill (todos los PDFs)",
     )
     parser.add_argument(
+        "--andi-ia", action="store_true",
+        help=("ANDI EOIC con respaldo IA: si el parser no encuentra el dato de un mes, "
+              "consulta a 'claude -p' (modelo haiku). SOLO LOCAL, nunca en CI"),
+    )
+    parser.add_argument(
         "--andi-reprocess", action="store_true",
         help="Reprocesar PDFs locales de ANDI que no están en el CSV",
     )
@@ -283,7 +297,8 @@ def main() -> None:
         return
 
     # Si se pasa --andi-backfill, implica --andi con backfill.
-    use_andi = args.andi or args.andi_backfill
+    # --andi-ia implica --andi (con el respaldo IA activado).
+    use_andi = args.andi or args.andi_backfill or args.andi_ia
 
     # Si no se pasa ningún flag, ejecutar desempleo por defecto.
     any_selected = (
@@ -317,6 +332,7 @@ def main() -> None:
         run_andi=use_andi,
         andi_backfill=args.andi_backfill,
         andi_reprocess=args.andi_reprocess,
+        andi_ia=args.andi_ia,
         run_nairu_dataset=args.nairu_dataset,
         run_nairu_estimation=args.nairu_estim,
         run_merge=args.merge,
