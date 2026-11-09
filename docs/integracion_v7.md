@@ -191,3 +191,40 @@ Correspondencia de módulos:
 
 Estrategia: portar **sin cambiar números**, verificando contra
 `tests/fixtures/baseline_v7/` columna por columna (como se hizo con v3).
+
+
+---
+
+## 7. Estado de la integración (2026-11-09)
+
+**Hecho — línea base reproducida desde el repo.**
+- `src/v7/motor.py` (copia literal del script, raíz por `V7_ROOT`), `src/v7/insumos.py`,
+  `python -m src.pipelines.run_v7 [--referencia]`, `tests/test_v7.py` (13 tests).
+- Modo `referencia`: NAIRU dic-2025 8,6256 %, NAICU 77,530, log L −1056,89, brecha
+  2025T4 −0,10 %, contraste RMSE 0,71 / corr 0,87 / 0,95 / 0,95 — igual al paper.
+  Diferencia máxima con la línea base: 3e-5 pp (NAIRU, por la TRM).
+
+**Modo `repo` — qué falta para que todo salga del scraping** (ver `outputs/v7/fuentes_insumos.json`):
+
+| Insumo | Hoy | Lo resuelve |
+|---|---|---|
+| `Data_NAIRU.xlsx` (TD publicada, ICU desde 2001) | referencia | `scrapers-v7` (en curso) |
+| TRM | referencia en `main` | `scrapers-v7` (hecho, falta fusionar) |
+| EME, EMMET, subempleo, TGP, vacantes | referencia | `scrapers-v7` |
+| `X_vapg`, `BR_tms` (solo fechan T) | referencia | scraper de cuentas nacionales (pendiente) |
+| PIB, ingreso, FBKF, GEIH (PET/FL/ocupados), PWT, capital, festivos | **repo** | — |
+
+**Decisión (2026-11-09): picos según el paper — se re-fechan con Bry-Boschan en cada corrida** (no se fijan). Se registran en `resumen_v7.json` (`picos_bbq`). Contexto: Con el PIB del DANE
+vigente aparece un pico en 2008T3; la brecha 2025T4 pasa a −0,24 % y el contraste con
+filtros empeora (RMSE 1,08). Se documenta la sensibilidad en el paper (nota de corte de datos).
+
+**Decisiones de datos (2026-11-09).** Desempleo: el pipeline automático usa la TD
+desestacionalizada vigente del DANE; la réplica exacta del paper es el modo
+`--referencia` (anexo GEIH de ene-2026, congelado en `data/inputs/archive/`).
+Brent: FRED POILBREUSDM (el paper usó Investing.com; se corrige el texto).
+
+**Siguiente.** Conectar las salidas de v7 al tablero (`export_web_data.py` /
+`docs/index.html`): hoy el tablero lee `outputs/nairu/nairu_colombia.csv` y
+`outputs/pib_potencial/pib_potencial_colombia.csv` del motor v3. Luego retirar v3
+(`src/nairu/model_core.py`, `src/production/`, `baseline_v3/`) y reactivar la
+estimación en `update.yml`.

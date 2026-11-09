@@ -1,6 +1,8 @@
 # Changelog
 
-## [Sin publicar] — rama `scrapers-v7`
+## [0.6.1] — 2026-11-09
+
+Rama `scrapers-v7` (scrapers para v7), fusionada sobre [0.6.0].
 
 ### Agregado
 - Scraper de la **TRM promedio mensual** (COP por USD), insumo 1 de `docs/tarea_scrapers_v7.md` y el único que faltaba para correr `legacy/v7/pib_potencial_integrado_v7.py` (choque petrolero en pesos, `OIL_SHOCK_MODE = "cop"`).
@@ -60,6 +62,19 @@
   Línea base: 8,626 / 77,530. Las únicas diferencias son el desempleo (revisión del DANE de feb-2026, domina) y el Brent (el de `a30fb4b` es un promedio por días hábiles de una serie diaria que no es `POILBREUSDM` ni `DCOILBRENTEU`); las TES del repo no cambian nada (solo recortan la muestra). Con ambos insumos de `a30fb4b`, el resto del pipeline (ICU desde 2001, inflación, TES, TRM) reproduce la línea base a 3,5e-5, lo que además valida la TRM por días calendario.
 - Validación del extractor del ICU contra el histórico (96 informes únicos de `data/raw/andi/`, 2017-01 → 2026-04; `python -m scripts.validar_icu_eoic`): 85 meses comparables, **error medio |e| = 0,113 pp**, mediano 0,03, **máximo 4,81 pp (may-2021)**; 72 de 85 dentro del redondeo a 1 decimal (≤ 0,05). Las diferencias mayores son revisiones de la ANDI sobre la primera publicación, no errores de lectura: 2020-01 se publicó 80,1 y el informe de un año después cita 79,5 (histórico 79,47); 2021-04: 78,7 → 79,3 (79,29); 2017-02: 73,5 → 72,8 (72,84); may-2021 (paro nacional) se publicó 63,2 y el histórico tiene 68,01 (sin cita posterior en los PDF locales). Fallas: 5 informes de octubre (2017, 2021–2024) no traen el dato mensual (solo promedios), el de "Julio 2020" dice "en junio de 2020 … 77,7%" (el control de mes lo rechaza; el histórico de jul-2020 es 77,70, así que es una errata del informe) y 1 archivo no es PDF (descarga fallida de sep-2018, duplicado de uno que sí lee).
 - `pytest tests/`: 588 pasan, 22 fallan; las mismas 22 fallan en `9fa66fb` sin estos cambios (20 de `TestAgainstV3Baseline`, no 13 como dice `CLAUDE.md`, y 2 de `TestComputeVIOGWeights`).
+
+## [0.6.0] — 2026-11-09
+
+### Agregado
+- **Especificación v7 integrada al pipeline** (`src/v7/`, `src/pipelines/run_v7.py`).
+  - `src/v7/motor.py`: copia literal de `legacy/v7/pib_potencial_integrado_v7.py`; el único cambio es que la raíz de insumos y salidas sale de la variable de entorno `V7_ROOT`. Se regenera con `python scripts/sync_motor_v7.py` si el script de referencia cambia (un test exige que la copia siga siendo literal).
+  - `src/v7/insumos.py`: arma la carpeta de insumos del motor. Modo `referencia` = insumos exactos de la línea base; modo `repo` = construidos desde `data/processed/` y `data/inputs/`, usando la referencia solo para lo que el scraping aún no produce (TRM hasta fusionar `scrapers-v7`; EME, EMMET, subempleo, TGP, vacantes; VA petróleo-gas e impuestos menos subvenciones) y registrando la fuente de cada archivo. `Data_NAIRU.xlsx` del repo solo se acepta si su ICU arranca en 2001-01 y su desempleo es la TD publicada por el DANE (decisión del usuario).
+  - `python -m src.pipelines.run_v7 [--referencia]`: corre los pasos 1–3 del motor (~40 s) y deja salidas en `outputs/v7/` (o `outputs/v7_referencia/`) con `fuentes_insumos.json` y `resumen_v7.json`.
+  - `data/inputs/archive/Data_NAIRU_2026-05-11_icu2001.xlsx`: insumo exacto de la línea base, recuperado del commit `a30fb4b`. `legacy/v7/trm_cop_usd_promedio_mensual.csv`: copia de la TRM generada en `scrapers-v7`.
+  - `tests/test_v7.py` (13 tests): la copia del motor es literal; fechas trimestrales; validación de `Data_NAIRU`; estructura de la carpeta de insumos en ambos modos; y **reproducción de la línea base** — NAIRU/NAICU mensual a 1e-4 pp (observado 3e-5, por la TRM) y las 59 columnas trimestrales a rtol 1e-5. NAIRU dic-2025 8,6256 %, NAICU 77,530, brecha 2025T4 −0,10 %, contraste con filtros RMSE 0,71 pp / corr 0,87 / 0,95 / 0,95, idéntico al paper.
+
+### Hallazgo (pendiente de decisión)
+- En modo `repo`, con el PIB desestacionalizado del DANE vigente (descarga del 2026-11-01), Bry-Boschan fecha un pico adicional en **2008T3** (además de 2019T4 y 2023T1). Ese nudo extra cambia la tendencia de la PTF: brecha 2025T4 −0,24 % (vs −0,10 %) y el contraste con los filtros empeora (RMSE 1,08 pp, corr niveles 0,74, banda 8–20 años 0,69). Causa: el DANE reestima el ajuste estacional en cada publicación y revisa toda la historia (±0,5 % en niveles; en 2008T2 el crecimiento pasa de +0,93 % a −0,01 %). Verificado aislando insumos: con el PIB de la referencia se vuelve exactamente a la línea base. Hay que decidir si los picos se fijan (como el quiebre de 2014T3) o se re-fechan con cada vintage.
 
 ## [0.5.13] — 2026-10-22
 

@@ -275,3 +275,6 @@ _to_delete/
 *.synctex.gz
 # Archivos de bloqueo de Office
 ~$*
+
+# Carpetas de trabajo del motor v7 (se regeneran en cada corrida)
+data/interim/v7_*/
