@@ -109,6 +109,14 @@ class GEIHConfig:
         "sep": 9, "oct": 10, "nov": 11, "dic": 12,
     })
 
+    # ── TD publicada ──────────────────────────────────────────────
+    # La celda TD del anexo guarda 100·desocupados/FL con precisión
+    # completa y el DANE la muestra (publica) con formato "0.0".  El
+    # modelo usa la TD PUBLICADA: la celda redondeada (mitad hacia arriba)
+    # a este número de decimales → ``unemployment_rate``.  La tasa
+    # calculada queda en ``unemployment_rate_calc``.
+    td_decimales_publicados: int = 1
+
     # ── Archivos ──────────────────────────────────────────────────
     raw_html_filename: str = "geih_page.html"
     raw_xlsx_filename: str = "geih_raw.xlsx"
@@ -840,7 +848,8 @@ PROCESSED_COLUMNS: list[str] = [
     "date",
     "year",
     "month",
-    "unemployment_rate",
+    "unemployment_rate",        # TD desestacionalizada publicada (1 decimal)
+    "unemployment_rate_calc",   # 100·desocupados/(ocupados+desocupados)
     "tgp_rate",
     "occupied_thousands",
     "unemployed_thousands",

@@ -698,10 +698,15 @@ def sample_geih_xlsx_with_pet(tmp_path: Path) -> Path:
     emp_row: list = ["Población ocupada"]
     unemp_row: list = ["Población desocupada"]
     inact_row: list = ["Población fuera de la fuerza de trabajo"]
-    for _ in range(total_data_cols):
+    # Desocupados varían por mes; la TD es 100·desocupados/FL con precisión
+    # completa, como en el anexo real (el DANE la muestra con 1 decimal).
+    td_vals: list[float] = []
+    for k in range(total_data_cols):
+        desocupados = 3_000.0 + 10.0 * k
         emp_row.append(21_000.0)
-        unemp_row.append(3_000.0)
+        unemp_row.append(desocupados)
         inact_row.append(14_500.0)
+        td_vals.append(100.0 * desocupados / (21_000.0 + desocupados))
     rows.append(emp_row)
     rows.append(unemp_row)
     rows.append(inact_row)
@@ -713,10 +718,7 @@ def sample_geih_xlsx_with_pet(tmp_path: Path) -> Path:
     rows.append(tgp_row)
 
     # Fila TD
-    td_row: list = ["Tasa de Desocupación (TD)"]
-    for y_idx in range(num_years):
-        for m_idx in range(12):
-            td_row.append(round(10.0 + y_idx * 0.5 + m_idx * 0.1, 2))
+    td_row: list = ["Tasa de Desocupación (TD)"] + td_vals
     rows.append(td_row)
 
     path = tmp_path / "geih_with_pet.xlsx"
@@ -853,3 +855,105 @@ class TestSeriesMapFase2:
         df_bad2.loc[0, "pet_thousands"] = 5_000.0
         with pytest.raises(QualityCheckError, match="pet_thousands fuera de rango"):
             run_labor_checks(df_bad2)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TD publicada (1 decimal) vs. calculada (desocupados/FL)
+# ═══════════════════════════════════════════════════════════════════════
+
+FIXTURES_GEIH = Path(__file__).parent / "fixtures" / "geih"
+ANEXO_ENE2026 = FIXTURES_GEIH / "anex-GEIH-Desestacionalizado-ene2026_total_nacional.xlsx"
+UNEMP_A30 = FIXTURES_GEIH / "unemp_desest_a30fb4b.csv"
+
+
+class TestTDPublicada:
+    """La TD del modelo es la publicada por el DANE (celda del anexo a 1 decimal)."""
+
+    @pytest.mark.parametrize("valor, esperado", [
+        (14.058184369275809, 14.1),
+        (8.25, 8.3),            # mitad hacia arriba (round() daría 8.2)
+        (8.35, 8.4),            # 8.35 en binario es 8.3499999...; el anexo muestra 8.4
+        (12.04999999, 12.0),
+        (9.95, 10.0),
+    ])
+    def test_redondeo_como_el_anexo(self, valor, esperado):
+        from src.sources.dane.unemployment import redondear_como_publicado
+
+        assert redondear_como_publicado(pd.Series([valor]), 1).iloc[0] == esperado
+
+    def test_redondeo_conserva_nan(self):
+        from src.sources.dane.unemployment import redondear_como_publicado
+
+        assert redondear_como_publicado(pd.Series([float("nan")]), 1).isna().all()
+
+    def test_sintetico_publicada_y_calculada(self, sample_geih_xlsx_with_pet: Path):
+        df = clean_geih_data(sample_geih_xlsx_with_pet, GEIH_CONFIG)
+        assert "unemployment_rate_calc" in df.columns
+        # primer mes: 3000 / 24000 = 12.5 % exacto
+        assert df["unemployment_rate_calc"].iloc[0] == pytest.approx(12.5, abs=1e-12)
+        # segundo mes: 3010 / 24010 = 12.5364...% → publicada 12.5
+        assert df["unemployment_rate_calc"].iloc[1] == pytest.approx(100 * 3010 / 24010)
+        assert df["unemployment_rate"].iloc[1] == 12.5
+        assert run_all_checks(df) is True
+
+    def test_sin_poblaciones_la_calculada_es_la_celda(self, sample_geih_xlsx: Path, geih_config: GEIHConfig):
+        crudo = load_geih_excel(sample_geih_xlsx, geih_config)
+        df = clean_geih_data(sample_geih_xlsx, geih_config)
+        assert df["unemployment_rate_calc"].tolist() == pytest.approx(crudo["unemployment_rate"].tolist())
+
+    # ── Anexo real (ene-2026) contra el Data_NAIRU.xlsx de a30fb4b ────
+
+    @pytest.fixture(scope="class")
+    def anexo_real(self) -> pd.DataFrame:
+        return clean_geih_data(ANEXO_ENE2026, GEIH_CONFIG).set_index("date")
+
+    def test_anexo_ene2026_reproduce_a30fb4b(self, anexo_real):
+        """La TD publicada del anexo de ene-2026 es el Unemp_Desest de la línea base v7.
+
+        301/301 meses (2001-01 → 2026-01).  Con anexos posteriores (feb-2026+)
+        el DANE reestimó la desestacionalización y ~150 meses cambian ±0.1–0.4.
+        """
+        esperado = pd.read_csv(UNEMP_A30, parse_dates=["date"]).set_index("date")["Unemp_Desest"]
+        obtenido = anexo_real["unemployment_rate"].reindex(esperado.index)
+        assert obtenido.notna().all()
+        assert (obtenido - esperado).abs().max() < 1e-9
+        assert len(esperado) == 301
+
+    def test_anexo_real_cobertura_y_empalme_2006(self, anexo_real):
+        assert anexo_real.index.min() == pd.Timestamp("2001-01-01")
+        assert anexo_real.index.max() == pd.Timestamp("2026-01-01")
+        # jul/ago-2006 ("Jul*", "Ago*" en el anexo) están y son 1 decimal
+        assert anexo_real.loc["2006-07-01", "unemployment_rate"] == pytest.approx(12.1)
+        assert anexo_real.loc["2006-08-01", "unemployment_rate"] == pytest.approx(13.1)
+
+    def test_anexo_real_calculada_es_desocupados_sobre_fl(self, anexo_real):
+        fl = anexo_real["occupied_thousands"] + anexo_real["unemployed_thousands"]
+        aprox = 100 * anexo_real["unemployed_thousands"] / fl   # poblaciones redondeadas a 0.1 mil
+        assert (anexo_real["unemployment_rate_calc"] - aprox).abs().max() < 1e-3
+        assert run_all_checks(anexo_real.reset_index()) is True
+
+    # ── Control de calidad ───────────────────────────────────────────
+
+    def _df(self, pub, calc):
+        n = len(pub)
+        return pd.DataFrame({
+            "date": pd.date_range("2025-01-01", periods=n, freq="MS"),
+            "unemployment_rate": pub, "unemployment_rate_calc": calc,
+        })
+
+    def test_check_pasa(self):
+        from src.quality_checks import check_td_publicada
+
+        check_td_publicada(self._df([8.4, 8.3], [8.39976, 8.25]))
+
+    def test_check_mas_de_un_decimal(self):
+        from src.quality_checks import check_td_publicada
+
+        with pytest.raises(QualityCheckError, match="decimal"):
+            check_td_publicada(self._df([8.45, 8.3], [8.45, 8.3]))
+
+    def test_check_publicada_no_es_redondeo(self):
+        from src.quality_checks import check_td_publicada
+
+        with pytest.raises(QualityCheckError, match="no es el redondeo"):
+            check_td_publicada(self._df([8.4, 8.3], [8.4, 8.9]))

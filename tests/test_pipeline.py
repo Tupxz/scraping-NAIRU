@@ -38,6 +38,7 @@ def sample_processed_df() -> pd.DataFrame:
             "year": [2020, 2020, 2020],
             "month": [1, 2, 3],
             "unemployment_rate": [3.6, 3.5, 4.4],
+            "unemployment_rate_calc": [3.6123, 3.4987, 4.4001],
             "tgp_rate": [63.2, 63.0, 62.8],
             "occupied_thousands":   [20_000.0, 20_100.0, 20_200.0],
             "unemployed_thousands": [800.0, 790.0, 810.0],

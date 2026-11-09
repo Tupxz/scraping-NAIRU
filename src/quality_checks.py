@@ -72,7 +72,7 @@ def check_columns(df: pd.DataFrame) -> None:
     QualityCheckError
         Si faltan columnas obligatorias o hay columnas inesperadas.
     """
-    OPTIONAL_COLUMNS: set[str] = {"tgp_rate", "pet_thousands"}
+    OPTIONAL_COLUMNS: set[str] = {"tgp_rate", "pet_thousands", "unemployment_rate_calc"}
 
     expected = set(PROCESSED_COLUMNS)
     actual = set(df.columns)
@@ -198,6 +198,35 @@ def check_date_continuity(df: pd.DataFrame) -> None:
         logger.info("✓ Validación de continuidad temporal: OK")
 
 
+def check_td_publicada(df: pd.DataFrame, decimales: int = 1) -> None:
+    """La TD publicada tiene ``decimales`` y es el redondeo de la calculada.
+
+    ``unemployment_rate`` (publicada, p. ej. 8.4) debe diferir de
+    ``unemployment_rate_calc`` (desocupados/FL, p. ej. 8.3998) en a lo sumo
+    media unidad del último decimal.  Si no, el anexo cambió de estructura
+    (otra fila, otra definición) o el parser tomó la fila equivocada.
+    """
+    pub = df["unemployment_rate"].dropna()
+    escala = 10 ** decimales
+    sobrantes = pub[((pub * escala) - (pub * escala).round()).abs() > 1e-6]
+    if not sobrantes.empty:
+        raise QualityCheckError(
+            f"unemployment_rate tiene más de {decimales} decimal(es): "
+            f"{sobrantes.head().tolist()}"
+        )
+    if "unemployment_rate_calc" not in df.columns:
+        return
+    dif = (df["unemployment_rate"] - df["unemployment_rate_calc"]).abs()
+    tol = 0.5 / escala + 1e-6
+    malos = df.loc[dif > tol, ["date", "unemployment_rate", "unemployment_rate_calc"]]
+    if not malos.empty:
+        raise QualityCheckError(
+            f"TD publicada no es el redondeo de desocupados/FL en {len(malos)} "
+            f"meses (tolerancia {tol:.6f}):\n{malos.head().to_string()}"
+        )
+    logger.info("✓ Validación TD publicada vs calculada: OK")
+
+
 def check_tgp_range(df: pd.DataFrame) -> None:
     """Verifica que tgp_rate esté en un rango razonable.
 
@@ -279,6 +308,7 @@ def run_all_checks(df: pd.DataFrame) -> bool:
     check_columns(df)
     check_no_nulls(df)
     check_unemployment_rate_range(df)
+    check_td_publicada(df)
 
     # Validaciones opcionales: solo si las columnas están presentes
     if "tgp_rate" in df.columns:

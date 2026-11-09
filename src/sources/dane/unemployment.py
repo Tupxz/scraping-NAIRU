@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -522,6 +523,52 @@ def load_geih_excel(
 # ═══════════════════════════════════════════════════════════════════════
 
 
+def redondear_como_publicado(serie: pd.Series, decimales: int) -> pd.Series:
+    """Redondea como lo muestra el DANE en el anexo (mitad hacia arriba).
+
+    Se redondea sobre la representación decimal del número (``repr``),
+    no sobre el binario, para no depender del redondeo bancario de
+    ``round`` ni de errores de representación (p. ej. 8.25 → 8.3).
+    """
+    cuanto = Decimal(1).scaleb(-decimales)
+
+    def _uno(v: float) -> float:
+        if pd.isna(v):
+            return float("nan")
+        return float(Decimal(repr(float(v))).quantize(cuanto, rounding=ROUND_HALF_UP))
+
+    return serie.map(_uno).astype(float)
+
+
+def separar_td_publicada_y_calculada(
+    df: pd.DataFrame,
+    decimales: int = GEIH_CONFIG.td_decimales_publicados,
+) -> pd.DataFrame:
+    """Deja la TD publicada en ``unemployment_rate`` y la calculada aparte.
+
+    - ``unemployment_rate``: celda TD del anexo redondeada a ``decimales``
+      (la cifra que publica el DANE; la usa el modelo como ``Unemp_Desest``).
+    - ``unemployment_rate_calc``: 100·desocupados/(ocupados+desocupados) con
+      precisión completa, desde las filas de población del mismo anexo.  Si
+      esas filas no están, se usa la celda TD sin redondear (que el DANE
+      calcula así).
+
+    La coherencia entre ambas (|publicada − calculada| ≤ media unidad del
+    último decimal) se verifica en ``quality_checks.check_td_publicada``.
+    """
+    df = df.copy()
+    celda = df["unemployment_rate"].astype(float)
+    pobl = ("_raw_pop_employed", "_raw_pop_unemployed")
+    if all(c in df.columns for c in pobl):
+        fl = df["_raw_pop_employed"] + df["_raw_pop_unemployed"]
+        calc = 100.0 * df["_raw_pop_unemployed"] / fl
+        df["unemployment_rate_calc"] = calc.where(calc.notna(), celda)
+    else:
+        df["unemployment_rate_calc"] = celda
+    df["unemployment_rate"] = redondear_como_publicado(celda, decimales)
+    return df
+
+
 def clean_geih_data(
     xlsx_path: Path,
     config: GEIHConfig = GEIH_CONFIG,
@@ -545,6 +592,10 @@ def clean_geih_data(
     df["download_date"] = date.today().isoformat()
     df["year"] = df["year"].astype(int)
     df["month"] = df["month"].astype(int)
+
+    # ── TD publicada (1 decimal) y TD calculada (desocupados/FL) ──
+    if "unemployment_rate" in df.columns:
+        df = separar_td_publicada_y_calculada(df, config.td_decimales_publicados)
 
     # ── Calcular PET a partir de los tres componentes auxiliares ──
     raw_cols = ("_raw_pop_employed", "_raw_pop_unemployed", "_raw_pop_inactive")
