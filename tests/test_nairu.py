@@ -266,6 +266,10 @@ class TestKalmanSmootherRegression:
         assert np.max(np.abs(nairu_mn - nairu_base)) > 1e-6
         assert np.max(np.abs(naicu_mc - naicu_base)) > 1e-6
 
+    # Desde 2026-11 Data_NAIRU.xlsx empieza en 2001-01 (ICU de la ANDI y TD
+    # publicada desde 2001), así que la muestra v3 arranca en 2004-01 y no
+    # en 2004-03: este valor de arranque ya no aplica.
+    @pytest.mark.skip(reason="v3 se retira; ver docs/integracion_v7.md")
     @pytest.mark.skipif(
         not (INPUTS_DIR / "Data_NAIRU.xlsx").exists()
         or not (OUTPUTS_DIR / "nairu" / "nairu_mle_coefficients.csv").exists(),
