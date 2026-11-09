@@ -1,0 +1,15 @@
+INSUMOS DEL MODULO DE PIB POTENCIAL -- construccion desde fuentes originales
+Generado: 2026-10-14 18:50
+
+PIB real desest. (Cuadro 4): 85 trimestres, 2005-03 a 2026-03, base 2015
+VA petroleo y gas (Cuadro 6): 85 trimestres, misma cobertura
+Empalme 2004 del PIB: encadenamiento de tasas con la base 2005 (121,267.8 a 126,619.6 miles de millones)
+X_vapg y BE_inv no se empalman a 2004: solo intervienen en la medida de producto sin petroleo y en el capital por inventario permanente, que no se usan en produccion
+Enfoque del ingreso: 41 trimestres, 2016-03 a 2026-03, precios corrientes
+FBKF desestacionalizada: 86 trimestres, 2005-03 a 2026-06 (columnas: fbkf_suma_componentes_sa)
+Mercado de trabajo (GEIH desest., total nacional): 307 meses, 2001-01 a 2026-07
+Capital humano (PWT 11.0, Colombia): 1950 a 2023, 74 anios observados; la extrapolacion la hace el modelo
+
+Escrito insumos_pib_trimestral.csv  (89 filas)
+Escrito insumos_pib_mensual.csv     (307 filas)
+Escrito insumos_pib_hc_anual.csv    (74 filas)

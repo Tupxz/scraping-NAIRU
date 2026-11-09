@@ -12,7 +12,8 @@ Piezas disponibles:
 |---|---|---|
 | Working paper v7 | `docs/paper/working_paper_v7.pdf` | ✅ |
 | Salidas congeladas v7 | `tests/fixtures/baseline_v7/` | ✅ (NAIRU mensual + 60 columnas trimestrales) |
-| Script de referencia v7 | `legacy/v7/pib_potencial_integrado_v7.py` | ⏳ pendiente (lo pasa el compañero) |
+| Script de referencia v7 | `legacy/v7/pib_potencial_integrado_v7.py` | ✅ recibido 2026-11-09 (3.268 líneas) |
+| Insumos del script | `legacy/v7/datos/` + `legacy/v7/construir_salarios_emmet.py` | ✅ recibidos 2026-11-09, **salvo** `trm_cop_usd_promedio_mensual.csv` (y su `download_trm_cop_usd.py`) |
 
 ---
 
@@ -147,3 +148,46 @@ rm -rf _to_delete     # opcional: residuos (ignorados por git)
 | `~$*.docx/.xlsx` (bloqueos de Office), PNG viejos `*_hp_*` | `_to_delete/limpieza_2026-10-22/` |
 
 `.gitignore`: se añadieron artefactos LaTeX (`*.aux`, `*.fls`, …) y `~$*`.
+
+
+---
+
+## 6. Mapa v7 → `src/` (2026-11-09, script recibido)
+
+El script es autocontenido y lee todo relativo a su carpeta. Para correrlo tal
+cual (paso 1 de la sección 3) lee estos insumos (actualizado 2026-11-09: la carpeta `datos/` del compañero ya está en `legacy/v7/datos/`):
+
+| Lo que lee | Ruta relativa al script | ¿Lo tiene el repo? |
+|---|---|---|
+| `Data_NAIRU.xlsx` (Year, Month, Unemp_Desest, Core_Inf, Inf_Goal, Inf_Rate, Brent_Oil_Price, TES_Rate_1yr_COP/UVR, ICU) | `./` | ✅ `data/inputs/` (lo construye `build_nairu_dataset.py`) |
+| `trm_cop_usd_promedio_mensual.csv` | `./` | ❌ |
+| `insumos_pib_trimestral.csv` (`V_pib, X_vapg, BQ_ra, BR_tms, BS_ebe, BT_im`) | `datos/` | ❌ (derivable de `dane_gdp*` + `dane_gdp_income`; faltan `X_vapg`, `BR_tms`) |
+| `insumos_pib_mensual.csv` (`pet, fl, ocup`) | `datos/` | derivable de `dane_labor_colombia.csv` |
+| `insumos_pib_hc_anual.csv` (`year, hc`) | `datos/` | derivable de `pwt_colombia.csv` |
+| `dane_stock_capital_productivo.csv` (`year, K_prod_mmp`) | `datos/` | ✅ `data/inputs/alt_capital/` (revisar nombre de columna) |
+| `festivos_efectivos_colombia_2001_2026.xlsx` | `./` | ✅ |
+| `eme_expectativas_inflacion_total_mensual_promedio.csv` | `datos/` | ❌ |
+| `emmet_salarios_v7.csv` (+ `construir_salarios_emmet.py`) | `datos/` | ❌ |
+| `geih_tgp_to_td_desest_mensual.csv`, `geih_subempleo_bruto_mensual.csv`, `banrep_vacantes_prensa_mensual.csv` | `datos/` | ❌ (TGP derivable) |
+| `Filtros_PIB_Colombia_CF_dos_colas.xlsx`, hoja `Tendencias` (paso 3) | `./` | Es una **salida de nuestro módulo VIOG** (2026-08-05), no un insumo externo. En el port, el paso 3 lee directo de `data/processed/viog_colombia.csv`; para correr el script tal cual se copia desde `outputs/viog_colombia/` |
+
+Correspondencia de módulos:
+
+| v7 (función) | Reemplaza / va en | Comentario |
+|---|---|---|
+| `load_and_prepare_data`, `desestacionalizar_icu`, choque Brent×TRM | `src/nairu/model_core.py` (carga) | ICU por STL robusto (period 12) **antes** de todo; choque petrolero en pesos |
+| `cargar_datos`, `calcular_ancla_reversion`, `SampleV7` | `src/nairu/` (nuevo `data_v7.py`) | ū por episodios ±0,5 pp ≥ 6 meses; une Data_NAIRU + EME + EMMET + TGP + subempleo + vacantes |
+| `NairuV7Model(MLEModel)`, `EspecV7`, `bounds_espec`, priors, `estimar`/`polish`/`errores_estandar`/`ajustar` | reemplaza `model_core.py` (Kalman propio) | statsmodels; 24 parámetros; multi-arranque con semilla `20260923` + pulido |
+| `paso1_nairu_naicu`, `_escribir_nairu_csv`, `chequeo_ma36` | `src/nairu/estimation.py::build_outputs` | salidas `nairu_estimates_v7.csv`, `estados_v7.csv`, `nairu_mle_coefficients_v7.csv` → mantener `outputs/nairu/nairu_colombia.csv` como contrato del tablero |
+| `bbq_turning_points`, `detectar_picos_bbq`, `construir_variables_ciclo` | `src/production/business_cycle.py` | ya existe desde v3; verificar parámetros |
+| `agregar_mensual_a_trimestral`, `calcular_mercado_laboral`, `estimar_tgp_star` | `src/production/factors.py` | TGP* con brechas de capacidad + MA8 (nuevo) |
+| `leer_festivos_trimestrales`, `calcular_factor_trabajo`, `calcular_capital_humano`, `extrapolar_hc_anual` | `factors.py` | extrapolación hc OLS 2014–2023 anclada |
+| `construir_capital_dane`, `calcular_capital_usado`, `calcular_alpha` | `factors.py` | sin cambio de fondo frente a v3 |
+| `estimar_ptf_tendencia_cbo`, `calcular_ptf_y_potencial`, `calcular_tendencia_hp` | `src/production/tfp.py`, `pib_potencial.py` | quiebre exógeno 2014Q3 + picos BBQ |
+| `ejecutar_pipeline`, `paso2_pib_potencial`, `_ci_pib_potencial` | `src/pipelines/run_pib_potencial.py` | banda 95 % que propaga NAIRU/NAICU; base 2005Q1 |
+| `escribir_excel_salida`, `construir_resumen_*`, `construir_hoja_series` | `src/production/excel_writer.py` | |
+| `paso3_diagnostico_filtros`, `metricas_vs_compuestos` | nuevo `src/pipelines/diagnostico_filtros.py` | lee VIOG desde `data/processed/viog_colombia.csv` en vez del Excel |
+| gráficos (`_graficar_*`) | `outputs/` vía pipeline | opcional |
+
+Estrategia: portar **sin cambiar números**, verificando contra
+`tests/fixtures/baseline_v7/` columna por columna (como se hizo con v3).
