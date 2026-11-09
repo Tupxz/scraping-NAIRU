@@ -299,3 +299,7 @@ date,year,month,capacity_utilization,source,download_date
 2025-10-01,2025,10,79.8674,historical_input://nairu_estimates_v6.csv,2026-05-05
 2025-11-01,2025,11,79.6794,historical_input://nairu_estimates_v6.csv,2026-05-05
 2025-12-01,2025,12,77.4729,historical_input://nairu_estimates_v6.csv,2026-05-05
+2026-01-01,2026,1,76.6,https://www.andi.com.co/Uploads/Informe%20EOIC%20Enero%202026.pdf,2026-11-09
+2026-02-01,2026,2,78.3,https://www.andi.com.co/Uploads/Informe%20EOIC%20Febrero%202026.pdf,2026-11-09
+2026-03-01,2026,3,78.2,https://www.andi.com.co/Uploads/Informe%20EOIC%20Marzo%202026.pdf,2026-11-09
+2026-04-01,2026,4,79.5,https://www.andi.com.co/Uploads/Informe%20EOIC%20Abril%202026.pdf,2026-11-09

@@ -2,7 +2,8 @@
 
 Fixtures offline que simulan la estructura real de la ANDI:
 - Scraping de enlaces EOIC desde HTML mock.
-- Parsing de PDFs con extracción de capacidad instalada.
+- (La extracción desde los informes y el pipeline nuevo se prueban en
+  ``tests/test_andi_icu.py``.)
 - Detección de meses faltantes en el reporte.
 - Detección de valores sospechosos (fuera de rango, cambios bruscos).
 - Validaciones de calidad (columnas, nulos, rangos, duplicados).
@@ -11,10 +12,8 @@ Fixtures offline que simulan la estructura real de la ANDI:
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -37,16 +36,11 @@ from src.quality_checks import (
 )
 from src.sources.andi.eoic import (
     ANDIScraper,
-    EOICParser,
     _build_record,
-    _load_cache,
     _load_existing_dates,
-    _save_cache,
     _save_dataframe,
     generate_report,
-    process_one_pdf,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════════
 # Fixtures
@@ -99,13 +93,6 @@ def tmp_csv(tmp_path: Path, sample_records: list[dict]) -> Path:
     df = pd.DataFrame(sample_records)
     df.to_csv(csv_path, index=False)
     return csv_path
-
-
-@pytest.fixture()
-def tmp_cache(tmp_path: Path) -> Path:
-    """Archivo de cache temporal."""
-    cache_path = tmp_path / "cache.json"
-    return cache_path
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -199,135 +186,17 @@ class TestANDIScraperDateExtraction:
             ("/eoic-diciembre-2023.pdf", "EOIC Diciembre 2023", "2023-12"),
             ("/eoic-2024_06.pdf", "EOIC Junio", "2024-06"),
             ("/report.pdf", "Sin fecha", None),
+            # URL codificada de la página real: antes "%202026" daba 2020.
+            ("https://www.andi.com.co/Uploads/Informe%20EOIC%20Enero%202026.pdf",
+             "Informe EOIC Enero 2026", "2026-01"),
+            ("https://www.andi.com.co/Uploads/Informe%20EOIC%20Abril%202026.pdf", "", "2026-04"),
+            ("https://www.andi.com.co/Uploads/Informe%20EOIC%20Enero%202025%20MARZO%2028%20VF.pdf",
+             "", "2025-01"),
         ],
     )
     def test_extract_date(self, url: str, text: str, expected: str | None) -> None:
         result = ANDIScraper._extract_date(url, text)
         assert result == expected
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# Tests de parsing (EOICParser)
-# ═══════════════════════════════════════════════════════════════════════
-
-
-class TestEOICParser:
-    """Tests del parser de PDFs de la EOIC."""
-
-    def test_normalize_strips_accents(self) -> None:
-        """Normalización quita acentos."""
-        assert EOICParser._normalize("utilización") == "utilizacion"
-        assert EOICParser._normalize("Opinión") == "opinion"
-
-    def test_similarity_identical(self) -> None:
-        """Similitud de cadenas idénticas es 1.0."""
-        assert EOICParser._similarity("hello", "hello") == 1.0
-
-    def test_similarity_different(self) -> None:
-        """Similitud de cadenas diferentes es < 1.0."""
-        assert EOICParser._similarity("hello", "world") < 0.5
-
-    def test_parse_percent_valid(self) -> None:
-        """Parsea porcentajes válidos dentro de rango."""
-        assert EOICParser._parse_percent("72.5") == 72.5
-        assert EOICParser._parse_percent("78,3") == 78.3
-        assert EOICParser._parse_percent("100") == 100.0
-
-    def test_parse_percent_below_min(self) -> None:
-        """Rechaza valores por debajo del mínimo."""
-        assert EOICParser._parse_percent("10.0") is None
-
-    def test_parse_percent_above_max(self) -> None:
-        """Rechaza valores por encima del máximo."""
-        assert EOICParser._parse_percent("120") is None
-
-    def test_parse_percent_invalid(self) -> None:
-        """Rechaza valores no numéricos."""
-        assert EOICParser._parse_percent("abc") is None
-
-    @patch("pdfplumber.open")
-    def test_extract_capacity_from_text(self, mock_open: MagicMock) -> None:
-        """Extrae capacidad usando estrategia de texto."""
-        mock_page = MagicMock()
-        mock_page.extract_text.return_value = (
-            "La utilización de la capacidad instalada fue del 75.2% "
-            "durante el período de referencia."
-        )
-        mock_page.extract_tables.return_value = []
-
-        mock_pdf = MagicMock()
-        mock_pdf.pages = [mock_page]
-        mock_pdf.__enter__ = lambda self: self
-        mock_pdf.__exit__ = MagicMock(return_value=False)
-        mock_open.return_value = mock_pdf
-
-        parser = EOICParser(Path("fake.pdf"))
-        result = parser.extract_capacity_utilization()
-
-        assert result is not None
-        value, context = result
-        assert 74.0 <= value <= 76.0  # 75.2%
-
-    @patch("pdfplumber.open")
-    def test_extract_capacity_from_table(self, mock_open: MagicMock) -> None:
-        """Extrae capacidad usando estrategia de tablas."""
-        mock_page = MagicMock()
-        mock_page.extract_text.return_value = "Sin texto relevante aquí."
-        mock_page.extract_tables.return_value = [
-            [
-                ["Indicador", "Valor"],
-                ["Utilización de la capacidad instalada", "68.7%"],
-            ]
-        ]
-
-        mock_pdf = MagicMock()
-        mock_pdf.pages = [mock_page]
-        mock_pdf.__enter__ = lambda self: self
-        mock_pdf.__exit__ = MagicMock(return_value=False)
-        mock_open.return_value = mock_pdf
-
-        parser = EOICParser(Path("fake.pdf"))
-        # Forzar que text strategy falle limpiando el cache.
-        parser._text = "Sin texto relevante aquí."
-        result = parser._strategy_tables()
-
-        assert result is not None
-        value, context = result
-        assert abs(value - 68.7) < 0.1
-
-    @patch("pdfplumber.open")
-    def test_extract_date_from_content(self, mock_open: MagicMock) -> None:
-        """Extrae fecha del contenido del PDF."""
-        mock_page = MagicMock()
-        mock_page.extract_text.return_value = (
-            "Resultados de la EOIC — Enero de 2024"
-        )
-        mock_pdf = MagicMock()
-        mock_pdf.pages = [mock_page]
-        mock_pdf.__enter__ = lambda self: self
-        mock_pdf.__exit__ = MagicMock(return_value=False)
-        mock_open.return_value = mock_pdf
-
-        parser = EOICParser(Path("fake.pdf"))
-        date = parser.extract_date_from_content()
-        assert date == "2024-01"
-
-    @patch("pdfplumber.open")
-    def test_no_extraction_returns_none(self, mock_open: MagicMock) -> None:
-        """Devuelve None si no se puede extraer nada."""
-        mock_page = MagicMock()
-        mock_page.extract_text.return_value = "Texto sin datos relevantes."
-        mock_page.extract_tables.return_value = []
-
-        mock_pdf = MagicMock()
-        mock_pdf.pages = [mock_page]
-        mock_pdf.__enter__ = lambda self: self
-        mock_pdf.__exit__ = MagicMock(return_value=False)
-        mock_open.return_value = mock_pdf
-
-        parser = EOICParser(Path("fake.pdf"))
-        result = parser.extract_capacity_utilization()
-        assert result is None
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -347,23 +216,6 @@ class TestPipelineHelpers:
         assert rec["capacity_utilization"] == 72.5
         assert rec["source"] == "https://example.com/eoic.pdf"
         assert "download_date" in rec
-
-    def test_load_cache_empty(self, tmp_cache: Path) -> None:
-        """Cache inexistente devuelve dict vacío."""
-        assert _load_cache(tmp_cache) == {}
-
-    def test_save_and_load_cache(self, tmp_cache: Path) -> None:
-        """Guardar y leer cache funciona."""
-        data = {"url1": {"status": "ok"}, "url2": {"status": "failed"}}
-        _save_cache(data, tmp_cache)
-        loaded = _load_cache(tmp_cache)
-        assert loaded == data
-
-    def test_load_cache_corrupted(self, tmp_path: Path) -> None:
-        """Cache corrupto devuelve dict vacío."""
-        cache_path = tmp_path / "bad_cache.json"
-        cache_path.write_text("{invalid json", encoding="utf-8")
-        assert _load_cache(cache_path) == {}
 
     def test_load_existing_dates(self, tmp_csv: Path) -> None:
         """Carga fechas existentes del CSV."""
@@ -389,95 +241,6 @@ class TestPipelineHelpers:
         csv_path = tmp_path / "empty.csv"
         df = _save_dataframe([], csv_path)
         assert df.empty
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# Tests de process_one_pdf
-# ═══════════════════════════════════════════════════════════════════════
-
-
-class TestProcessOnePdf:
-    """Tests del procesamiento unitario de un PDF."""
-
-    def test_skips_cached_url(self, tmp_path: Path) -> None:
-        """Omite PDF si la URL está en cache."""
-        scraper = ANDIScraper(data_dir=tmp_path)
-        cache = {"https://example.com/eoic.pdf": {"status": "ok"}}
-        result = process_one_pdf(
-            {"url": "https://example.com/eoic.pdf", "text": "", "date": "2024-01"},
-            scraper, cache, set(),
-        )
-        assert result is None
-
-    def test_skips_existing_date(self, tmp_path: Path) -> None:
-        """Omite PDF si la fecha ya existe."""
-        scraper = ANDIScraper(data_dir=tmp_path)
-        result = process_one_pdf(
-            {"url": "https://example.com/new.pdf", "text": "", "date": "2024-01"},
-            scraper, {}, {"2024-01"},
-        )
-        assert result is None
-
-    def test_no_url_returns_none(self, tmp_path: Path) -> None:
-        """Devuelve None si no hay URL."""
-        scraper = ANDIScraper(data_dir=tmp_path)
-        result = process_one_pdf(
-            {"url": None, "text": "", "date": None},
-            scraper, {}, set(),
-        )
-        assert result is None
-
-    @patch.object(ANDIScraper, "download_pdf", return_value=None)
-    def test_download_failure(self, mock_dl: MagicMock, tmp_path: Path) -> None:
-        """Devuelve None si la descarga falla."""
-        scraper = ANDIScraper(data_dir=tmp_path)
-        result = process_one_pdf(
-            {"url": "https://example.com/eoic.pdf", "text": "", "date": "2024-01"},
-            scraper, {}, set(),
-        )
-        assert result is None
-
-    @patch.object(EOICParser, "extract_capacity_utilization", return_value=None)
-    @patch.object(ANDIScraper, "download_pdf")
-    def test_extraction_failure(
-        self, mock_dl: MagicMock, mock_extract: MagicMock, tmp_path: Path,
-    ) -> None:
-        """Marca como 'failed' en cache si la extracción falla."""
-        fake_pdf = tmp_path / "fake.pdf"
-        fake_pdf.write_bytes(b"%PDF-1.4 fake")
-        mock_dl.return_value = fake_pdf
-
-        scraper = ANDIScraper(data_dir=tmp_path)
-        cache: dict = {}
-        result = process_one_pdf(
-            {"url": "https://example.com/fail.pdf", "text": "", "date": "2024-01"},
-            scraper, cache, set(),
-        )
-        assert result is None
-        assert cache["https://example.com/fail.pdf"]["status"] == "failed"
-
-    @patch.object(EOICParser, "extract_capacity_utilization")
-    @patch.object(ANDIScraper, "download_pdf")
-    def test_successful_extraction(
-        self, mock_dl: MagicMock, mock_extract: MagicMock, tmp_path: Path,
-    ) -> None:
-        """Devuelve registro válido cuando todo funciona."""
-        fake_pdf = tmp_path / "ok.pdf"
-        fake_pdf.write_bytes(b"%PDF-1.4 fake")
-        mock_dl.return_value = fake_pdf
-        mock_extract.return_value = (75.2, "[text|0.95] capacidad: 75.2%")
-
-        scraper = ANDIScraper(data_dir=tmp_path)
-        cache: dict = {}
-        result = process_one_pdf(
-            {"url": "https://example.com/ok.pdf", "text": "", "date": "2024-03"},
-            scraper, cache, set(),
-        )
-        assert result is not None
-        assert result["capacity_utilization"] == 75.2
-        assert result["date"] == "2024-03-01"
-        assert result["year"] == 2024
-        assert result["month"] == 3
 
 
 # ═══════════════════════════════════════════════════════════════════════

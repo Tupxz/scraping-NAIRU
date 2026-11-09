@@ -51,6 +51,7 @@ los usa).
 | # | Estado | Detalle |
 |---|---|---|
 | 1 | ✅ 2026-11-09 | `--trm` → `data/processed/trm_cop_usd_promedio_mensual.csv` + copia en `legacy/v7/`. Promedio por **días calendario** (`TRMConfig.ponderacion`; alternativa `"registro"`), solo meses completos, 2001-01 → último mes cerrado. Sin CSV del compañero para comparar; ver `CHANGELOG.md` (Sin publicar). |
+| 7 | ✅ 2026-11-09 | Histórico ANDI desde 2001-01 + meses nuevos desde los informes EOIC (`src/sources/andi/extraccion_icu.py`), con controles de mes, rango 55–90, huecos y salto ≤ 8 pp. Error del extractor contra el histórico: medio 0,11 pp, máximo 4,81 (may-2021, revisión). Los informes de octubre no traen el dato mensual: ese mes requiere `--andi-ia` o carga manual en `icu_historical.csv`. |
 
 ## Validación
 Los CSV originales del compañero están en `legacy/v7/datos/` (y su constructor de

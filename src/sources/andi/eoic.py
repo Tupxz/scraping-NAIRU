@@ -1,27 +1,35 @@
-"""Scraping y extracción de la EOIC (ANDI).
+"""Scraping y actualización del ICU desde los informes EOIC de la ANDI.
 
-Módulo de 3 capas:
+1. **SCRAPING** — ``ANDIScraper`` lee la página de la ANDI, identifica los
+   informes mensuales de la EOIC y los descarga a ``data/raw/andi/``.
+2. **EXTRACCIÓN** — ``src/sources/andi/extraccion_icu.py``: texto por
+   columnas, frase del dato del total de la industria y controles.
+3. **PIPELINE** — ``run_andi_pipeline`` arma la serie final:
 
-1. **SCRAPING** — ``ANDIScraper`` navega la página de la ANDI, identifica
-   los PDFs de la EOIC y los descarga a ``data/raw/andi/``.
-2. **PARSING** — ``EOICParser`` extrae el porcentaje de utilización de
-   la capacidad instalada desde cada PDF descargado usando *pdfplumber*
-   y 3 estrategias de extracción (fuzzy text, tablas, regex).
-3. **PIPELINE** — ``run_andi_pipeline`` orquesta la lógica incremental
-   o backfill, produce un DataFrame estándar y genera un reporte.
+   - base = histórico de la ANDI (``data/inputs/icu_historical.csv``, dato
+     dado, **nunca se sobrescribe**);
+   - + meses nuevos ya agregados en corridas anteriores (filas de
+     ``andi_capacidad_instalada.csv`` cuyo mes no está en el histórico);
+   - + meses publicados en la página que no están en ninguno de los dos,
+     en orden: se descarga el informe, se extrae el dato y se valida
+     (mes del dato = mes del informe, rango 55–90, mes anterior presente y
+     salto ≤ 8 pp).  Si algo falla se lanza error y no se escribe nada.
+
+   Con ``respaldo_ia`` (``--andi-ia``, solo local) un mes cuyo texto no
+   trae la frase se consulta a ``claude -p``; el número pasa por los mismos
+   controles y queda marcado en ``source``.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import time
-import unicodedata
+from collections.abc import Callable
 from datetime import datetime, timezone
-from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 import pandas as pd
 import requests
@@ -36,12 +44,24 @@ from src.config import (
     CAPACITY_UTILIZATION_MAX_CHANGE,
     CAPACITY_UTILIZATION_MIN,
     INPUTS_DIR,
-    OUTPUTS_DIR,
     PROCESSED_DIR,
     RAW_ANDI_DIR,
 )
+from src.sources.andi.extraccion_icu import (
+    ICUControlError,
+    ICUExtraccionError,
+    extraer_icu_de_texto,
+    mes_en_portada,
+    mes_en_texto,
+    normalizar,
+    texto_por_columnas,
+    validar_icu_nuevo,
+)
 
 logger = logging.getLogger("nairu_pipeline.andi")
+
+# Respaldo para meses sin frase: (texto, mes) -> (valor, etiqueta para `source`).
+RespaldoICU = Callable[[str, pd.Period], tuple[float, str]]
 
 # ═══════════════════════════════════════════════════════════════════════
 # Constantes locales (derivadas de AndiConfig)
@@ -138,7 +158,10 @@ class ANDIScraper:
         str | None
             Fecha en formato ``"YYYY-MM"`` o ``None``.
         """
-        combined = f"{url} {text}".lower()
+        # La URL se decodifica antes de buscar: en "enero%202026" el patrón
+        # de año tomaba "2020" ("%20" + "20…") y los informes de 2026 se
+        # fechaban en 2020 (por eso el ICU no se actualizaba).
+        combined = f"{unquote(url)} {text}".lower()
 
         # Estrategia 1: buscar patrones "mes (de) año" o "año ... mes"
         # cercanos entre sí.
@@ -149,7 +172,7 @@ class ANDIScraper:
                 start = max(0, m.start() - 30)
                 end = min(len(combined), m.end() + 30)
                 region = combined[start:end]
-                year_m = re.search(r"20[12]\d", region)
+                year_m = re.search(r"(?<!\d)20[0-3]\d(?!\d)", region)
                 if year_m:
                     pos = m.start()
                     candidate = f"{year_m.group()}-{num:02d}"
@@ -306,435 +329,6 @@ class ANDIScraper:
             return None
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Capa 2 — Parsing: EOICParser
-# ═══════════════════════════════════════════════════════════════════════
-
-
-class EOICParser:
-    """Extrae el porcentaje de utilización de capacidad instalada de un PDF.
-
-    Usa 3 estrategias de extracción en orden de prioridad:
-
-    1. **Fuzzy text** — Busca frases similares a las claves en el texto
-       completo y captura el porcentaje más cercano.
-    2. **Tablas** — Escanea tablas extraídas por *pdfplumber* buscando
-       celdas con etiquetas de capacidad y valores porcentuales.
-    3. **Regex** — Busca porcentajes precedidos de palabras clave de
-       capacidad en un radio de 200 caracteres.
-
-    Parameters
-    ----------
-    pdf_path : Path
-        Ruta al archivo PDF.
-    """
-
-    VALUE_MIN: float = CAPACITY_UTILIZATION_MIN
-    VALUE_MAX: float = CAPACITY_UTILIZATION_MAX
-
-    def __init__(self, pdf_path: Path) -> None:
-        self.pdf_path = pdf_path
-        self._text: str | None = None
-        self._pages: list[Any] | None = None
-
-    # ── Helpers ────────────────────────────────────────────────────
-
-    @staticmethod
-    def _normalize(text: str) -> str:
-        """Normaliza texto: quita acentos y pasa a minúsculas."""
-        nfkd = unicodedata.normalize("NFKD", text)
-        return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
-
-    @staticmethod
-    def _similarity(a: str, b: str) -> float:
-        """Ratio de similitud entre dos cadenas."""
-        return SequenceMatcher(None, a, b).ratio()
-
-    @classmethod
-    def _parse_percent(cls, raw: str) -> float | None:
-        """Parsea un string porcentual y valida rango."""
-        try:
-            value = float(raw.replace(",", "."))
-        except (ValueError, TypeError):
-            return None
-        if cls.VALUE_MIN <= value <= cls.VALUE_MAX:
-            return value
-        return None
-
-    # Rango "típico" de capacidad instalada industrial colombiana.
-    _TYPICAL_MIN: float = 65.0
-    _TYPICAL_MAX: float = 90.0
-
-    # Patrones que preceden al valor real de utilización de capacidad.
-    _INDICATOR_RE = re.compile(
-        r"(?:se\s+situ[oó]|se\s+ubic[oó]|fue\s+de|registr[oó]"
-        r"|pas[oó]\s+(?:a|de)|alcanz[oó])\s+(?:en\s+)?",
-        re.IGNORECASE,
-    )
-
-    @classmethod
-    def _rank_candidate(
-        cls,
-        value: float,
-        region: str,
-        match_start: int,
-        anchor_pos: int,
-    ) -> float:
-        """Asigna un puntaje a un candidato de porcentaje.
-
-        Criterios (mayor = mejor):
-        * +3 si el valor está en el rango típico [65, 90].
-        * +2 si el porcentaje está *después* de la posición ancla.
-        * +2 si está precedido por un verbo indicador ("se situó en").
-        * -1 si el valor está fuera del rango típico.
-
-        Parameters
-        ----------
-        value : float
-            Valor porcentual extraído.
-        region : str
-            Fragmento de texto donde se encontró el porcentaje.
-        match_start : int
-            Posición del match dentro de *region*.
-        anchor_pos : int
-            Posición de la frase ancla de capacidad dentro de *region*.
-        """
-        score = 0.0
-        if cls._TYPICAL_MIN <= value <= cls._TYPICAL_MAX:
-            score += 3.0
-        else:
-            score -= 1.0
-        if match_start >= anchor_pos:
-            score += 2.0
-        # Mirar los 60 chars antes del match para buscar verbo indicador.
-        pre_start = max(0, match_start - 60)
-        prefix = region[pre_start:match_start]
-        if cls._INDICATOR_RE.search(prefix):
-            score += 2.0
-        return score
-
-    def _get_text(self) -> str:
-        """Extrae texto completo del PDF (con caché)."""
-        if self._text is None:
-            import pdfplumber
-
-            text_parts: list[str] = []
-            with pdfplumber.open(self.pdf_path) as pdf:
-                self._pages = pdf.pages
-                for page in pdf.pages:
-                    page_text = page.extract_text() or ""
-                    text_parts.append(page_text)
-            self._text = "\n".join(text_parts)
-        return self._text
-
-    # ── Helpers para estrategia 1 (regex rápido) ─────────────────
-
-    @staticmethod
-    def _phrase_to_regex(phrase: str) -> re.Pattern[str]:
-        """Convierte una frase de búsqueda en un regex flexible.
-
-        Cada palabra de la frase se une con ``\\s+`` para tolerar
-        saltos de línea y espacios múltiples.  Las tildes se
-        manejan con clases de caracteres (``[aá]``, ``[oó]``, etc.).
-        El resultado es ~100× más rápido que ventana deslizante +
-        SequenceMatcher.
-        """
-        accent_map = {
-            "a": "[aá]", "e": "[eé]", "i": "[ií]",
-            "o": "[oó]", "u": "[uú]", "n": "[nñ]",
-        }
-        words = phrase.lower().split()
-        regex_words: list[str] = []
-        for word in words:
-            escaped = ""
-            for ch in word:
-                escaped += accent_map.get(ch, re.escape(ch))
-            regex_words.append(escaped)
-        pattern = r"\s+".join(regex_words)
-        return re.compile(pattern, re.IGNORECASE)
-
-    _phrase_regex_cache: dict[str, re.Pattern[str]] = {}
-
-    @classmethod
-    def _get_phrase_regex(cls, phrase: str) -> re.Pattern[str]:
-        """Obtiene (con caché) el regex compilado para una frase."""
-        if phrase not in cls._phrase_regex_cache:
-            cls._phrase_regex_cache[phrase] = cls._phrase_to_regex(phrase)
-        return cls._phrase_regex_cache[phrase]
-
-    # ── Estrategia 1: Regex rápido ────────────────────────────────
-
-    def _strategy_text(self) -> tuple[float, str] | None:
-        """Busca la utilización de capacidad con regex rápido.
-
-        Convierte cada *capacity_phrase* en un regex flexible que
-        tolera tildes y espacios variables.  Para cada coincidencia
-        busca porcentajes cercanos rankeados con ``_rank_candidate``.
-
-        Es ~100× más rápido que la versión anterior (ventana
-        deslizante + ``SequenceMatcher``), al evitar O(n×k×m²)
-        comparaciones en favor de un paso O(n) por regex.
-        """
-        text = self._get_text()
-
-        # Recopilar TODAS las coincidencias regex.
-        matches: list[tuple[float, int, str]] = []  # (score, pos, phrase)
-        for phrase in ANDI_CONFIG.capacity_phrases:
-            rgx = self._get_phrase_regex(phrase)
-            for m in rgx.finditer(text):
-                # Score = 1.0 para coincidencia exacta; ajustar si
-                # el match tiene chars extra (ratio rápido).
-                matched_text = self._normalize(m.group())
-                norm_phrase = self._normalize(phrase)
-                if matched_text == norm_phrase:
-                    score = 1.0
-                else:
-                    # Ratio simplificado: len overlap / max len.
-                    score = min(len(norm_phrase), len(matched_text)) / max(
-                        len(norm_phrase), len(matched_text)
-                    )
-                matches.append((score, m.start(), phrase))
-
-        if not matches:
-            return None
-
-        # Para cada coincidencia, buscar porcentajes cercanos.
-        candidates: list[tuple[float, float, str, float]] = []
-        for match_score, pos, phrase in matches:
-            search_start = max(0, pos - 50)
-            search_end = min(len(text), pos + 300)
-            region = text[search_start:search_end]
-            anchor_offset = pos - search_start
-
-            for m in _PERCENT_RE.finditer(region):
-                val = self._parse_percent(m.group(1))
-                if val is not None:
-                    rank = self._rank_candidate(
-                        val, region, m.start(), anchor_offset,
-                    )
-                    # Bonus pequeño por score de similitud.
-                    rank += match_score * 0.5
-                    context = region[max(0, m.start() - 40) : m.end() + 20].strip()
-                    candidates.append((rank, val, context, match_score))
-
-        if candidates:
-            candidates.sort(key=lambda c: c[0], reverse=True)
-            _, val, context, ms = candidates[0]
-            return val, f"[text|{ms:.2f}] {phrase!r}: {context}"
-
-        return None
-
-    # ── Estrategia 2: Tablas ──────────────────────────────────────
-
-    def _strategy_tables(self) -> tuple[float, str] | None:
-        """Busca la utilización de capacidad en tablas del PDF."""
-        import pdfplumber
-
-        threshold = ANDI_CONFIG.table_similarity_threshold
-
-        with pdfplumber.open(self.pdf_path) as pdf:
-            for page_num, page in enumerate(pdf.pages, 1):
-                tables = page.extract_tables() or []
-                for table in tables:
-                    if not table:
-                        continue
-                    for row in table:
-                        if not row:
-                            continue
-                        row_text = " ".join(
-                            str(cell) for cell in row if cell
-                        )
-                        norm_row = self._normalize(row_text)
-
-                        for phrase in ANDI_CONFIG.capacity_phrases:
-                            norm_phrase = self._normalize(phrase)
-                            if self._similarity(norm_row, norm_phrase) >= threshold or \
-                               norm_phrase in norm_row:
-                                # Buscar valores en las celdas de la fila.
-                                for cell in row:
-                                    if cell is None:
-                                        continue
-                                    for m in _PERCENT_RE.finditer(str(cell)):
-                                        val = self._parse_percent(m.group(1))
-                                        if val is not None:
-                                            return val, (
-                                                f"[table|p{page_num}] "
-                                                f"{row_text[:80]}"
-                                            )
-        return None
-
-    # ── Estrategia 3: Regex con proximidad ────────────────────────
-
-    def _strategy_regex(self) -> tuple[float, str] | None:
-        """Busca porcentajes precedidos de keywords de capacidad."""
-        text = self._get_text()
-        norm_text = self._normalize(text)
-
-        keywords = ["capacidad instalada", "capacidad", "utilizacion"]
-        radius = 200
-
-        candidates: list[tuple[float, float, str]] = []
-        for kw in keywords:
-            for m in re.finditer(re.escape(kw), norm_text):
-                start = max(0, m.start() - radius)
-                end = min(len(text), m.end() + radius)
-                region = text[start:end]
-                anchor_offset = m.start() - start
-                for pm in _PERCENT_RE.finditer(region):
-                    val = self._parse_percent(pm.group(1))
-                    if val is not None:
-                        rank = self._rank_candidate(
-                            val, region, pm.start(), anchor_offset,
-                        )
-                        ctx = region[
-                            max(0, pm.start() - 30) : pm.end() + 20
-                        ].strip()
-                        candidates.append((rank, val, f"[regex] {kw!r}: {ctx}"))
-
-        if candidates:
-            candidates.sort(key=lambda c: c[0], reverse=True)
-            _, val, ctx = candidates[0]
-            return val, ctx
-        return None
-
-    # ── Método principal ──────────────────────────────────────────
-
-    def extract_capacity_utilization(self) -> tuple[float, str] | None:
-        """Extrae el porcentaje de utilización de capacidad instalada.
-
-        Ejecuta las 3 estrategias en orden de prioridad.
-
-        Returns
-        -------
-        tuple[float, str] | None
-            ``(valor, contexto)`` o ``None`` si no se pudo extraer.
-        """
-        for strategy in (
-            self._strategy_text,
-            self._strategy_tables,
-            self._strategy_regex,
-        ):
-            try:
-                result = strategy()
-                if result is not None:
-                    return result
-            except Exception as exc:
-                logger.debug(
-                    "Estrategia %s falló: %s",
-                    strategy.__name__, exc,
-                )
-        return None
-
-    def extract_date_from_content(
-        self, *, hint_month: int | None = None,
-    ) -> str | None:
-        """Intenta inferir la fecha YYYY-MM desde el contenido del PDF.
-
-        Busca co-ocurrencias ``mes + año`` próximas entre sí en las
-        primeras 3 páginas.  Prioriza la primera co-ocurrencia encontrada
-        para evitar que meses de comparaciones interanuales (ej. "en
-        enero comparado con …") ganen sobre el mes del informe.
-
-        Parameters
-        ----------
-        hint_month : int | None
-            Si se conoce el mes (ej. del nombre del archivo),
-            prioriza coincidencias de ese mes.
-
-        Returns
-        -------
-        str | None
-            Fecha en formato ``"YYYY-MM"`` o ``None``.
-        """
-        import pdfplumber
-
-        with pdfplumber.open(self.pdf_path) as pdf:
-            pages_to_check = pdf.pages[:3]
-            for page in pages_to_check:
-                text = (page.extract_text() or "").lower()
-                # Buscar todas las co-ocurrencias mes+año y devolver la
-                # primera (más temprana en el texto).
-                best: tuple[int, str] | None = None
-                hint_best: tuple[int, str] | None = None
-                for name, num in _MONTH_MAP.items():
-                    for m in re.finditer(re.escape(name), text):
-                        start = max(0, m.start() - 30)
-                        end = min(len(text), m.end() + 30)
-                        region = text[start:end]
-                        year_m = re.search(r"20[12]\d", region)
-                        if year_m:
-                            pos = m.start()
-                            candidate = f"{year_m.group()}-{num:02d}"
-                            if best is None or pos < best[0]:
-                                best = (pos, candidate)
-                            if hint_month and num == hint_month:
-                                if hint_best is None or pos < hint_best[0]:
-                                    hint_best = (pos, candidate)
-                # Preferir coincidencia con el hint_month.
-                result = hint_best or best
-                if result is not None:
-                    return result[1]
-        return None
-
-    @staticmethod
-    def extract_date_from_filename(filename: str) -> str | None:
-        """Infiere la fecha YYYY-MM a partir del nombre del archivo.
-
-        Usa la misma lógica de co-ocurrencia ``mes + año`` que los demás
-        extractores.
-
-        Parameters
-        ----------
-        filename : str
-            Nombre del archivo PDF (sin ruta).
-
-        Returns
-        -------
-        str | None
-            Fecha ``"YYYY-MM"`` o ``None``.
-        """
-        text = filename.lower()
-        best: tuple[int, str] | None = None
-        for name, num in _MONTH_MAP.items():
-            for m in re.finditer(re.escape(name), text):
-                start = max(0, m.start() - 30)
-                end = min(len(text), m.end() + 30)
-                region = text[start:end]
-                year_m = re.search(r"20[12]\d", region)
-                if year_m:
-                    pos = m.start()
-                    candidate = f"{year_m.group()}-{num:02d}"
-                    if best is None or pos < best[0]:
-                        best = (pos, candidate)
-        return best[1] if best else None
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# Capa 3 — Pipeline
-# ═══════════════════════════════════════════════════════════════════════
-
-# ── Cache helpers ─────────────────────────────────────────────────────
-
-
-def _load_cache(cache_path: Path) -> dict[str, Any]:
-    """Carga el cache JSON (clave = URL del PDF)."""
-    if cache_path.exists():
-        try:
-            return json.loads(cache_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            logger.warning("Cache corrupto; se ignora.")
-    return {}
-
-
-def _save_cache(cache: dict[str, Any], cache_path: Path) -> None:
-    """Persiste el cache JSON."""
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(
-        json.dumps(cache, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-
-
 # ── CSV helpers ───────────────────────────────────────────────────────
 
 
@@ -831,94 +425,6 @@ def _save_dataframe(records: list[dict[str, Any]], csv_path: Path) -> pd.DataFra
     return df
 
 
-# ── Procesamiento unitario ────────────────────────────────────────────
-
-
-def process_one_pdf(
-    pdf_info: dict[str, str | None],
-    scraper: ANDIScraper,
-    cache: dict[str, Any],
-    existing_dates: set[str],
-    *,
-    force: bool = False,
-) -> dict[str, Any] | None:
-    """Descarga y procesa un solo PDF de la EOIC.
-
-    Parameters
-    ----------
-    pdf_info : dict
-        Dict con claves ``url``, ``text``, ``date``.
-    scraper : ANDIScraper
-        Instancia del scraper para descargar PDFs.
-    cache : dict
-        Cache de PDFs ya procesados.
-    existing_dates : set[str]
-        Fechas ya presentes en el CSV.
-    force : bool
-        Si ``True``, reprocesa aunque ya exista en cache.
-
-    Returns
-    -------
-    dict | None
-        Registro (date, value, source) o ``None`` si falla/existe.
-    """
-    url = pdf_info.get("url")
-    if not url:
-        return None
-
-    # Revisar cache (a menos que sea forzado).
-    if not force and url in cache:
-        logger.debug("En cache: %s", url)
-        return None
-
-    # Revisar si la fecha ya existe.
-    date_from_link = pdf_info.get("date")
-    if not force and date_from_link:
-        # Normalizar: tanto YYYY-MM como YYYY-MM-DD → YYYY-MM para comparar
-        date_ym = date_from_link[:7]
-        existing_ym = {d[:7] for d in existing_dates if d}
-        if date_ym in existing_ym:
-            logger.debug("Fecha ya existe: %s", date_from_link)
-            return None
-
-    # Descargar.
-    local_path = scraper.download_pdf(url)
-    if not local_path:
-        return None
-
-    # Parsear.
-    parser = EOICParser(local_path)
-    result = parser.extract_capacity_utilization()
-
-    if result is None:
-        logger.warning("No se pudo extraer datos de: %s", local_path.name)
-        cache[url] = {"status": "failed", "date": date_from_link}
-        return None
-
-    value, context = result
-
-    # Determinar la fecha final (preferir la del enlace, fallback al PDF).
-    date_str = date_from_link or parser.extract_date_from_content()
-    if not date_str:
-        logger.warning("No se pudo determinar la fecha de: %s", local_path.name)
-        cache[url] = {"status": "no_date", "value": value}
-        return None
-
-    logger.info(
-        "Extraído: %s → %.1f%% (%s)",
-        date_str, value, context[:60],
-    )
-
-    cache[url] = {
-        "status": "ok",
-        "date": date_str,
-        "value": value,
-        "context": context,
-    }
-
-    return _build_record(date_str, value, url)
-
-
 # ── Reporte ───────────────────────────────────────────────────────────
 
 
@@ -1009,245 +515,313 @@ def generate_report(
     return report_path
 
 
-# ── Función principal del pipeline ────────────────────────────────────
 
 
-def run_andi_pipeline(*, backfill: bool = False) -> pd.DataFrame:
-    """Ejecuta el pipeline ANDI EOIC.
+# ═══════════════════════════════════════════════════════════════════════
+# Capa 3 — Pipeline
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def es_informe_eoic_pdf(url_o_nombre: str) -> bool:
+    """Informe mensual EOIC en PDF (no infografías ni 'Prensa cuadros' .xls)."""
+    nombre = normalizar(unquote(url_o_nombre.split("/")[-1].split("?")[0]))
+    return (
+        nombre.endswith(".pdf")
+        and "eoic" in nombre
+        and "infograf" not in nombre
+        and "prensa" not in nombre
+        and ".xls" not in nombre
+    )
+
+
+def mes_de_enlace(enlace: dict[str, Any]) -> pd.Period | None:
+    """Mes del informe según la página (``date`` del enlace) o su URL."""
+    fecha = enlace.get("date")
+    if fecha:
+        return pd.Period(str(fecha)[:7], freq="M")
+    return mes_en_texto(unquote(str(enlace.get("url", ""))))
+
+
+def _registros_a_serie(registros: list[dict[str, Any]]) -> pd.Series:
+    if not registros:
+        return pd.Series(dtype=float)
+    df = pd.DataFrame(registros)
+    idx = pd.to_datetime(df["date"]).dt.to_period("M")
+    return pd.Series(df["capacity_utilization"].astype(float).to_numpy(), index=idx).sort_index()
+
+
+def cargar_base_icu(
+    csv_path: Path,
+    historico_path: Path | None = None,
+    *,
+    incluir_previos: bool = True,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """(histórico, meses nuevos ya agregados) en el esquema ANDI.
+
+    Los "previos" son filas del CSV procesado cuyo mes no está en el
+    histórico (se agregaron en corridas anteriores con los mismos controles).
+    """
+    historico = _load_icu_historical(historico_path)
+    if not historico:
+        raise RuntimeError(
+            "No se pudo cargar data/inputs/icu_historical.csv: sin histórico no se "
+            "actualiza el ICU (el histórico de la ANDI es la base de la serie)."
+        )
+    if not incluir_previos or not csv_path.exists():
+        return historico, []
+    meses_hist = {r["date"][:7] for r in historico}
+    proc = pd.read_csv(csv_path)
+    proc["date"] = pd.to_datetime(proc["date"]).dt.strftime("%Y-%m-%d")
+    previos = [r for r in proc[ANDI_PROCESSED_COLUMNS].to_dict("records")
+               if r["date"][:7] not in meses_hist]
+    return historico, previos
+
+
+def actualizar_icu(
+    informes: list[dict[str, Any]],
+    serie: pd.Series,
+    *,
+    respaldo_ia: RespaldoICU | None = None,
+) -> list[dict[str, Any]]:
+    """Agrega, en orden, los meses de ``informes`` que no están en ``serie``.
+
+    Parameters
+    ----------
+    informes : list[dict]
+        Cada uno con ``mes`` (``pd.Period`` o ``None`` → se lee de la
+        portada), ``origen`` (URL o ``local://nombre``) y ``obtener``
+        (callable sin argumentos que devuelve la ruta local del PDF).
+    serie : pd.Series
+        ICU existente (índice ``pd.Period`` mensual).  No se modifica.
+    respaldo_ia : callable, opcional
+        Solo se usa si el texto del informe no trae la frase del dato
+        (``ICUExtraccionError``).  Su número pasa por los mismos controles.
+
+    Returns
+    -------
+    list[dict]
+        Registros nuevos en el esquema de ``andi_capacidad_instalada.csv``.
+
+    Raises
+    ------
+    ICUExtraccionError, ICUControlError, RuntimeError
+        Ante la primera falla; el llamador no debe escribir nada.
+    """
+    serie = serie.copy()
+    pendientes: dict[pd.Period, dict[str, Any]] = {}
+    for inf in informes:
+        mes, ruta, paginas = inf.get("mes"), None, None
+        if mes is None:
+            ruta = inf["obtener"]()
+            paginas = texto_por_columnas(ruta)
+            mes = mes_en_portada(paginas)
+            if mes is None:
+                logger.warning("[ANDI] Sin mes identificable, se omite: %s", inf["origen"])
+                continue
+        if mes in serie.index:
+            continue                       # histórico o ya agregado: nunca se sobrescribe
+        if mes in pendientes:
+            logger.info("[ANDI] %s ya tiene informe (%s); se omite %s",
+                        mes, pendientes[mes]["origen"], inf["origen"])
+            continue
+        pendientes[mes] = {**inf, "mes": mes, "ruta": ruta, "paginas": paginas}
+
+    nuevos: list[dict[str, Any]] = []
+    for mes in sorted(pendientes):
+        inf = pendientes[mes]
+        ruta = inf["ruta"] or inf["obtener"]()
+        paginas = inf["paginas"] or texto_por_columnas(ruta)
+        texto = "\n".join(paginas)
+        portada = mes_en_portada(paginas)
+        if portada is not None and portada != mes:
+            logger.warning("[ANDI] La portada de %s dice %s (se usa el mes del enlace).",
+                           inf["origen"], portada)
+        try:
+            dato = extraer_icu_de_texto(texto, mes)
+            valor, fuente = dato.valor, inf["origen"]
+            logger.info("[ANDI] %s = %.1f%% (regla %s): %s", mes, valor, dato.regla, dato.frase[:90])
+        except ICUExtraccionError:
+            if respaldo_ia is None:
+                raise
+            logger.warning("[ANDI] %s: el parser no encontró el dato; se consulta el respaldo IA.", mes)
+            valor, etiqueta = respaldo_ia(texto, mes)
+            fuente = f"{etiqueta}|{inf['origen']}"
+        validar_icu_nuevo(mes, valor, serie)
+        serie.loc[mes] = valor
+        nuevos.append(_build_record(str(mes), valor, fuente))
+    return nuevos
+
+
+def _combinar(registros: list[dict[str, Any]]) -> pd.DataFrame:
+    df = pd.DataFrame(registros)
+    df["date"] = pd.to_datetime(df["date"])
+    if df["date"].duplicated().any():
+        raise ICUControlError(f"Meses duplicados en la serie ICU: {df.loc[df['date'].duplicated(), 'date'].tolist()}")
+    return df.sort_values("date").reset_index(drop=True)[ANDI_PROCESSED_COLUMNS]
+
+
+def _descargar(scraper: ANDIScraper, url: str) -> Path:
+    ruta = scraper.download_pdf(url)
+    if ruta is None:
+        raise RuntimeError(f"No se pudo descargar el informe EOIC: {url}")
+    with open(ruta, "rb") as fh:
+        if fh.read(5) != b"%PDF-":
+            raise RuntimeError(f"El archivo descargado no es un PDF: {ruta.name}")
+    return ruta
+
+
+def run_andi_pipeline(
+    *,
+    backfill: bool = False,
+    respaldo_ia: RespaldoICU | None = None,
+    scraper: ANDIScraper | None = None,
+    csv_path: Path | None = None,
+    historico_path: Path | None = None,
+) -> pd.DataFrame:
+    """Serie ICU final (histórico + meses nuevos de la web).  **No escribe.**
+
+    ``src/pipelines/run_andi.py`` valida el resultado y recién entonces lo
+    guarda con :func:`guardar_icu`.
 
     Parameters
     ----------
     backfill : bool
-        Si ``True``, procesa todos los PDFs disponibles.
-        Si ``False`` (default), solo procesa el más reciente.
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame con los datos procesados.
+        Si ``True``, vuelve a extraer también los meses nuevos que ya
+        estaban en el CSV procesado (el histórico nunca se toca).
+    respaldo_ia : callable, opcional
+        Ver :func:`actualizar_icu` (``--andi-ia``).
     """
-    csv_path = PROCESSED_DIR / ANDI_CONFIG.processed_filename
-    cache_path = RAW_ANDI_DIR / ANDI_CONFIG.cache_filename
-    report_path = OUTPUTS_DIR / ANDI_CONFIG.report_filename
+    csv_path = csv_path or (PROCESSED_DIR / ANDI_CONFIG.processed_filename)
+    scraper = scraper or ANDIScraper()
+    historico, previos = cargar_base_icu(csv_path, historico_path, incluir_previos=not backfill)
+    serie = _registros_a_serie(historico + previos)
 
-    scraper = ANDIScraper()
-    cache = _load_cache(cache_path)
-
-    # ── Cargar semilla histórica ICU (2004–2025) ──────────────────────
-    # Las fechas de la semilla se consideran "ya existentes"; el scraping
-    # solo añade observaciones posteriores a la última fecha del histórico.
-    historical_records = _load_icu_historical()
-    historical_dates: set[str] = {r["date"] for r in historical_records}
-
-    # Fechas adicionales ya scrapeadas y guardadas en el CSV final
-    # (solo las que NO estaban en el histórico, para no perder nada).
-    existing_dates: set[str] = historical_dates | _load_existing_dates(csv_path)
-
-    # ── Obtener PDFs ──────────────────────────────────────────────────
-    if backfill:
-        pdf_list = scraper.get_all_eoic_pdfs()
-        logger.info("Backfill: %d PDFs encontrados.", len(pdf_list))
-    else:
-        # Revisa TODOS los PDFs disponibles y filtra los ya procesados.
-        # Así no se pierden meses intermedios si el pipeline estuvo inactivo.
-        pdf_list = scraper.get_new_eoic_pdfs(existing_dates)
-
-    # Procesar.
-    new_records: list[dict[str, Any]] = []
-    stats: dict[str, int] = {"processed": 0, "ok": 0, "failed": 0, "skipped": 0}
-
-    for pdf_info in pdf_list:
-        stats["processed"] += 1
-        record = process_one_pdf(
-            pdf_info, scraper, cache, existing_dates,
-        )
-        if record:
-            new_records.append(record)
-            existing_dates.add(record["date"])
-            stats["ok"] += 1
-        else:
-            # Distinguir skip vs fail.
-            url = pdf_info.get("url", "")
-            entry = cache.get(url, {})
-            if entry.get("status") == "failed" or entry.get("status") == "no_date":
-                stats["failed"] += 1
-            else:
-                stats["skipped"] += 1
-
-    # Persistir cache.
-    _save_cache(cache, cache_path)
-
-    # ── Combinar: semilla histórica + nuevos registros scrapeados ─────
-    # Base = semilla histórica (2004–2025). Los nuevos registros
-    # scrapeados (2026+) se añaden encima. Si la semilla no existe,
-    # se usa el CSV anterior como fallback.
-    if historical_records:
-        base_records = list(historical_records)
-    elif csv_path.exists():
-        base_records = pd.read_csv(csv_path).to_dict("records")
-    else:
-        base_records = []
-
-    all_records: list[dict[str, Any]] = base_records + new_records
-
-    # Guardar DataFrame final.
-    df = _save_dataframe(all_records, csv_path)
-
-    # Generar reporte (solo en backfill o si hay nuevos registros).
-    if backfill or new_records:
-        generate_report(all_records, stats, report_path)
-
+    enlaces = [e for e in scraper.get_all_eoic_pdfs() if es_informe_eoic_pdf(str(e.get("url", "")))]
+    if not enlaces:
+        raise RuntimeError("No se encontraron informes EOIC (PDF) en la página de la ANDI.")
+    informes = [
+        {"mes": mes_de_enlace(e), "origen": e["url"],
+         "obtener": (lambda u=e["url"]: _descargar(scraper, u))}
+        for e in enlaces
+    ]
     logger.info(
-        "ANDI EOIC: %d nuevos, %d total, %d fallidos, %d omitidos",
-        stats["ok"], len(df), stats["failed"], stats["skipped"],
+        "[ANDI] %d informes en la página; serie actual %s → %s (%d meses)",
+        len(informes), serie.index.min(), serie.index.max(), len(serie),
     )
+    nuevos = actualizar_icu(informes, serie, respaldo_ia=respaldo_ia)
+    if nuevos:
+        logger.info("[ANDI] Meses nuevos: %s", [r["date"][:7] for r in nuevos])
+    else:
+        logger.info("[ANDI] Sin meses nuevos (último: %s).", serie.index.max())
+    return _combinar(historico + previos + nuevos)
 
+
+def reprocess_local_pdfs(
+    *,
+    respaldo_ia: RespaldoICU | None = None,
+    pdf_dir: Path | None = None,
+    csv_path: Path | None = None,
+    historico_path: Path | None = None,
+    escribir: bool = True,
+) -> pd.DataFrame:
+    """Igual que el pipeline, pero con los PDF de ``data/raw/andi/`` (sin red).
+
+    El mes de cada archivo sale de su nombre (o de la portada si el nombre
+    no trae año).  Valida y escribe solo si todo pasa.
+    """
+    from src.quality_checks import run_andi_checks
+
+    pdf_dir = pdf_dir or RAW_ANDI_DIR
+    csv_path = csv_path or (PROCESSED_DIR / ANDI_CONFIG.processed_filename)
+    historico, previos = cargar_base_icu(csv_path, historico_path)
+    serie = _registros_a_serie(historico + previos)
+    informes = [
+        {"mes": mes_en_texto(unquote(p.name)), "origen": f"local://{unquote(p.name)}",
+         "obtener": (lambda p=p: p)}
+        for p in sorted(pdf_dir.glob("*.pdf"))
+        if es_informe_eoic_pdf(p.name) and p.read_bytes()[:5] == b"%PDF-"
+    ]
+    nuevos = actualizar_icu(informes, serie, respaldo_ia=respaldo_ia)
+    df = _combinar(historico + previos + nuevos)
+    run_andi_checks(df)
+    if escribir:
+        guardar_icu(df, csv_path)
     return df
 
 
-# ── Reprocesamiento de PDFs locales huérfanos ─────────────────────────
+def guardar_icu(df: pd.DataFrame, csv_path: Path | None = None) -> Path:
+    """Escribe ``andi_capacidad_instalada.csv`` (fechas ``YYYY-MM-DD``)."""
+    csv_path = csv_path or (PROCESSED_DIR / ANDI_CONFIG.processed_filename)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(csv_path, index=False, date_format="%Y-%m-%d")
+    logger.info("[ANDI] Guardado: %s (%d filas, %s → %s)", csv_path.name, len(df),
+                pd.Timestamp(df["date"].min()).date(), pd.Timestamp(df["date"].max()).date())
+    return csv_path
 
 
-def reprocess_local_pdfs() -> pd.DataFrame:
-    """Reprocesa PDFs locales que no están en el CSV final.
+# ═══════════════════════════════════════════════════════════════════════
+# Validación del parser contra el histórico
+# ═══════════════════════════════════════════════════════════════════════
 
-    Busca todos los PDFs en ``RAW_ANDI_DIR``, identifica cuáles no
-    tienen una entrada con valor en el cache (o cuya fecha no aparece
-    en el CSV), e intenta extraer el dato de capacidad instalada.
 
-    La fecha se determina en este orden de prioridad:
+def validar_parser_contra_historico(
+    pdf_dir: Path | None = None,
+    historico_path: Path | None = None,
+) -> pd.DataFrame:
+    """Corre el extractor sobre los PDF locales y compara con el histórico.
 
-    1. Nombre del archivo (``extract_date_from_filename``).
-    2. Contenido del PDF (``extract_date_from_content``).
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame actualizado con todos los registros.
+    Un informe por contenido (los duplicados por nombre codificado se
+    descartan por md5).  ``estado``: ``ok``, ``sin_dato``
+    (``ICUExtraccionError``), ``control`` (``ICUControlError``) o ``no_pdf``.
+    ``error`` = valor del informe − histórico (solo meses del histórico).
     """
-    csv_path = PROCESSED_DIR / ANDI_CONFIG.processed_filename
-    cache_path = RAW_ANDI_DIR / ANDI_CONFIG.cache_filename
+    import hashlib
 
-    cache = _load_cache(cache_path)
-    existing_dates = _load_existing_dates(csv_path)
-
-    # Construir set de fechas que YA tienen valor en el cache.
-    cached_dates: set[str] = set()
-    for entry in cache.values():
-        d = entry.get("date")
-        v = entry.get("value")
-        if d and v is not None:
-            cached_dates.add(d)
-
-    # Encontrar PDFs locales.
-    local_pdfs = sorted(
-        p for p in RAW_ANDI_DIR.glob("*.pdf") if p.is_file()
-    )
-    logger.info(
-        "Reprocess: %d PDFs locales, %d en cache, %d en CSV.",
-        len(local_pdfs), len(cached_dates), len(existing_dates),
-    )
-
-    new_records: list[dict[str, Any]] = []
-    stats: dict[str, int] = {"processed": 0, "ok": 0, "failed": 0, "skipped": 0}
-
-    for pdf_path in local_pdfs:
-        # Intentar fecha desde el nombre del archivo.
-        date_str = EOICParser.extract_date_from_filename(pdf_path.name)
-
-        # Normalizar a "YYYY-MM-01" para que coincida con el formato del CSV.
-        if date_str and len(date_str) == 7:
-            date_str = f"{date_str}-01"
-
-        # Si la fecha ya existe en CSV y cache, omitir.
-        if date_str and date_str in existing_dates and date_str in cached_dates:
-            stats["skipped"] += 1
+    pdf_dir = pdf_dir or RAW_ANDI_DIR
+    hist = _registros_a_serie(_load_icu_historical(historico_path))
+    vistos: set[str] = set()
+    filas: list[dict[str, Any]] = []
+    for p in sorted(pdf_dir.glob("*.pdf")):
+        if not es_informe_eoic_pdf(p.name):
             continue
-
-        stats["processed"] += 1
-
-        # Parsear valor.
-        parser = EOICParser(pdf_path)
-        result = parser.extract_capacity_utilization()
-
-        if result is None:
-            logger.warning("Reprocess FAIL: %s", pdf_path.name)
-            stats["failed"] += 1
+        contenido = p.read_bytes()
+        md5 = hashlib.md5(contenido).hexdigest()
+        if md5 in vistos:
             continue
-
-        value, context = result
-
-        # Fecha: prioridad filename > content.
-        if not date_str:
-            # Si el filename tiene mes pero no año, usar como pista.
-            hint_month: int | None = None
-            fname_lower = pdf_path.name.lower()
-            for mname, mnum in _MONTH_MAP.items():
-                if mname in fname_lower:
-                    hint_month = mnum
-                    break
-            date_str = parser.extract_date_from_content(
-                hint_month=hint_month,
-            )
-
-        # Normalizar a "YYYY-MM-01" (también para fechas extraídas de contenido).
-        if date_str and len(date_str) == 7:
-            date_str = f"{date_str}-01"
-
-        if not date_str:
-            logger.warning(
-                "Reprocess: sin fecha para %s (valor=%.1f%%)",
-                pdf_path.name, value,
-            )
-            stats["failed"] += 1
+        vistos.add(md5)
+        fila: dict[str, Any] = {"archivo": unquote(p.name)}
+        if contenido[:5] != b"%PDF-":
+            filas.append({**fila, "estado": "no_pdf", "motivo": "el archivo no es un PDF"})
             continue
+        paginas = texto_por_columnas(p)
+        mes = mes_en_texto(unquote(p.name)) or mes_en_portada(paginas)
+        fila["mes"] = str(mes)
+        fila["historico"] = float(hist.loc[mes]) if mes in hist.index else None
+        try:
+            dato = extraer_icu_de_texto("\n".join(paginas), mes)
+            fila.update(valor=dato.valor, regla=dato.regla, estado="ok")
+            if fila["historico"] is not None:
+                fila["error"] = round(dato.valor - fila["historico"], 4)
+        except ICUExtraccionError as exc:
+            fila.update(estado="sin_dato", motivo=str(exc))
+        except ICUControlError as exc:
+            fila.update(estado="control", motivo=str(exc))
+        filas.append(fila)
+    cols = ["archivo", "mes", "valor", "regla", "historico", "error", "estado", "motivo"]
+    return pd.DataFrame(filas).reindex(columns=cols)
 
-        # Si la fecha ya existe en el CSV, omitir (podría tener un valor
-        # distinto obtenido por otra vía).
-        if date_str in existing_dates:
-            stats["skipped"] += 1
-            continue
 
-        logger.info(
-            "Reprocess OK: %s → %s = %.1f%% (%s)",
-            pdf_path.name, date_str, value, context[:60],
-        )
-
-        # Usar ruta local como clave de cache (sin URL remota).
-        cache_key = f"local://{pdf_path.name}"
-        cache[cache_key] = {
-            "status": "ok",
-            "date": date_str,
-            "value": value,
-            "context": context,
-        }
-
-        record = _build_record(date_str, value, f"local://{pdf_path.name}")
-        new_records.append(record)
-        existing_dates.add(date_str)
-        stats["ok"] += 1
-
-    # Persistir cache.
-    _save_cache(cache, cache_path)
-
-    # Combinar con registros existentes.
-    all_records: list[dict[str, Any]] = []
-    if csv_path.exists():
-        existing_df = pd.read_csv(csv_path)
-        all_records = existing_df.to_dict("records")
-    all_records.extend(new_records)
-
-    # Guardar.
-    df = _save_dataframe(all_records, csv_path)
-
-    # Reporte.
-    report_path = OUTPUTS_DIR / "andi_reprocess_report.txt"
-    if new_records:
-        generate_report(all_records, stats, report_path)
-
-    logger.info(
-        "Reprocess ANDI: %d nuevos, %d total, %d fallidos, %d omitidos",
-        stats["ok"], len(df), stats["failed"], stats["skipped"],
-    )
-
-    return df
+def resumen_validacion(df: pd.DataFrame) -> dict[str, Any]:
+    """Error medio y máximo (absolutos) y conteos por estado."""
+    ok = df[(df["estado"] == "ok") & df["error"].notna()]
+    e = ok["error"].abs()
+    return {
+        "informes": int(len(df)),
+        "por_estado": df["estado"].value_counts().to_dict(),
+        "comparados": int(len(ok)),
+        "error_medio_abs": float(e.mean()) if len(e) else float("nan"),
+        "error_mediano_abs": float(e.median()) if len(e) else float("nan"),
+        "error_max_abs": float(e.max()) if len(e) else float("nan"),
+        "mes_error_max": ok.loc[e.idxmax(), "mes"] if len(e) else None,
+        "dentro_redondeo": int((e <= 0.05 + 1e-9).sum()),
+    }
