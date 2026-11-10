@@ -30,6 +30,10 @@ Scrapers restantes de `docs/tarea_scrapers_v7.md` (uno por commit). `src/v7/insu
   - Efectos: `run_pib_potencial.py` (v3, en el workflow) filtra desde 2005-01-01 y no cambia; `merge.py` gana `gdp_observed` de 2004; VIOG-Colombia (manual) incluye 2004 en el traslape de su empalme con la base 2005.
   - `tests/test_gdp_2004.py` (4, offline): encadenamiento sintético, base incompleta, reproducción del 2004 de la línea base, idempotencia y esquema; `test_dane_gdp.py` end-to-end sigue offline (usa la base versionada).
 
+- **VA de petróleo y gas (`X_vapg`) e impuestos menos subvenciones (`BR_tms`)**: `src/sources/dane/gdp_insumos_v7.py`, `src/pipelines/run_pib_insumos_v7.py`, flag `--pib-insumos-v7` (también en `--all`), `scrape --pib-insumos-v7` en `update.yml`, `run_pib_insumos_v7_checks`. `X_vapg` = fila "Extracción de petróleo crudo y gas natural…" del Cuadro 6 (volumen encadenado desestacionalizado, primer bloque) del anexo de producción; `BR_tms` = fila "Impuestos menos subvenciones" de la hoja `PIB_Ingreso` (precios corrientes). Reutiliza los parsers de `gdp.py` y `gdp_income.py`. Salida `data/processed/dane_pib_insumos_v7_trimestral.csv` (X_vapg 2005Q1 → 2026Q2; BR_tms 2014Q1 → 2026Q2). `src/v7/insumos.py` usa este archivo en vez de la referencia cuando existe: en modo repo ya **ningún insumo** sale de la referencia.
+  - Contra `legacy/v7/datos/insumos_pib_trimestral.csv`: `X_vapg` difiere en mediana 0,011 % y como máximo 0,19 % (2026Q1), por la reestimación estacional del anexo vigente (II-2026 vs I-2026); `BR_tms` es igual en 36 de 41 trimestres, ±1 en 4 (redondeo entre versiones) y +2,2 % en 2026Q1 (revisión del DANE). El repo suma 2014–2015 de `BR_tms` y 2026Q2.
+  - `tests/test_pib_insumos_v7.py` (10, offline) con extractos reales de los dos anexos; incluye que `insumos.preparar_raiz` tome el archivo del repo.
+
 ## [0.6.1] — 2026-11-09
 
 Rama `scrapers-v7` (scrapers para v7), fusionada sobre [0.6.0].

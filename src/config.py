@@ -727,6 +727,20 @@ class BanrepVacantesConfig:
 BANREP_VACANTES_CONFIG = BanrepVacantesConfig()
 
 
+# ── Insumos trimestrales del PIB para v7 (DANE): X_vapg y BR_tms ────
+PIB_INSUMOS_V7_FILENAME: str = "dane_pib_insumos_v7_trimestral.csv"
+PIB_INSUMOS_V7_COLUMNS: list[str] = [
+    "date", "year", "quarter", "X_vapg", "BR_tms", "source", "download_date",
+]
+# Fila del Cuadro 6 (producción, volumen encadenado desestacionalizado).
+LABEL_VA_PETROLEO_GAS: str = (
+    "Extracción de petróleo crudo y gas natural y actividades de apoyo para "
+    "la extracción de petróleo y de gas natural"
+)
+# Fila de la hoja PIB_Ingreso (enfoque del ingreso, precios corrientes).
+LABEL_IMPUESTOS_NETOS: str = "Impuestos menos subvenciones"
+
+
 # ── Configuración EMMET (DANE, salarios de la industria) ────────────
 
 @dataclass(frozen=True)

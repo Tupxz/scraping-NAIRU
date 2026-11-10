@@ -134,12 +134,21 @@ def _trimestral_repo(ref: pd.DataFrame) -> tuple[pd.DataFrame, Dict[str, str]]:
     out = out.merge(inv[["date", "investment"]].rename(columns={"investment": "BE_inv"}), on="date", how="left")
     fuentes["BE_inv"] = "data/processed/dane_gdp_expenditure_colombia.csv"
 
-    # Todavía no scrapeadas: VA de petróleo y gas, impuestos menos subvenciones.
-    # No entran al cálculo vigente (producto total, alpha CBO), pero el motor las
-    # exige para fechar T (último trimestre con insumos completos).
-    out = out.merge(ref[["date", "X_vapg", "BR_tms"]], on="date", how="left")
-    for c in ("X_vapg", "BR_tms"):
-        fuentes[c] = "REFERENCIA legacy/v7/datos/insumos_pib_trimestral.csv (falta scraper)"
+    # VA de petróleo y gas, impuestos menos subvenciones: no entran al cálculo
+    # vigente (producto total, alpha CBO), pero el motor las exige para fechar T
+    # (último trimestre con insumos completos).  Desde el repo si existe el
+    # archivo de --pib-insumos-v7; si no, de la referencia.
+    repo_v7 = PROCESSED_DIR / "dane_pib_insumos_v7_trimestral.csv"
+    if repo_v7.exists() and {"X_vapg", "BR_tms"} <= set(pd.read_csv(repo_v7, nrows=0).columns):
+        ins = pd.read_csv(repo_v7, parse_dates=["date"])
+        ins["date"] = _inicio_trimestre_a_cierre(ins["date"])
+        out = out.merge(ins[["date", "X_vapg", "BR_tms"]], on="date", how="left")
+        for c in ("X_vapg", "BR_tms"):
+            fuentes[c] = "data/processed/dane_pib_insumos_v7_trimestral.csv"
+    else:
+        out = out.merge(ref[["date", "X_vapg", "BR_tms"]], on="date", how="left")
+        for c in ("X_vapg", "BR_tms"):
+            fuentes[c] = "REFERENCIA legacy/v7/datos/insumos_pib_trimestral.csv (falta scraper)"
 
     cols = ["date", "V_pib", "X_vapg", "BE_inv", "BQ_ra", "BR_tms", "BS_ebe", "BT_im"]
     return out[cols].sort_values("date").reset_index(drop=True), fuentes

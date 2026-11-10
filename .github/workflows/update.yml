@@ -84,6 +84,7 @@ jobs:
           scrape --emmet          # DANE EMMET salarios industria (usa el IPC de --ipc)
           scrape --subempleo      # DANE GEIH anexo principal: subocupación y tasas brutas
           scrape --vacantes       # BANREP vacantes en prensa, 7 ciudades (SUAMECA)
+          scrape --pib-insumos-v7 # DANE VA petróleo-gas e impuestos netos (insumos v7)
           # NOTA: --viog-co NO se corre en automático. El filtro Kalman (UCM) de
           # VIOG-Colombia puede diverger con datos nuevos (dio un transitorio de
           # ~200% en 2005-Q1 al recomputar). El VIOG se mantiene estable desde su

@@ -398,6 +398,32 @@ def run_vacantes_checks(df: pd.DataFrame, n_ciudades: int = 7) -> bool:
     return True
 
 
+def run_pib_insumos_v7_checks(df: pd.DataFrame) -> bool:
+    """X_vapg desde 2005Q1 y BR_tms desde su inicio, trimestres consecutivos,
+    sin huecos internos y positivos."""
+    logger.info("─── Validaciones de calidad insumos PIB v7 (X_vapg, BR_tms) ───")
+    missing = {"date", "X_vapg", "BR_tms"} - set(df.columns)
+    if missing:
+        raise QualityCheckError(f"Columnas faltantes: {missing}")
+    check_no_duplicates(df)
+    q = pd.to_datetime(df["date"]).dt.to_period("Q")
+    esperados = pd.period_range(q.min(), q.max(), freq="Q")
+    if len(esperados) != q.nunique():
+        raise QualityCheckError("Trimestres faltantes en los insumos del PIB v7.")
+    serie = pd.Series(df["X_vapg"].to_numpy(), index=q)
+    if serie.first_valid_index() != pd.Period("2005Q1", freq="Q"):
+        raise QualityCheckError(f"X_vapg debe empezar en 2005Q1: {serie.first_valid_index()}")
+    for c, (lo, hi) in {"X_vapg": (1_000, 20_000), "BR_tms": (5_000, 300_000)}.items():
+        v = pd.Series(df[c].to_numpy(), index=q)
+        primero = v.first_valid_index()
+        if primero is None or v.loc[primero:].isna().any():
+            raise QualityCheckError(f"{c}: sin datos o con huecos internos.")
+        if not v.dropna().between(lo, hi).all():
+            raise QualityCheckError(f"{c} fuera de [{lo}, {hi}].")
+    logger.info("─── Todas las validaciones de insumos PIB v7 pasaron ✓ ───")
+    return True
+
+
 def run_labor_checks(df: pd.DataFrame) -> bool:
     """Alias de ``run_all_checks`` para el dataset laboral GEIH.
 

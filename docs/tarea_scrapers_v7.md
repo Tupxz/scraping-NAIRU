@@ -59,6 +59,7 @@ los usa).
 | 7 | ✅ 2026-11-09 | Histórico ANDI desde 2001-01 + meses nuevos desde los informes EOIC (`src/sources/andi/extraccion_icu.py`), con controles de mes, rango 55–90, huecos y salto ≤ 8 pp. Error del extractor contra el histórico: medio 0,11 pp, máximo 4,81 (may-2021, revisión). Los informes de octubre no traen el dato mensual: ese mes requiere `--andi-ia` o carga manual en `icu_historical.csv`. |
 | 8 | ✅ 2026-11-09 | `dane_gdp_colombia.csv` desde 2004Q1: tasas de la base 2005 encadenadas sobre la base 2015 (crecimientos 2004 idénticos a la línea base; nivel −/+ 0,236 % por la revisión del DANE). |
 | 9 | ✅ 2026-11-09 | SUAMECA envía su certificado sin el intermedio (*GeoTrust EV RSA CA G2*) desde el 2026-09-11; `src/sources/banrep/tls.py` lo agrega al almacén de confianza de la sesión (verificación completa, sin `verify=False`). |
+| X_vapg, BR_tms | ✅ 2026-11-09 | `--pib-insumos-v7`: Cuadro 6 (VA petróleo y gas) + PIB_Ingreso (impuestos menos subvenciones) → `dane_pib_insumos_v7_trimestral.csv`; v7/insumos ya no usa la referencia. |
 
 ## ICU: meses que hay que cargar a mano (octubre y noviembre)
 
