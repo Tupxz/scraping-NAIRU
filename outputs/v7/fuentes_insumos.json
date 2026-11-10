@@ -1,7 +1,7 @@
 {
   "festivos": "data/inputs/festivos_efectivos_colombia_2001_2026.xlsx",
   "capital": "data/inputs/alt_capital/dane_stock_capital_productivo.csv",
-  "filtros (paso 3)": "outputs/viog_colombia/Filtros_PIB_Colombia_CF_dos_colas.xlsx",
+  "filtros (paso 3)": "NO DISPONIBLE: se omite el contraste con VIOG",
   "Data_NAIRU.xlsx": "data/inputs/Data_NAIRU.xlsx",
   "trm": "data/processed/trm_cop_usd_promedio_mensual.csv",
   "insumos_pib_trimestral.V_pib": "data/processed/dane_gdp_colombia.csv",
