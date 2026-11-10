@@ -81,6 +81,7 @@ jobs:
           scrape --brent          # FRED Brent
           scrape --trm            # SFC TRM diaria → promedio mensual (datos.gov.co)
           scrape --eme            # BANREP EME: expectativas de inflación (SUAMECA)
+          scrape --emmet          # DANE EMMET salarios industria (usa el IPC de --ipc)
           # NOTA: --viog-co NO se corre en automático. El filtro Kalman (UCM) de
           # VIOG-Colombia puede diverger con datos nuevos (dio un transitorio de
           # ~200% en 2005-Q1 al recomputar). El VIOG se mantiene estable desde su

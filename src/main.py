@@ -11,6 +11,7 @@ Uso:
     python -m src.main --brent          # Solo Brent (FRED/EIA)
     python -m src.main --trm            # Solo TRM promedio mensual (SFC / datos.gov.co)
     python -m src.main --eme            # Solo EME: expectativas de inflación (Banrep)
+    python -m src.main --emmet          # Solo EMMET: salarios de la industria (DANE + IPC)
     python -m src.main --andi           # Solo ANDI EOIC (incremental)
     python -m src.main --andi-backfill  # ANDI EOIC (backfill completo)
     python -m src.main --andi-reprocess # ANDI EOIC (reprocesar PDFs locales)
@@ -48,6 +49,7 @@ def run_pipeline(
     run_brent: bool = False,
     run_trm: bool = False,
     run_eme: bool = False,
+    run_emmet: bool = False,
     run_andi: bool = False,
     andi_backfill: bool = False,
     andi_reprocess: bool = False,
@@ -126,6 +128,10 @@ def run_pipeline(
         if run_eme:
             from src.pipelines import run_eme as eme_pipeline
             eme_pipeline.run()
+
+        if run_emmet:
+            from src.pipelines import run_emmet as emmet_pipeline
+            emmet_pipeline.run()
 
         if run_andi:
             from src.pipelines import run_andi as andi_pipeline
@@ -239,6 +245,10 @@ def main() -> None:
         help="Ejecutar solo el pipeline de la EME (expectativas de inflación, Banrep)",
     )
     parser.add_argument(
+        "--emmet", action="store_true",
+        help="Ejecutar solo el pipeline EMMET (salarios de la industria, DANE + IPC)",
+    )
+    parser.add_argument(
         "--andi", action="store_true",
         help="Ejecutar solo el pipeline ANDI EOIC (incremental)",
     )
@@ -296,7 +306,7 @@ def main() -> None:
             run_investment=True,
             run_income=True,
             run_ipc=True, run_banrep=True,
-            run_tes=True, run_brent=True, run_trm=True, run_eme=True,
+            run_tes=True, run_brent=True, run_trm=True, run_eme=True, run_emmet=True,
             run_andi=True, andi_reprocess=False,  # reprocess solo con --andi-reprocess explícito
             run_nairu_dataset=True,
             run_nairu_estimation=True,
@@ -315,7 +325,7 @@ def main() -> None:
         args.unemployment or args.pwt or args.informality or args.viog
         or args.viog_co or args.dane_gdp or args.investment or args.income
         or args.ipc or args.banrep
-        or args.tes or args.brent or args.trm or args.eme or use_andi
+        or args.tes or args.brent or args.trm or args.eme or args.emmet or use_andi
         or args.andi_reprocess or args.nairu_dataset
         or args.nairu_estim or args.merge or args.prod_func
         or args.pib_potencial or args.export_web
@@ -340,6 +350,7 @@ def main() -> None:
         run_brent=args.brent,
         run_trm=args.trm,
         run_eme=args.eme,
+        run_emmet=args.emmet,
         run_andi=use_andi,
         andi_backfill=args.andi_backfill,
         andi_reprocess=args.andi_reprocess,

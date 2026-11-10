@@ -674,6 +674,49 @@ class BanrepEMEConfig:
 
 BANREP_EME_CONFIG = BanrepEMEConfig()
 
+
+# ── Configuración EMMET (DANE, salarios de la industria) ────────────
+
+@dataclass(frozen=True)
+class EMMETConfig:
+    """Encuesta Mensual Manufacturera con Enfoque Territorial (EMMET).
+
+    Anexo ``anex-EMMET-TotalNacional-<mes><año>.xlsx``, hoja "9. Enlace legal
+    hasta 2014", fila ``T_IND`` (total industria, base 2018=100).  "Total
+    Sueldos" es el índice REAL; el nominal se reconstruye con el IPC total
+    (``data/processed/ipc_colombia.csv``).  Replica
+    ``legacy/v7/construir_salarios_emmet.py``.
+    """
+
+    page_url: str = (
+        "https://www.dane.gov.co/index.php/estadisticas-por-tema/industria/"
+        "encuesta-mensual-manufacturera-con-enfoque-territorial-emmet"
+    )
+    base_url: str = "https://www.dane.gov.co"
+    link_pattern: str = r"/files/operaciones/EMMET/anex-EMMET-TotalNacional-([a-z]{3})(\d{4})\.xlsx$"
+    hoja: str = "9. Enlace legal hasta 2014"
+    dominio: str = "T_IND"
+    start_date: str = "2014-01-01"
+    raw_filename: str = "emmet_total_nacional_raw.xlsx"
+    processed_filename: str = "emmet_salarios_v7.csv"
+    timeout: int = 120
+    http_headers: dict[str, str] = field(default_factory=lambda: {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        ),
+    })
+
+
+EMMET_CONFIG = EMMETConfig()
+
+EMMET_PROCESSED_COLUMNS: list[str] = [
+    "date", "idx_sueldos_real", "idx_empleo", "idx_horas", "ipc",
+    "salario_real_por_ocupado", "salario_nominal_por_ocupado",
+    "var_anual_salario_real", "var_anual_salario_nominal",
+    "source", "download_date",
+]
+
 EME_HORIZONTES: list[str] = [
     "mes_actual", "fin_ano_presente", "doce_meses",
     "fin_ano_siguiente", "veinticuatro_meses", "sesenta_meses",

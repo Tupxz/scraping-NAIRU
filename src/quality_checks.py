@@ -24,6 +24,7 @@ from src.config import (
     EME_DOCE_MESES_MAX,
     EME_DOCE_MESES_MIN,
     EME_PROCESSED_COLUMNS,
+    EMMET_PROCESSED_COLUMNS,
     CAPITAL_STOCK_MIN,
     DEPRECIATION_RATE_MAX,
     DEPRECIATION_RATE_MIN,
@@ -686,6 +687,35 @@ def run_eme_checks(df: pd.DataFrame, start_date: str | None = "2003-09-01") -> b
             f"doce_meses fuera de [{EME_DOCE_MESES_MIN}, {EME_DOCE_MESES_MAX}]: {fuera.values[:5]}"
         )
     logger.info("─── Todas las validaciones EME pasaron ✓ ───")
+    return True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Validaciones de calidad para EMMET (salarios de la industria)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def run_emmet_checks(df: pd.DataFrame, start_date: str | None = "2014-01-01") -> bool:
+    """Columnas, meses consecutivos desde 2014-01, índices completos y en rango,
+    variación nominal completa donde hay IPC (desde el mes 13) y en rango."""
+    logger.info("─── Validaciones de calidad EMMET ───")
+    missing = set(EMMET_PROCESSED_COLUMNS) - set(df.columns)
+    if missing:
+        raise QualityCheckError(f"Columnas EMMET faltantes: {missing}")
+    check_no_nulls_generic(df, ["date", "idx_sueldos_real", "idx_empleo"])
+    check_no_duplicates(df)
+    check_monthly_complete(df, start_date)
+    for c in ("idx_sueldos_real", "idx_empleo"):
+        v = df[c]
+        if ((v < 30) | (v > 300)).any():
+            raise QualityCheckError(f"{c} fuera de [30, 300]: {v[(v < 30) | (v > 300)].values[:5]}")
+    con_ipc = df[df["ipc"].notna()].iloc[12:]
+    if con_ipc["var_anual_salario_nominal"].isna().any():
+        raise QualityCheckError("var_anual_salario_nominal tiene nulos donde hay IPC.")
+    v = con_ipc["var_anual_salario_nominal"]
+    if ((v < -30) | (v > 50)).any():
+        raise QualityCheckError(f"var_anual_salario_nominal fuera de [-30, 50]: {v[(v < -30) | (v > 50)].values[:5]}")
+    logger.info("─── Todas las validaciones EMMET pasaron ✓ ───")
     return True
 
 
