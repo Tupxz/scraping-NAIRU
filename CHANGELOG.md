@@ -16,6 +16,11 @@ Scrapers restantes de `docs/tarea_scrapers_v7.md` (uno por commit). `src/v7/insu
   - Contra `legacy/v7/datos/` : con el anexo de **jul-2026** (el que usó el compañero) la salida es **idéntica** en los 305 meses (verificado y fijado en un test con la hoja real de ese anexo); con el anexo vigente (sep-2026) difiere hasta 0,13 / 0,15 / 0,18 pp en TGP / TO / TD por la reestimación de la desestacionalización del DANE (como la TD publicada en [0.6.1]) y suma 2026-08 y 2026-09.
   - Tests: `tests/test_geih.py::TestTasasDesest` (8) con `tests/fixtures/geih/anex-GEIH-Desestacionalizado-jul2026_total_nacional.xlsx`; el fixture de esquema de `test_pipeline.py` incluye `to_rate`.
 
+- **Subempleo** (punto 5): `src/sources/dane/geih_subempleo.py`, `src/pipelines/run_subempleo.py`, flag `--subempleo` (también en `--all`), `scrape --subempleo` en `update.yml`, `run_subempleo_checks`, `GEIH_BRUTA_CONFIG`. Anexo **principal** de la GEIH (`anex-GEIH-<mes><año>.xlsx`, series brutas), hoja "Total nacional", bloque Total Nacional: TS → `tasa_subocupacion`, TCSD, TCDFTP y TD/TGP/TO brutas, 6 decimales (reutiliza el parser del anexo desestacionalizado). Salida `data/processed/geih_subempleo_bruto_mensual.csv`: 309 meses, 2001-01 → 2026-09 (anexo de sep-2026).
+  - Mar–jul 2020: el DANE no midió la población subocupada (nota del anexo; publica 0 y marca los meses con "*") → esas tres tasas quedan en NaN y la fila se conserva con TD/TGP/TO. El compañero omitió esas 5 filas; para v7 es equivalente.
+  - Contra `legacy/v7/datos/`: **idéntico** en los 302 meses comunes y las 6 columnas, aun con el anexo vigente (las series brutas no se revisan); suma 2026-08 y 2026-09.
+  - `tests/test_subempleo.py` (11, offline) con el bloque Total Nacional real del anexo de jul-2026.
+
 ## [0.6.1] — 2026-11-09
 
 Rama `scrapers-v7` (scrapers para v7), fusionada sobre [0.6.0].

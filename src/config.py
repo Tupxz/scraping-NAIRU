@@ -144,6 +144,29 @@ class GEIHConfig:
 
 GEIH_CONFIG = GEIHConfig()
 
+# Anexo PRINCIPAL de la GEIH (series brutas, sin desestacionalizar), hoja
+# "Total nacional": subocupación y tasas brutas para v7
+# (geih_subempleo_bruto_mensual.csv).  Mismo layout que el desestacionalizado.
+GEIH_BRUTA_CONFIG = GEIHConfig(
+    link_pattern=r"/files/operaciones/GEIH/anex-GEIH-[a-z]{3}\d{4}\.xlsx$",
+    series_map={
+        "tasa_subocupacion":         r"^Tasa de Subocupaci[oó]n",
+        "tcsd_subempleo_subjetivo":  r"^TCSD",
+        "tcdftp_subempleo_objetivo": r"^TCDFTP",
+        "td_bruta":                  r"^Tasa de Desocupaci[oó]n",
+        "tgp_bruta":                 r"^Tasa Global de Participaci[oó]n",
+        "to_bruta":                  r"^Tasa de Ocupaci[oó]n",
+    },
+    raw_html_filename="geih_page_bruta.html",
+    raw_xlsx_filename="geih_principal_raw.xlsx",
+    processed_filename="geih_subempleo_bruto_mensual.csv",
+)
+
+SUBEMPLEO_COLUMNS: list[str] = [
+    "date", "tasa_subocupacion", "tcsd_subempleo_subjetivo", "tcdftp_subempleo_objetivo",
+    "td_bruta", "tgp_bruta", "to_bruta", "source", "download_date",
+]
+
 
 # ── Configuración GEIH-EISS — Informalidad laboral (DANE real) ───────
 

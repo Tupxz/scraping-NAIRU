@@ -355,6 +355,29 @@ def run_tasas_geih_checks(df: pd.DataFrame, meses_nan: tuple[str, ...] = ("2006-
     return True
 
 
+def run_subempleo_checks(df: pd.DataFrame) -> bool:
+    """Subempleo GEIH (anexo principal): meses consecutivos desde 2001-01, tasas
+    brutas completas y en rango; subocupación en rango donde se midió y NaN en
+    a lo sumo 6 meses (mar–jul 2020 no se midió)."""
+    logger.info("─── Validaciones de calidad subempleo GEIH ───")
+    cols = ["date", "tasa_subocupacion", "td_bruta", "tgp_bruta", "to_bruta"]
+    missing = set(cols) - set(df.columns)
+    if missing:
+        raise QualityCheckError(f"Columnas de subempleo faltantes: {missing}")
+    check_no_duplicates(df)
+    check_monthly_complete(df, "2001-01-01")
+    check_no_nulls_generic(df, ["td_bruta", "tgp_bruta", "to_bruta"])
+    ts = df["tasa_subocupacion"]
+    if ts.isna().sum() > 6:
+        raise QualityCheckError(f"tasa_subocupacion con {int(ts.isna().sum())} meses sin dato (máx. 6).")
+    if not ts.dropna().between(1.0, 40.0).all():
+        raise QualityCheckError("tasa_subocupacion fuera de [1, 40].")
+    if not df["tgp_bruta"].between(TGP_MIN, TGP_MAX).all():
+        raise QualityCheckError("tgp_bruta fuera de rango.")
+    logger.info("─── Todas las validaciones de subempleo pasaron ✓ ───")
+    return True
+
+
 def run_labor_checks(df: pd.DataFrame) -> bool:
     """Alias de ``run_all_checks`` para el dataset laboral GEIH.
 
