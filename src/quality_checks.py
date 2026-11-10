@@ -378,6 +378,26 @@ def run_subempleo_checks(df: pd.DataFrame) -> bool:
     return True
 
 
+def run_vacantes_checks(df: pd.DataFrame, n_ciudades: int = 7) -> bool:
+    """Vacantes en prensa: solo ``date`` + ciudades (v7 suma todo lo demás),
+    meses consecutivos desde 1976-01, valores ≥ 0, sin huecos internos por ciudad."""
+    logger.info("─── Validaciones de calidad vacantes (Banrep) ───")
+    ciudades = [c for c in df.columns if c != "date"]
+    if len(ciudades) != n_ciudades or not all(str(c).startswith("Vacantes") for c in ciudades):
+        raise QualityCheckError(f"Se esperaban {n_ciudades} columnas 'Vacantes, …' además de date: {ciudades}")
+    check_no_duplicates(df)
+    check_monthly_complete(df, "1976-01-01")
+    for c in ciudades:
+        v = df[c]
+        primero = v.first_valid_index()
+        if primero is None or v.loc[primero:].isna().any():
+            raise QualityCheckError(f"{c}: huecos internos o sin datos.")
+        if (v.dropna() < 0).any():
+            raise QualityCheckError(f"{c}: valores negativos.")
+    logger.info("─── Todas las validaciones de vacantes pasaron ✓ ───")
+    return True
+
+
 def run_labor_checks(df: pd.DataFrame) -> bool:
     """Alias de ``run_all_checks`` para el dataset laboral GEIH.
 

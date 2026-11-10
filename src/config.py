@@ -705,6 +705,28 @@ class BanrepEMEConfig:
 BANREP_EME_CONFIG = BanrepEMEConfig()
 
 
+# ── Configuración vacantes en prensa (Banrep / SUAMECA) ─────────────
+
+@dataclass(frozen=True)
+class BanrepVacantesConfig:
+    """Índice de vacantes según anuncios de prensa impresa (Banrep), 7 ciudades.
+
+    Series SUAMECA 16570–16576 (catálogo "Mercado laboral y población |
+    Vacantes"), mensuales desde 1976.  El archivo de salida lleva SOLO
+    ``date`` + una columna por ciudad con el nombre de SUAMECA: v7 suma todas
+    las columnas distintas de ``date``.
+    """
+
+    series_ids: tuple[int, ...] = (16570, 16571, 16572, 16573, 16574, 16575, 16576)
+    tipo_dato: int = 9
+    cant_datos: int = 2400
+    raw_filename: str = "banrep_vacantes_raw.json"
+    processed_filename: str = "banrep_vacantes_prensa_mensual.csv"
+
+
+BANREP_VACANTES_CONFIG = BanrepVacantesConfig()
+
+
 # ── Configuración EMMET (DANE, salarios de la industria) ────────────
 
 @dataclass(frozen=True)

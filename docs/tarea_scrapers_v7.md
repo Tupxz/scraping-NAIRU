@@ -55,6 +55,7 @@ los usa).
 | 3 | ✅ 2026-11-09 | `--emmet`: anexo EMMET vigente + IPC del repo; idéntico al `emmet_salarios_v7.csv` del compañero (152 meses). |
 | 4 | ✅ 2026-11-09 | `--unemployment` escribe `geih_tgp_to_td_desest_mensual.csv` (jul–ago 2006 en NaN). Idéntico al del compañero con el anexo de jul-2026; con el vigente difiere ≤ 0,18 pp (revisión del DANE). |
 | 5 | ✅ 2026-11-09 | `--subempleo`: anexo principal GEIH (series brutas); idéntico al del compañero en los 302 meses comunes; mar–jul 2020 sin subocupación (NaN, nota del DANE). |
+| 6 | ✅ 2026-11-09 | `--vacantes`: series SUAMECA 16570–16576; idéntico al del compañero (609 meses) + 2026-10. Solo `date` + ciudades (v7 suma el resto de columnas). |
 | 7 | ✅ 2026-11-09 | Histórico ANDI desde 2001-01 + meses nuevos desde los informes EOIC (`src/sources/andi/extraccion_icu.py`), con controles de mes, rango 55–90, huecos y salto ≤ 8 pp. Error del extractor contra el histórico: medio 0,11 pp, máximo 4,81 (may-2021, revisión). Los informes de octubre no traen el dato mensual: ese mes requiere `--andi-ia` o carga manual en `icu_historical.csv`. |
 | 9 | ✅ 2026-11-09 | SUAMECA envía su certificado sin el intermedio (*GeoTrust EV RSA CA G2*) desde el 2026-09-11; `src/sources/banrep/tls.py` lo agrega al almacén de confianza de la sesión (verificación completa, sin `verify=False`). |
 

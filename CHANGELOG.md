@@ -21,6 +21,10 @@ Scrapers restantes de `docs/tarea_scrapers_v7.md` (uno por commit). `src/v7/insu
   - Contra `legacy/v7/datos/`: **idéntico** en los 302 meses comunes y las 6 columnas, aun con el anexo vigente (las series brutas no se revisan); suma 2026-08 y 2026-09.
   - `tests/test_subempleo.py` (11, offline) con el bloque Total Nacional real del anexo de jul-2026.
 
+- **Vacantes en prensa** (punto 6): `src/sources/banrep/vacantes.py`, `src/pipelines/run_vacantes.py`, flag `--vacantes` (también en `--all`), `scrape --vacantes` en `update.yml`, `run_vacantes_checks`, `BanrepVacantesConfig`. Series SUAMECA 16570–16576 (catálogo "Mercado laboral y población | Vacantes": Manizales, Cali, Bucaramanga, Medellín, Barranquilla, Pasto, Bogotá), con la misma API y sesión que la inflación. Salida `data/processed/banrep_vacantes_prensa_mensual.csv`: 610 meses, 1976-01 → 2026-10, **solo** `date` + una columna por ciudad con el nombre de SUAMECA (v7 suma todas las columnas distintas de `date`; un check lo exige). Fechas al primer día del mes (el compañero usa fin de mes; v7 las normaliza igual).
+  - Contra `legacy/v7/datos/`: **idéntico** en los 609 meses comunes y las 7 ciudades; suma 2026-10.
+  - `tests/test_vacantes.py` (13, offline) con un extracto real de las respuestas de SUAMECA.
+
 ## [0.6.1] — 2026-11-09
 
 Rama `scrapers-v7` (scrapers para v7), fusionada sobre [0.6.0].
