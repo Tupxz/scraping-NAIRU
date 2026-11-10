@@ -1,6 +1,15 @@
 # Changelog
 
-## [0.6.1] — 2026-11-09
+## [0.6.2] — 2026-11-09
+
+Scrapers restantes de `docs/tarea_scrapers_v7.md` (uno por commit). `src/v7/insumos.py` toma cada archivo de `data/processed/` en cuanto existe con sus columnas.
+
+### Agregado
+- **EME** (punto 2): `src/sources/banrep/eme.py`, `src/pipelines/run_eme.py`, flag `--eme` (también en `--all`), `scrape --eme` en `update.yml`, `run_eme_checks`, `BanrepEMEConfig`. Fuente: Excel de series históricas de la Encuesta Mensual de Expectativas de Analistas Económicos en SUAMECA (`/archivos/encuestas/encuesta_mensual_analistas_economicos/series_historicas.xlsx`), cuya URL se descubre en el menú `ENCUESTAS` de SUAMECA (con la URL fija de respaldo); banrep.gov.co no sirve para un scraper (captcha antibots Radware). Hoja `INFLACION_TOTAL`: promedio de los seis horizontes en % (el Excel trae fracciones), fecha de la encuesta llevada al primer día del mes. Salida `data/processed/eme_expectativas_inflacion_total_mensual_promedio.csv`: 278 meses, 2003-09 → 2026-10, mismas columnas que el CSV de la línea base. Controles: meses consecutivos desde 2003-09, `doce_meses` completa y en [0, 30]; valida antes de escribir.
+  - Contra `legacy/v7/datos/` (277 meses comunes): iguales salvo 0,0001 pp en 1–6 meses por columna (mitades exactas del quinto decimal, p. ej. 0,0335375 → 3,3538 vs 3,3537: redondeo binario de cada cálculo; ninguna regla decimal reproduce todos los casos del compañero). `veinticuatro_meses` y `sesenta_meses`: idénticas salvo 1 mes. Suma 2026-10.
+  - `tests/test_eme.py` (27, offline): extracto real del Excel y del menú de SUAMECA, URL desde el menú y respaldos, valores en %, fechas, errores de estructura, controles, descarga con sesión simulada, no escribe si falla.
+
+
 
 Rama `scrapers-v7` (scrapers para v7), fusionada sobre [0.6.0].
 

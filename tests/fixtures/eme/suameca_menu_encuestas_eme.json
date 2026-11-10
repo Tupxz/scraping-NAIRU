@@ -1,0 +1,118 @@
+[
+ {
+  "id": 100011,
+  "idPadre": 10001,
+  "nombre": "1.1. Encuesta mensual de expectativas de analistas económicos (EME) <br><span class=\"span-fecha-periodicidad\">Periodicidad: Mensual (disponible desde: septiembre de 2003)</span>",
+  "clasificacionMenu": "ENCUESTAS",
+  "idCarguePlan": " ",
+  "mostrarHijos": "N",
+  "direccion_a_tabla": "N",
+  "idMenuJson": " ",
+  "idSubmenuJson": " ",
+  "enlace_reporte_tabla": " ",
+  "enlace_pagina_externa": "17000",
+  "enlace_dashboard": " ",
+  "ordenPublicacion": "9999999",
+  "ordenMenu": "100011",
+  "urlAcceso": " ",
+  "menuHijos": [],
+  "listaDocumento": [
+   {
+    "id": 1132,
+    "idSerie": 17000,
+    "tipo": "DATOS",
+    "descripcion": "Serie histórica (disponible desde 2001)",
+    "estado": "ACTIVO",
+    "nombreAdjunto": "https://suameca.banrep.gov.co/archivos/encuestas/encuesta_mensual_analistas_economicos/series_historicas.xlsx",
+    "fecha": {
+     "year": 2024,
+     "month": 7,
+     "dayOfMonth": 8,
+     "hourOfDay": 0,
+     "minute": 0,
+     "second": 0
+    }
+   },
+   {
+    "id": 801,
+    "idSerie": 17000,
+    "tipo": "DATOS",
+    "descripcion": "Últimos datos disponibles o consulta por mes de datos de la encuesta (Excel)",
+    "estado": "ACTIVO",
+    "nombreAdjunto": "https://suameca.banrep.gov.co/archivos/encuestas/encuesta_mensual_analistas_economicos/res_inf_oct2026.xlsx",
+    "fecha": {
+     "year": 2024,
+     "month": 7,
+     "dayOfMonth": 8,
+     "hourOfDay": 0,
+     "minute": 0,
+     "second": 0
+    }
+   },
+   {
+    "id": 802,
+    "idSerie": 17000,
+    "tipo": "DATOS",
+    "descripcion": "Gráficos último mes disponible (PDF)",
+    "estado": "ACTIVO",
+    "nombreAdjunto": "https://suameca.banrep.gov.co/archivos/encuestas/encuesta_mensual_analistas_economicos/eme-graficas.pdf",
+    "fecha": {
+     "year": 2024,
+     "month": 7,
+     "dayOfMonth": 8,
+     "hourOfDay": 0,
+     "minute": 0,
+     "second": 0
+    }
+   },
+   {
+    "id": 1133,
+    "idSerie": 17000,
+    "tipo": "DATOS",
+    "descripcion": "Rankings históricos (Excel)",
+    "estado": "ACTIVO",
+    "nombreAdjunto": "/estadisticas-economicas/detalle-encuestas?encuesta=RANKING_HISTORICO_ENCUESTA_MENSUAL_EXPECTATIVAS",
+    "fecha": {
+     "year": 2024,
+     "month": 7,
+     "dayOfMonth": 8,
+     "hourOfDay": 0,
+     "minute": 0,
+     "second": 0
+    }
+   },
+   {
+    "id": 804,
+    "idSerie": 17000,
+    "tipo": "DOCUMENTOS",
+    "descripcion": "Guía metodológica",
+    "estado": "ACTIVO",
+    "nombreAdjunto": "https://suameca.banrep.gov.co/archivos/encuestas/encuesta_mensual_expectativas_economicas_eme/guia_metodologica_OE_EME_2025.pdf",
+    "fecha": {
+     "year": 2024,
+     "month": 7,
+     "dayOfMonth": 8,
+     "hourOfDay": 0,
+     "minute": 0,
+     "second": 0
+    }
+   },
+   {
+    "id": 803,
+    "idSerie": 17000,
+    "tipo": "DOCUMENTOS",
+    "descripcion": "Ficha metodológica",
+    "estado": "ACTIVO",
+    "nombreAdjunto": "https://suameca.banrep.gov.co/archivos/encuestas/encuesta_mensual_expectativas_economicas_eme/ficha_metodologica_OE_EME_2025.pdf",
+    "fecha": {
+     "year": 2024,
+     "month": 7,
+     "dayOfMonth": 8,
+     "hourOfDay": 0,
+     "minute": 0,
+     "second": 0
+    }
+   }
+  ]
+ }
+]

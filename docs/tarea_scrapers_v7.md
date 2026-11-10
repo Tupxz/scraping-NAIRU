@@ -51,6 +51,7 @@ los usa).
 | # | Estado | Detalle |
 |---|---|---|
 | 1 | ✅ 2026-11-09 | `--trm` → `data/processed/trm_cop_usd_promedio_mensual.csv` + copia en `legacy/v7/`. Promedio por **días calendario** (`TRMConfig.ponderacion`; alternativa `"registro"`), solo meses completos, 2001-01 → último mes cerrado. Misma regla que `legacy/v7/download_trm_cop_usd.py` del compañero; 6 decimales. Ver `CHANGELOG.md` [0.6.1]. |
+| 2 | ✅ 2026-11-09 | `--eme`: Excel de series históricas de la EME en SUAMECA (URL desde el menú ENCUESTAS); 2003-09 → 2026-10. Igual al CSV del compañero salvo 0,0001 pp por redondeo. |
 | 7 | ✅ 2026-11-09 | Histórico ANDI desde 2001-01 + meses nuevos desde los informes EOIC (`src/sources/andi/extraccion_icu.py`), con controles de mes, rango 55–90, huecos y salto ≤ 8 pp. Error del extractor contra el histórico: medio 0,11 pp, máximo 4,81 (may-2021, revisión). Los informes de octubre no traen el dato mensual: ese mes requiere `--andi-ia` o carga manual en `icu_historical.csv`. |
 | 9 | ✅ 2026-11-09 | SUAMECA envía su certificado sin el intermedio (*GeoTrust EV RSA CA G2*) desde el 2026-09-11; `src/sources/banrep/tls.py` lo agrega al almacén de confianza de la sesión (verificación completa, sin `verify=False`). |
 

@@ -644,6 +644,47 @@ class BanrepTESConfig:
 BANREP_TES_CONFIG = BanrepTESConfig()
 
 
+# ── Configuración EME (Banrep, Encuesta Mensual de Expectativas) ────
+
+@dataclass(frozen=True)
+class BanrepEMEConfig:
+    """Encuesta Mensual de Expectativas de Analistas Económicos (EME).
+
+    SUAMECA publica las series históricas en un Excel (hoja
+    ``INFLACION_TOTAL``: promedio, desviación y mediana de la inflación
+    esperada para seis horizontes).  La URL se descubre en el menú
+    ``ENCUESTAS`` de SUAMECA; ``archivo_url`` es el respaldo.
+    banrep.gov.co está detrás de un captcha antibots, por eso se usa SUAMECA.
+    """
+
+    menu_url: str = (
+        "https://suameca.banrep.gov.co/estadisticas-economicas-back/rest"
+        "/estadisticaEconomicaRestService/consultaMenuXopcion?opcion=ENCUESTAS"
+    )
+    archivo_url: str = (
+        "https://suameca.banrep.gov.co/archivos/encuestas/"
+        "encuesta_mensual_analistas_economicos/series_historicas.xlsx"
+    )
+    hoja: str = "INFLACION_TOTAL"
+    start_date: str = "2003-09-01"
+    raw_filename: str = "eme_series_historicas.xlsx"
+    processed_filename: str = "eme_expectativas_inflacion_total_mensual_promedio.csv"
+    timeout: int = 120
+
+
+BANREP_EME_CONFIG = BanrepEMEConfig()
+
+EME_HORIZONTES: list[str] = [
+    "mes_actual", "fin_ano_presente", "doce_meses",
+    "fin_ano_siguiente", "veinticuatro_meses", "sesenta_meses",
+]
+EME_PROCESSED_COLUMNS: list[str] = (
+    ["date", "year", "month"] + EME_HORIZONTES + ["source", "download_date"]
+)
+EME_DOCE_MESES_MIN: float = 0.0     # % (expectativa a 12 meses)
+EME_DOCE_MESES_MAX: float = 30.0
+
+
 # ── Configuración Brent (FRED / EIA) ────────────────────────────────
 
 @dataclass(frozen=True)

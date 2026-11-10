@@ -21,6 +21,9 @@ from src.config import (
     CAPACITY_UTILIZATION_MAX_CHANGE,
     CAPACITY_UTILIZATION_MIN,
     CAPITAL_STOCK_MAX,
+    EME_DOCE_MESES_MAX,
+    EME_DOCE_MESES_MIN,
+    EME_PROCESSED_COLUMNS,
     CAPITAL_STOCK_MIN,
     DEPRECIATION_RATE_MAX,
     DEPRECIATION_RATE_MIN,
@@ -659,6 +662,30 @@ def run_trm_checks(df: pd.DataFrame, start_date: str | None = None) -> bool:
     check_monthly_complete(df, start_date)
 
     logger.info("─── Todas las validaciones TRM pasaron ✓ ───")
+    return True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Validaciones de calidad para la EME (Banrep)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def run_eme_checks(df: pd.DataFrame, start_date: str | None = "2003-09-01") -> bool:
+    """Columnas, meses consecutivos desde 2003-09, ``doce_meses`` completa y en rango."""
+    logger.info("─── Validaciones de calidad EME ───")
+    missing = set(EME_PROCESSED_COLUMNS) - set(df.columns)
+    if missing:
+        raise QualityCheckError(f"Columnas EME faltantes: {missing}")
+    check_no_nulls_generic(df, ["date", "year", "month", "doce_meses"])
+    check_no_duplicates(df)
+    check_monthly_complete(df, start_date)
+    v = df["doce_meses"]
+    fuera = v[(v < EME_DOCE_MESES_MIN) | (v > EME_DOCE_MESES_MAX)]
+    if not fuera.empty:
+        raise QualityCheckError(
+            f"doce_meses fuera de [{EME_DOCE_MESES_MIN}, {EME_DOCE_MESES_MAX}]: {fuera.values[:5]}"
+        )
+    logger.info("─── Todas las validaciones EME pasaron ✓ ───")
     return True
 
 
