@@ -283,3 +283,6 @@ _to_delete/
 
 # Carpetas de trabajo del motor v7 (se regeneran en cada corrida)
 data/interim/v7_*/
+
+# Archivos que la app de Claude (Cowork) entrega en la carpeta conectada
+Claude outputs/
