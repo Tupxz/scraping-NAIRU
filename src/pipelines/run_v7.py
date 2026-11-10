@@ -78,6 +78,50 @@ def curva_phillips_parcial(m, s, params, fit, smooth) -> tuple[pd.DataFrame, dic
                 "theta_oil": theta}
 
 
+def contraste_viog(df: pd.DataFrame) -> dict | None:
+    """Contraste ex post de la brecha de v7 contra los compuestos VIOG y 1/VIOG.
+
+    Misma métrica que el paso 3 del motor (ventana 2006T1–2024T4 sin 2020T2–2021T2;
+    RMSE y correlación promedio frente a los dos compuestos; bandas de frecuencia con
+    Christiano-Fitzgerald sobre la serie común completa), pero leyendo directamente
+    data/processed/viog_colombia.csv. Desde la decisión de 2026-11-10 el VIOG-CO se
+    calcula sobre el PIB anualizado (suma de 4 trimestres) y en logaritmos, así que
+    sus brechas ya están en la misma base que la de la función de producción.
+    """
+    from statsmodels.tsa.filters.cf_filter import cffilter
+    from src.config import PROCESSED_DIR
+
+    p = PROCESSED_DIR / "viog_colombia.csv"
+    if not p.exists():
+        return None
+    v = pd.read_csv(p, parse_dates=["date"])
+    ref = pd.DataFrame({"q": v["date"].dt.to_period("Q"),
+                        "viog": 100 * v["gap_viog"], "inv_viog": 100 * v["gap_inv_viog"]})
+    ours = pd.DataFrame({"q": pd.to_datetime(df["date"]).dt.to_period("Q"),
+                         "propia": 100 * df["brecha_pot"].astype(float)}).dropna()
+    m = ours.merge(ref, on="q", how="inner").dropna().set_index("q").sort_index()
+    ventana = (m.index >= pd.Period("2006Q1", "Q")) & (m.index <= pd.Period("2024Q4", "Q"))
+    covid = (m.index >= pd.Period("2020Q2", "Q")) & (m.index <= pd.Period("2021Q2", "Q"))
+    w = m[ventana & ~covid]
+    res = {"n": int(len(w)), "muestra_comun": f"{m.index[0]}–{m.index[-1]}"}
+    for c in ("viog", "inv_viog"):
+        d = w["propia"] - w[c]
+        res[f"rmse_{c}"] = float(np.sqrt(np.mean(d ** 2)))
+        res[f"corr_{c}"] = float(w["propia"].corr(w[c]))
+        res[f"sesgo_{c}"] = float(d.mean())
+    res["rmse_medio_pp"] = 0.5 * (res["rmse_viog"] + res["rmse_inv_viog"])
+    res["corr_niveles"] = 0.5 * (res["corr_viog"] + res["corr_inv_viog"])
+    for nombre, (lo, hi) in (("corr_ciclo_2_8", (8, 32)), ("corr_8_20", (32, 80))):
+        b = {c: pd.Series(cffilter(m[c], low=lo, high=hi, drift=True)[0], index=m.index)
+             for c in ("propia", "viog", "inv_viog")}
+        bb = pd.DataFrame(b)[ventana & ~covid]
+        res[nombre] = float(0.5 * (bb["propia"].corr(bb["viog"]) + bb["propia"].corr(bb["inv_viog"])))
+    full = m
+    res["corr_todo_viog"] = float(full["propia"].corr(full["viog"]))
+    res["corr_todo_inv_viog"] = float(full["propia"].corr(full["inv_viog"]))
+    return res
+
+
 def run(modo: str = "repo", con_contraste: bool = True) -> dict:
     t0 = time.time()
     raiz = DATA_DIR / "interim" / f"v7_{modo}"
@@ -117,14 +161,25 @@ def run(modo: str = "repo", con_contraste: bool = True) -> dict:
     resumen["ultima_brecha"] = {"fecha": str(bp["date"].iloc[-1].date()),
                                 "pct": float(bp["brecha_pot"].iloc[-1]) * 100.0}
 
-    if con_contraste and (raiz / m.FILTROS_XLSX.split(os.sep)[-1]).exists():
-        met, corr_alta, corr_baja, *_ = m.paso3_diagnostico_filtros(df)
-        resumen["contraste_filtros"] = {"rmse_medio_pp": met["rmse_mean"], "corr_niveles": met["corr_mean"],
-                                        "corr_ciclo_2_8": corr_alta, "corr_8_20": corr_baja,
-                                        "n": met["n_obs"]}
-    else:
+    if not con_contraste:
         resumen["contraste_filtros"] = None
-        logger.warning("Paso 3 (contraste con VIOG) omitido: no está el Excel de filtros.")
+    elif modo == "referencia":
+        # Réplica del paper: el paso 3 del motor con el Excel de filtros de agosto de 2026.
+        if (raiz / m.FILTROS_XLSX.split(os.sep)[-1]).exists():
+            met, corr_alta, corr_baja, *_ = m.paso3_diagnostico_filtros(df)
+            resumen["contraste_filtros"] = {"rmse_medio_pp": met["rmse_mean"], "corr_niveles": met["corr_mean"],
+                                            "corr_ciclo_2_8": corr_alta, "corr_8_20": corr_baja, "n": met["n_obs"]}
+        else:
+            resumen["contraste_filtros"] = None
+            logger.warning("Paso 3 (contraste con VIOG) omitido: no está el Excel de filtros.")
+    else:
+        resumen["contraste_filtros"] = contraste_viog(df)
+        if resumen["contraste_filtros"] is None:
+            logger.warning("Contraste con VIOG omitido: falta data/processed/viog_colombia.csv.")
+        else:
+            c = resumen["contraste_filtros"]
+            logger.info("Contraste vs VIOG/1-VIOG: RMSE %.2f pp, corr %.2f, ciclo 2-8 años %.2f, 8-20 años %.2f (n=%d)",
+                        c["rmse_medio_pp"], c["corr_niveles"], c["corr_ciclo_2_8"], c["corr_8_20"], c["n"])
 
     shutil.copytree(m.OUT_DIR, destino, dirs_exist_ok=True)
     resumen["segundos"] = round(time.time() - t0, 1)

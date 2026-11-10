@@ -298,7 +298,11 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     if cfg is None:
         from src.config import VIOG_CONFIG
         cfg = VIOG_CONFIG
-    y = df["Y"].astype(float)
+    y_nivel = df["Y"].astype(float)
+    en_log = bool(getattr(cfg, "filtros_en_log", False))
+    # Con filtros_en_log, BK/C-F/Butterworth/Boosted-HP trabajan sobre ln Y y
+    # sus tendencias se devuelven en niveles (exp) al final; el Kalman ya usa logs.
+    y = np.log(y_nivel) if en_log else y_nivel
 
     # Baxter-King (recorta K obs de cada extremo → NaN en extremos)
     bk_cycle = bkfilter(y, low=cfg.bk_low, high=cfg.bk_high, K=cfg.bk_K)
@@ -331,6 +335,10 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     _, bhp_trend = boosted_hp_filter(y_series, lamb=cfg.hp_lambda, iterations=BHP_ITERATIONS)
     df["trend_bhp"] = bhp_trend.values
 
+    if en_log:
+        for _c in ("trend_bk", "trend_cf", "trend_bw", "trend_bhp"):
+            df[_c] = np.exp(df[_c].astype(float))
+
     # ── Kalman / UCM — Structural Time Series (equivalente a Stata ucm) ─────────
     # Modelo STS estimado por máxima verosimilitud vía filtro de Kalman:
     #
@@ -358,7 +366,7 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     # Stata: gen lnpib = ln(pib)  →  ucm lnpib, level slope cycle(1) cyclelen(32)
     # El modelo STS es lineal → debe estimarse en logaritmos para ser equivalente.
     # La tendencia en logs se reconvierte al nivel: trend = exp(level.smoothed).
-    y_log = np.log(y.values.astype(float))
+    y_log = np.log(y_nivel.values.astype(float))
 
     ucm_kwargs: dict = dict(
         endog=y_log,
@@ -844,6 +852,15 @@ def run_viog_pipeline(
         out["gap_ref"] = df["gap_ref"]
 
     out_df = pd.DataFrame(out).reset_index(drop=True)
+    limite = getattr(cfg, "max_abs_gap", None)
+    if limite is not None:
+        gaps = out_df[[c for c in out_df.columns if c.startswith("gap_")]]
+        peor = float(gaps.abs().max().max())
+        if not np.isfinite(peor) or peor > limite:
+            raise ValueError(
+                f"[VIOG] Brecha fuera de rango ({peor:.3f} > {limite}): posible divergencia "
+                f"de un filtro; no se sobrescribe {output_path.name}."
+            )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     out_df.to_csv(output_path, index=False)
     logger.info("[VIOG] %d observaciones guardadas en %s", len(out_df), output_path)

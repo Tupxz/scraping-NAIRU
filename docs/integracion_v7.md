@@ -228,3 +228,16 @@ Brent: FRED POILBREUSDM (el paper usó Investing.com; se corrige el texto).
 `outputs/pib_potencial/pib_potencial_colombia.csv` del motor v3. Luego retirar v3
 (`src/nairu/model_core.py`, `src/production/`, `baseline_v3/`) y reactivar la
 estimación en `update.yml`.
+
+---
+
+## 8. Estado al 2026-11-10 — integración cerrada
+
+- Todos los insumos de v7 salen del scraping (`outputs/v7/fuentes_insumos.json` sin "REFERENCIA").
+- Workflow mensual: `python -m src.main --v7` + `--export-web`; corrida manual #10 en verde.
+- Tablero en v7 (con nota de las cifras del paper). v3 borrado (CHANGELOG [0.8.0]–[0.8.1]).
+- Réplica exacta del paper: `python -m src.pipelines.run_v7 --referencia` (test en `tests/test_v7.py`).
+- Pendiente: tarjeta de la curva de Phillips de v7 (espera aprobación de la gráfica
+  `outputs/v7/curva_phillips_parcial_v7.png`); reescritura de la sección de filtros del
+  paper y Excel de filtros VIOG generado por el pipeline (contraste del paso 3 en CI);
+  2 fallas de `TestComputeVIOGWeights`; monitorear la convergencia del multiarranque.

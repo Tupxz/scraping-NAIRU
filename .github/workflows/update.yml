@@ -85,10 +85,9 @@ jobs:
           scrape --subempleo      # DANE GEIH anexo principal: subocupación y tasas brutas
           scrape --vacantes       # BANREP vacantes en prensa, 7 ciudades (SUAMECA)
           scrape --pib-insumos-v7 # DANE VA petróleo-gas e impuestos netos (insumos v7)
-          # NOTA: --viog-co NO se corre en automático. El filtro Kalman (UCM) de
-          # VIOG-Colombia puede diverger con datos nuevos (dio un transitorio de
-          # ~200% en 2005-Q1 al recomputar). El VIOG se mantiene estable desde su
-          # CSV committeado (como PWT) y se regenera a mano + verificando.
+          scrape --viog-co        # VIOG-Colombia: 5 filtros sobre ln(PIB anualizado) del DANE vigente.
+          #   Si un filtro diverge (|brecha| > 25 %), --viog-co falla sin escribir y
+          #   se conserva el viog_colombia.csv anterior (control max_abs_gap).
 
       # ── 5. MODELO (sobre datos frescos o cacheados) ──────────────────
       # Estos pasos SÍ deben tener éxito: si el modelo falla no se publica

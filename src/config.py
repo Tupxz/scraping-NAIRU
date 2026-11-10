@@ -1268,6 +1268,21 @@ class VIOGConfig:
     annualize_series: bool = False
     annualize_window: int = 4
 
+    # filtros_en_log=True: BK, C-F, Butterworth y Boosted-HP se aplican al
+    # LOGARITMO de Y (y la tendencia se devuelve en niveles con exp), igual
+    # que el Kalman/UCM, que ya trabajaba en logs. Así los 5 filtros extraen
+    # la tendencia sobre la misma escala en que se mide la brecha
+    # (ln Y − ln Y*). Decisión del usuario 2026-11-10 ("todo en logaritmos",
+    # como dice el documento metodológico). False conserva el comportamiento
+    # anterior (4 filtros en niveles), que sigue usando VIOG_CONFIG (USA).
+    filtros_en_log: bool = False
+
+    # max_abs_gap: control de calidad antes de escribir el CSV. Si alguna
+    # brecha (en log) supera este valor absoluto, se lanza un error y se
+    # conserva el CSV anterior (p. ej. si el Kalman/UCM diverge al reestimar
+    # con datos nuevos). None desactiva el control.
+    max_abs_gap: float | None = None
+
 
 VIOG_CONFIG = VIOGConfig()
 
@@ -1296,6 +1311,10 @@ VIOG_CO_CONFIG = VIOGConfig(
     # verificado). viog_colombia.csv queda con 126 filas en vez de 129
     # desde el proximo `--viog-co`.
     annualize_series=True,
+    # Decisión 2026-11-10: los 5 filtros sobre ln(PIB anualizado).
+    filtros_en_log=True,
+    # Con el PIB anualizado la peor brecha histórica es ≈ −9 % (2021T1).
+    max_abs_gap=0.25,
 )
 
 VIOG_PROCESSED_COLUMNS: list[str] = [

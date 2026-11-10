@@ -297,10 +297,10 @@ class TestComputeVIOGWeights:
         burnin = VIOG_CONFIG.kalman_burnin_periods
         for col in ["rev_bw", "rev_bhp", "rev_ref"]:
             assert (weights_df[col] > 0).all(), f"{col} tiene valores ≤ 0"
-        # rev_cf: NaN durante el warm-up del CF de una cola, positivo después
-        assert weights_df["rev_cf"].iloc[: CF_WARMUP - 1].isna().all()
-        assert (weights_df["rev_cf"].iloc[CF_WARMUP - 1:] > 0).all(), \
-            "rev_cf tiene valores ≤ 0 fuera del warm-up"
+        # rev_cf: el C-F por defecto es de DOS COLAS (cf_one_sided=False desde
+        # 2026-08-05), que no tiene warm-up: positivo en toda la muestra. (Este
+        # test se había quedado con la expectativa del C-F de una cola.)
+        assert (weights_df["rev_cf"] > 0).all(), "rev_cf tiene valores ≤ 0"
         # rev_kalman: NaN en primeras `burnin` filas, positivo después
         assert weights_df["rev_kalman"].iloc[:burnin].isna().all()
         assert (weights_df["rev_kalman"].iloc[burnin:] > 0).all(), \
@@ -310,9 +310,8 @@ class TestComputeVIOGWeights:
         burnin = VIOG_CONFIG.kalman_burnin_periods
         for col in ["inv_rev_bw", "inv_rev_bhp", "inv_rev_ref"]:
             assert (weights_df[col] > 0).all()
-        # inv_rev_cf: NaN durante el warm-up, positivo después
-        assert weights_df["inv_rev_cf"].iloc[: CF_WARMUP - 1].isna().all()
-        assert (weights_df["inv_rev_cf"].iloc[CF_WARMUP - 1:] > 0).all()
+        # inv_rev_cf: C-F de dos colas por defecto, sin warm-up
+        assert (weights_df["inv_rev_cf"] > 0).all()
         # inv_rev_kalman: NaN en primeras `burnin` filas, positivo después
         assert weights_df["inv_rev_kalman"].iloc[:burnin].isna().all()
         assert (weights_df["inv_rev_kalman"].iloc[burnin:] > 0).all()
@@ -566,3 +565,46 @@ class TestRunColombiaUsesOwnConfig:
         run_viog_module._run_for_config(VIOG_CO_CONFIG, plot_subdir="viog_colombia_test")
 
         assert captured.get("cfg") is VIOG_CO_CONFIG
+
+
+# ── Filtros sobre el logaritmo (VIOG-CO, decisión 2026-11-10) ─────────
+class TestFiltrosEnLog:
+    """Con filtros_en_log=True los 5 filtros extraen la tendencia de ln Y."""
+
+    def _serie(self, n=80):
+        import numpy as np, pandas as pd
+        rng = np.random.default_rng(0)
+        t = np.arange(n)
+        y = np.exp(10 + 0.01 * t + 0.02 * np.sin(2 * np.pi * t / 20) + 0.003 * rng.standard_normal(n))
+        idx = pd.period_range("2000Q1", periods=n, freq="Q")
+        return pd.DataFrame({"Y": y}, index=idx)
+
+    def test_config_colombia_en_log_y_usa_en_niveles(self):
+        from src.config import VIOG_CO_CONFIG, VIOG_CONFIG
+        assert VIOG_CO_CONFIG.filtros_en_log is True
+        assert VIOG_CONFIG.filtros_en_log is False
+
+    def test_tendencias_en_log_equivalen_a_filtrar_ln_y(self):
+        import dataclasses
+        import numpy as np
+        from scipy.signal import butter, filtfilt
+        from src.config import VIOG_CONFIG
+        from src.sources.viog.viog import apply_filters
+        cfg = dataclasses.replace(VIOG_CONFIG, filtros_en_log=True)
+        df = apply_filters(self._serie(), cfg=cfg)
+        b, a = butter(N=cfg.bw_order, Wn=cfg.bw_cutoff, btype="low")
+        esperado = np.exp(filtfilt(b, a, np.log(self._serie()["Y"].to_numpy())))
+        np.testing.assert_allclose(df["trend_bw"].to_numpy(), esperado, rtol=1e-12)
+        for c in ("trend_bk", "trend_cf", "trend_bw", "trend_bhp", "trend_kalman"):
+            assert (df[c].dropna() > 0).all(), c   # tendencias en niveles (exp)
+
+    def test_en_niveles_no_cambia(self):
+        import dataclasses
+        import numpy as np
+        from scipy.signal import butter, filtfilt
+        from src.config import VIOG_CONFIG
+        from src.sources.viog.viog import apply_filters
+        df = apply_filters(self._serie(), cfg=dataclasses.replace(VIOG_CONFIG, filtros_en_log=False))
+        b, a = butter(N=VIOG_CONFIG.bw_order, Wn=VIOG_CONFIG.bw_cutoff, btype="low")
+        np.testing.assert_allclose(df["trend_bw"].to_numpy(),
+                                   filtfilt(b, a, self._serie()["Y"].to_numpy()), rtol=1e-12)

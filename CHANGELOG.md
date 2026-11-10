@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0] — 2026-11-10
+
+### Cambiado
+- **VIOG-Colombia: los 5 filtros sobre el logaritmo del PIB anualizado, con el PIB del DANE vigente** (decisiones del usuario 2026-11-10).
+  - `VIOGConfig.filtros_en_log` (nuevo; `True` solo para Colombia): Baxter-King, Christiano-Fitzgerald, Butterworth y Boosted-HP pasan a filtrar ln Y como ya lo hacía el Kalman/UCM; la brecha sigue siendo ln Y − ln Y*. USA no cambia.
+  - Se mantiene la anualización previa (suma móvil de 4 trimestres, decisión de septiembre); el C-F sigue en dos colas.
+  - `viog_colombia.csv` regenerado con `--viog-co` (PIB DANE base 2015 vigente hasta 2026T2, empalmado hacia 1994 con las bases 2005 y 1994): 127 trimestres, 1994T4–2026T2. Cifras nuevas del Cuadro 6 en la nota para el compañero.
+  - `VIOGConfig.max_abs_gap` (nuevo; 0,25 para Colombia): si alguna brecha supera ese valor, `--viog-co` falla sin sobrescribir el CSV. Con esa protección, `update.yml` corre `--viog-co` cada mes (antes se regeneraba a mano por miedo a que el Kalman divergiera).
+- **Contraste de v7 con los filtros dentro del pipeline**: `run_v7.contraste_viog` calcula RMSE, correlación en niveles y por bandas (C-F 2–8 y 8–20 años) contra VIOG y 1/VIOG leyendo `viog_colombia.csv`, sin el Excel de filtros. `--v7` lo incluye en `outputs/v7/resumen_v7.json`. El modo `--referencia` conserva el paso 3 original del motor (réplica del paper).
+- **Tablero**: la curva de Phillips de v7 queda conectada (residuos parciales de la ecuación de precios contra u − u*, pendiente κ del modelo, ajuste MCO, meses de pandemia marcados).
+
+### Corregido
+- `tests/test_viog.py::TestComputeVIOGWeights` (2 fallas desde agosto): esperaban el warm-up del C-F de una cola; el C-F por defecto es de dos colas. Suite completa sin fallas (708 pasan).
+
+### Agregado
+- `tests/test_viog.py::TestFiltrosEnLog` (3 tests).
+
 ## [0.8.1] — 2026-11-10
 
 ### Cambiado

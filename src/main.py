@@ -172,7 +172,7 @@ def run_pipeline(
 
         if run_v7:
             from src.pipelines import run_v7 as v7_pipeline
-            v7_pipeline.run("repo", con_contraste=False)
+            v7_pipeline.run("repo", con_contraste=True)
 
         if run_export_web:
             from src.pipelines import export_web_data as export_web_pipeline

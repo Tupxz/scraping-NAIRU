@@ -1,6 +1,6 @@
 {
   "modelo": "v7",
-  "last_updated": "2026-11-10 04:38",
+  "last_updated": "2026-11-10 05:07",
   "last_obs_nairu": "2026-04-01",
   "n_obs_monthly": 268,
   "n_obs_quarterly": 90,
@@ -22,6 +22,6 @@
   "u_bar": 10.56,
   "phillips_kappa": -0.238,
   "phillips_kappa_p": 0.0,
-  "latest_brecha_viog": -0.18,
-  "last_obs_viog": "2026-01-01"
+  "latest_brecha_viog": -0.12,
+  "last_obs_viog": "2026-04-01"
 }
