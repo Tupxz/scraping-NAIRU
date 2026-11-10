@@ -63,3 +63,31 @@ def test_create_session_de_ambos_scrapers_usa_el_adaptador():
         with patch.object(requests.Session, "get", return_value=MagicMock(content=b"ok")):
             s = mod.create_session()
         assert isinstance(s.get_adapter("https://suameca.banrep.gov.co/"), AdaptadorTLSBanrep)
+
+
+def test_funciona_en_un_entorno_limpio(tmp_path):
+    """Como en GitHub Actions: proceso aislado, sin variables de CA ni HOME del usuario.
+
+    El intermedio va embebido en src/sources/banrep/tls.py (versionado); no
+    depende de archivos locales ni de la configuración de esta máquina.
+    """
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parent.parent
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE")}
+    env["HOME"] = str(tmp_path)
+    codigo = (
+        "import sys; sys.path.insert(0, sys.argv[1]);"
+        "from src.sources.banrep.tls import contexto_ssl_banrep;"
+        "c = contexto_ssl_banrep().get_ca_certs();"
+        "n = [dict(x for t in d['subject'] for x in t).get('commonName') for d in c];"
+        "print('GeoTrust EV RSA CA G2' in n, 'DigiCert Global Root G2' in n)"
+    )
+    r = subprocess.run([sys.executable, "-I", "-c", codigo, str(raiz)], env=env, cwd=tmp_path,
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "True True"
