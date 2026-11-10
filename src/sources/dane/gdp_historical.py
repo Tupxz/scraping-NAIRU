@@ -187,3 +187,34 @@ def splice_series(new: pd.Series, old: pd.Series) -> pd.Series:
         len(result), result.index[0], result.index[-1],
     )
     return result
+
+
+def encadenar_hacia_atras(nuevo: pd.Series, base: pd.Series, desde: pd.Period) -> pd.Series:
+    """Extiende *nuevo* hacia atrás hasta *desde* con las tasas de *base*.
+
+    ``V_q = V_{q+1} · B_q / B_{q+1}`` desde el primer trimestre de *nuevo*:
+    el nivel lo fija la serie nueva y la dinámica la serie vieja (tasas de
+    crecimiento encadenadas).  Es el empalme del PIB 2004 de la línea base v7
+    ("encadenamiento de tasas con la base 2005"); a diferencia de
+    :func:`splice_series` no usa la razón promedio del traslape.
+
+    Raises
+    ------
+    ValueError
+        Si *base* no cubre de *desde* al primer trimestre de *nuevo*.
+    """
+    primero = nuevo.index.min()
+    if desde >= primero:
+        return nuevo.sort_index()
+    necesarios = pd.period_range(desde, primero, freq=primero.freq)
+    faltan = [str(p) for p in necesarios if p not in base.index or pd.isna(base.loc[p])]
+    if faltan:
+        raise ValueError(f"La serie base no cubre {faltan} para encadenar hacia atrás.")
+    valores = {}
+    siguiente = float(nuevo.loc[primero])
+    for p in reversed(necesarios[:-1]):
+        siguiente = siguiente * float(base.loc[p]) / float(base.loc[p + 1])
+        valores[p] = siguiente
+    previos = pd.Series(valores).sort_index()
+    return pd.concat([previos, nuevo]).sort_index()
+

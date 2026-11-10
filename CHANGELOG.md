@@ -25,6 +25,11 @@ Scrapers restantes de `docs/tarea_scrapers_v7.md` (uno por commit). `src/v7/insu
   - Contra `legacy/v7/datos/`: **idéntico** en los 609 meses comunes y las 7 ciudades; suma 2026-10.
   - `tests/test_vacantes.py` (13, offline) con un extracto real de las respuestas de SUAMECA.
 
+- **PIB 2004 empalmado** (punto 8): `dane_gdp_colombia.csv` arranca en **2004Q1**. `src/sources/dane/gdp.py::empalmar_2004` encadena hacia atrás desde el 2005Q1 de la base 2015 con las tasas trimestrales de la base 2005 desestacionalizada (`gdp_historical.encadenar_hacia_atras`: V_q = V_{q+1}·B_q/B_{q+1}), que es el empalme de la línea base ("encadenamiento de tasas con la base 2005"), no la razón promedio de `splice_series`. La base 2005 ya no se revisa: se lee de `data/raw/dane/dane_gdp_base2005.xls` (versionado; se descarga solo si falta). Filas de 2004 con `source = DANE base 2005 (tasas encadenadas sobre base 2015)`. `src/v7/insumos.py` ya no encadena 2004 con la referencia: toma el PIB completo del repo.
+  - Contra `legacy/v7/datos/insumos_pib_trimestral.csv` (`V_pib`): crecimientos de 2004 idénticos (dif. 4e-8 pp); con el 2005Q1 del compañero el 2004 sale igual a 1e-6 (test). El nivel difiere 0,236 % en todo 2004, lo mismo que en 2005Q1, por la revisión del DANE a la base 2015 vigente; en el resto, hasta 0,5 % en niveles y 0,94 pp en crecimiento (2008Q2), por la reestimación estacional del DANE (el hallazgo de [0.6.0]).
+  - Efectos: `run_pib_potencial.py` (v3, en el workflow) filtra desde 2005-01-01 y no cambia; `merge.py` gana `gdp_observed` de 2004; VIOG-Colombia (manual) incluye 2004 en el traslape de su empalme con la base 2005.
+  - `tests/test_gdp_2004.py` (4, offline): encadenamiento sintético, base incompleta, reproducción del 2004 de la línea base, idempotencia y esquema; `test_dane_gdp.py` end-to-end sigue offline (usa la base versionada).
+
 ## [0.6.1] — 2026-11-09
 
 Rama `scrapers-v7` (scrapers para v7), fusionada sobre [0.6.0].

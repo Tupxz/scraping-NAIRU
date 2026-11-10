@@ -270,6 +270,53 @@ def parse_gdp_excel(
 # ═══════════════════════════════════════════════════════════════════════
 
 
+INICIO_EMPALME = pd.Period("2004Q1", freq="Q")
+FUENTE_EMPALME = "DANE base 2005 (tasas encadenadas sobre base 2015)"
+
+
+def empalmar_2004(df: pd.DataFrame, raw_dir: Path = RAW_DANE_DIR,
+                  base2005: pd.Series | None = None) -> pd.DataFrame:
+    """Agrega 2004Q1–2004Q4 encadenando hacia atrás con las tasas de la base 2005.
+
+    La base 2015 del DANE arranca en 2005Q1; v7 necesita 2004.  La base 2005
+    (2000Q1–2011Q2, desestacionalizada) es una serie histórica que ya no se
+    revisa: se lee de ``data/raw/dane/dane_gdp_base2005.xls`` (versionado) y,
+    si no está, se descarga.  Reproduce el ``V_pib`` 2004 de la línea base.
+    """
+    from src.sources.dane.gdp_historical import (
+        download_gdp_historical,
+        encadenar_hacia_atras,
+        parse_gdp_historical,
+    )
+
+    if base2005 is None:
+        nombre = "dane_gdp_base2005.xls"
+        ruta = next((p for p in (raw_dir / nombre, RAW_DANE_DIR / nombre) if p.exists()), None)
+        if ruta is None:
+            ruta = raw_dir / nombre
+            download_gdp_historical(ruta)
+        base2005 = parse_gdp_historical(ruta)
+    df = df[df["date"] >= INICIO_EMPALME.start_time].copy()   # idempotente
+    nuevo = pd.Series(df["gdp_observed"].to_numpy(), index=pd.to_datetime(df["date"]).dt.to_period("Q"))
+    nuevo = nuevo[~nuevo.index.duplicated()]
+    serie = encadenar_hacia_atras(nuevo, base2005, INICIO_EMPALME)
+    previos = serie[serie.index < nuevo.index.min()]
+    if previos.empty:
+        return df.reset_index(drop=True)
+    filas = pd.DataFrame({
+        "date": previos.index.to_timestamp(how="start"),
+        "year": previos.index.year,
+        "quarter": previos.index.quarter,
+        "gdp_observed": previos.round(4).to_numpy(),
+        "source": FUENTE_EMPALME,
+        "download_date": df["download_date"].iloc[0] if len(df) else None,
+    })
+    out = pd.concat([filas, df[filas.columns]], ignore_index=True).sort_values("date").reset_index(drop=True)
+    logger.info("PIB empalmado hacia atrás con la base 2005: %s → %s",
+                previos.index.min(), previos.index.max())
+    return out
+
+
 def run_dane_gdp_pipeline(
     config: DANEGDPConfig = DANE_GDP_CONFIG,
     raw_dir: Path = RAW_DANE_DIR,
@@ -282,6 +329,7 @@ def run_dane_gdp_pipeline(
     url = extract_gdp_xlsx_link(html, config)
     xlsx_path = download_gdp_excel(url, raw_dir, config)
     df = parse_gdp_excel(xlsx_path, config)
+    df = empalmar_2004(df, raw_dir)
 
     output_path = processed_dir / config.processed_filename
     save_csv(df, output_path)
