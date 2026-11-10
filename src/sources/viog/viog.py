@@ -161,6 +161,53 @@ def _annualize_df(df: pd.DataFrame, window: int) -> pd.DataFrame:
 
 # ── 2. Filtros ────────────────────────────────────────────────────────
 
+BHP_ITERATIONS: int = 3          # iteraciones por defecto del Boosted HP
+
+
+def boosted_hp_filter(
+    series: pd.Series,
+    lamb: float = 1600.0,
+    iterations: int = BHP_ITERATIONS,
+) -> tuple[pd.Series, pd.Series]:
+    """Filtro Boosted Hodrick-Prescott (BHP; Phillips & Shi, 2021).
+
+    Aplica el HP ``iterations`` veces sobre el ciclo residual: el ciclo final
+    es el residuo tras la última pasada y la tendencia, la serie original
+    menos ese ciclo.  Los NaN del inicio/fin se excluyen del filtro y la
+    salida se reindexa al índice original.
+
+    (Vivía en ``src/production/tfp.py``, el motor de PIB potencial v3, que se
+    borró en 0.8.0; VIOG es su único usuario.)
+
+    Returns
+    -------
+    tuple[pd.Series, pd.Series]
+        ``(cycle, trend)`` con el índice de la entrada; ``cycle = series − trend``.
+
+    Raises
+    ------
+    ValueError
+        Si la serie tiene menos de 8 observaciones no nulas.
+    """
+    from statsmodels.tsa.filters.hp_filter import hpfilter
+
+    valid = series.dropna()
+    if len(valid) < 8:
+        raise ValueError(
+            f"El filtro BHP requiere al menos 8 observaciones no nulas; "
+            f"la serie tiene {len(valid)}."
+        )
+
+    current_cycle = valid.values.copy().astype(float)
+    for _ in range(iterations):
+        current_cycle, _ = hpfilter(current_cycle, lamb=lamb)
+    trend_vals = valid.values - current_cycle
+
+    trend = pd.Series(trend_vals, index=valid.index, name=f"{series.name}_trend")
+    cycle = pd.Series(current_cycle, index=valid.index, name=f"{series.name}_cycle")
+    return cycle.reindex(series.index), trend.reindex(series.index)
+
+
 def cf_filter_one_sided(
     x: np.ndarray,
     low: float = 6,
@@ -247,8 +294,6 @@ def apply_filters(df: pd.DataFrame, cfg=None) -> pd.DataFrame:
     from statsmodels.tsa.filters.bk_filter import bkfilter
     from statsmodels.tsa.filters.cf_filter import cffilter
     from statsmodels.tsa.statespace.structural import UnobservedComponents
-
-    from src.production.tfp import BHP_ITERATIONS, boosted_hp_filter
 
     if cfg is None:
         from src.config import VIOG_CONFIG

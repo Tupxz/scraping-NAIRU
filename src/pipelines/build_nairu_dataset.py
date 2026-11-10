@@ -18,7 +18,7 @@ del commit a30fb4b que usó la línea base v7: el ICU se desestacionaliza con
 STL desde 2001) y conserva las filas con Unemp_Desest, Inf_Rate e ICU no
 nulas.  Las demás columnas pueden venir vacías al inicio (TES desde 2002-12):
 cada modelo arma su propia muestra con ``dropna``.  El archivo final se guarda en
-``data/inputs/Data_NAIRU.xlsx`` para ser leído por ``src/nairu/estimation.py``.
+``data/inputs/Data_NAIRU.xlsx``, que lee el modelo v7 (``src/v7/insumos.py``).
 """
 
 from __future__ import annotations

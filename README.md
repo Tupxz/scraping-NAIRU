@@ -4,15 +4,17 @@
 [![python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](#3-instalación)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-> **Estado (2026-10-22):** el proyecto está en transición a la especificación **v7**
-> del working paper (`docs/paper/working_paper_v7.pdf`). El código de `src/` implementa
-> todavía la versión v3; varias secciones de este README describen etapas anteriores.
-> Qué falta para v7 y cómo integrarlo: [`docs/integracion_v7.md`](docs/integracion_v7.md).
+> **Estado (2026-11-10):** el modelo es la especificación **v7** del working paper
+> (`docs/paper/working_paper_v7.pdf`), en `src/v7/` y `python -m src.main --v7`; el
+> workflow mensual y el tablero ya la usan. El código de la versión v3 (`src/nairu/`,
+> `src/production/`, `--nairu-estim`, `--pib-potencial`, `--prod-func`) se borró en 0.8.0.
+> Varias secciones de este README (§2, §6, §8) describen etapas anteriores.
+> Inventario de insumos v7: [`docs/integracion_v7.md`](docs/integracion_v7.md).
 
 Pipeline reproducible que descarga, limpia, valida y consolida series macroeconómicas oficiales de Colombia para alimentar dos modelos:
 
-1. **NAIRU/NAICU** — Tasa de desempleo (y de capacidad instalada) consistente con inflación estable. Filtro de Kalman biestado en `src/nairu/`.
-2. **PIB potencial vía Cobb-Douglas** — Y\* = A\*·Kᵅ·(H·L\*)^(1−α) con α = 0.4. PTF tendencial y brecha estadística via filtro Boosted Hodrick-Prescott (BHP, Phillips & Shi 2021).
+1. **NAIRU/NAICU** — Tasa de desempleo (y de capacidad instalada) consistente con inflación estable. Modelo de espacio de estados v7 en `src/v7/motor.py`.
+2. **PIB potencial por función de producción** — Cobb-Douglas con PTF tendencial estilo CBO (v7, `src/v7/motor.py`); la brecha estadística VIOG (5 filtros) sale de `src/sources/viog/`.
 
 Todas las fuentes se actualizan ejecutando un solo comando; el resultado es un CSV mensual de **32 columnas × ~270 meses (2004-01-01 → presente)**.
 
@@ -38,7 +40,7 @@ Todas las fuentes se actualizan ejecutando un solo comando; el resultado es un C
    data/final/nairu_dataset.csv   ── dataset consolidado (32 cols)
        │
        ▼
-   src/nairu/  ──  estimación NAIRU/NAICU (Kalman)
+   src/v7/  ──  NAIRU/NAICU + PIB potencial (v7; lee data/inputs/Data_NAIRU.xlsx y data/processed/)
    src/sources/viog/  ──  brecha del producto (5 filtros + ponderado VIOG)
 ```
 
@@ -122,7 +124,6 @@ python -m src.main --viog            # VIOG-USA
 python -m src.main --viog-co         # VIOG-Colombia (requiere --dane-gdp antes)
 python -m src.main --investment      # Inversión FBKF trimestral DANE
 python -m src.main --income          # PIB enfoque ingreso DANE (para alpha)
-python -m src.main --prod-func       # Dataset anual función de producción
 python -m src.main --andi-reprocess  # Reprocesar PDFs ANDI locales
 python -m src.main --export-web      # Exportar CSVs + meta.json al tablero
 ```
@@ -141,26 +142,16 @@ from src.pipelines import run_all
 run_all.run()
 ```
 
-### 4.3 Estimación NAIRU
+### 4.3 Modelo v7 (NAIRU/NAICU + PIB potencial)
 
 ```bash
-python -m src.main --nairu-dataset   # Construye Data_NAIRU.xlsx
-python -m src.main --nairu-estim     # Estima NAIRU/NAICU v6 (Kalman biestado)
+python -m src.main --nairu-dataset   # Construye data/inputs/Data_NAIRU.xlsx
+python -m src.main --v7              # NAIRU/NAICU + PIB potencial (working paper v7)
+python -m src.pipelines.run_v7 --referencia   # Réplica exacta del paper con los insumos congelados
 ```
 
-Los outputs se escriben en `outputs/nairu/`.
-
-### 4.4 PIB Potencial Cobb-Douglas
-
-```bash
-python -m src.main --pib-potencial   # PIB Potencial + Excel (requiere --nairu-estim previo)
-```
-
-Genera `outputs/pib_potencial/PIB_Potencial_Colombia.xlsx` con 4 hojas:
-- **Trimestral** — Y\*, brechas CD y BHP, factores L, K, α, PTF
-- **Mensual** — TD, UCI, NAIRU\*, NAICU\*, inflación
-- **Supuestos** — parámetros del modelo
-- **Metadatos** — fechas de descarga por fuente
+Las salidas se escriben en `outputs/v7/` (series, coeficientes, `resumen_v7.json` y
+`fuentes_insumos.json`, que dice de dónde salió cada insumo).
 
 ---
 
@@ -174,17 +165,15 @@ scraping-NAIRU/
 │   ├── io_utils.py            # save_csv, load_csv (con parse_dates), setup_logging
 │   ├── merge.py               # Outer-merge por date → data/final/nairu_dataset.csv
 │   ├── quality_checks.py      # Validaciones por fuente; QualityCheckError
-│   ├── sources/               # Una carpeta por fuente (andi, banrep, dane, fred, pwt, viog)
-│   ├── nairu/                 # Bloque mensual NAIRU/NAICU (model_core, estimation, phillips)
-│   ├── production/            # Función de producción: factors, tfp, business_cycle, pib_potencial, excel_writer
-│   └── pipelines/             # run_*.py — un orquestador por fuente + merge + export_web_data
+│   ├── sources/               # Una carpeta por fuente (andi, banrep, dane, fred, pwt, sfc, viog)
+│   ├── v7/                    # Modelo v7: motor.py (copia del script de legacy/v7) + insumos.py
+│   └── pipelines/             # run_*.py — un orquestador por fuente + merge + run_v7 + export_web_data
 ├── tests/
 │   └── fixtures/
-│       ├── baseline_v3/       # Salidas congeladas de legacy/pib_potencial_integrado_v3.py
-│       └── baseline_v7/       # Salidas congeladas del script v7 (referencia a replicar)
+│       ├── baseline_v7/       # Salidas congeladas del script v7 (referencia a replicar)
+│       └── <fuente>/          # Extractos reales de HTML/Excel/PDF para los tests offline
 ├── legacy/
-│   ├── pib_potencial_integrado_v3.py   # Spec ejecutable v3 (vigente en src/)
-│   ├── v7/                    # Aquí va pib_potencial_integrado_v7.py
+│   ├── v7/                    # pib_potencial_integrado_v7.py (spec ejecutable, no se edita) + datos/
 │   └── andi_agent/            # Agente ANDI anterior (no se usa)
 ├── data/
 │   ├── raw/                   # Cacheado de descargas (casi todo gitignored)
@@ -234,9 +223,7 @@ Todos los tests son **offline**: usan CSVs sintéticos en `tmp_path`, sin llamad
 | `test_dane_gdp.py` | 28 | Parseo Cuadro 4, asignación Q→mes |
 | `test_merge_derived.py` | 16 | Variables derivadas ipc_yoy, ipc_mom, inflation_gap |
 | `test_viog.py` | 33 | 5 filtros (BHP/BK/CF/BW/Kalman LLT), pesos VIOG, empalme 1994/2005/2015 |
-| `test_production_factors.py` | 21 | L, K, α dinámico, fallbacks NAIRU/NAICU |
-| `test_production_tfp.py` | 30 | `hp_filter`, `boosted_hp_filter` (9 casos), PTF observada y tendencial BHP, capital humano H |
-| `test_production_pib_potencial.py` | 13 | PIB*, brechas CD y BHP, pipeline integrado |
+| `test_v7.py` | 17 | Motor v7 contra `baseline_v7`, insumos del repo, export del tablero |
 | **Total** | **493** | **~ 8 s** |
 
 ---
@@ -319,7 +306,7 @@ El dataset consolidado va a `data/final/nairu_dataset.csv`, no a `outputs/`. `ou
 - Gómez & Julio (2000). *Transmission Mechanisms and Inflation Targeting: the Case of Colombia*.
 - *2022-04-28 PIB tendencial.pdf* (ver `docs/bib/`). Método del profesor Álvaro.
 - Penn World Tables 11.0 — [www.rug.nl/ggdc/productivity/pwt](https://www.rug.nl/ggdc/productivity/pwt/).
-- Phillips, P.C.B. & Shi, Z. (2021). *Boosting: Why You Can Use the HP Filter*. International Economic Review, 62(2), 521–570. — Base del filtro BHP implementado en `src/production/tfp.py`.
+- Phillips, P.C.B. & Shi, Z. (2021). *Boosting: Why You Can Use the HP Filter*. International Economic Review, 62(2), 521–570. — Base del filtro BHP de VIOG (`src/sources/viog/viog.py::boosted_hp_filter`).
 - DANE — Gran Encuesta Integrada de Hogares (GEIH), Cuentas Nacionales, IPC.
 
 ---

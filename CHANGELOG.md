@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.8.0] — 2026-11-10
+
+Limpieza final de v3: desde 2026-11-10 el workflow corre `--v7`, así que se borra el código v3 que ya no usa nada vivo. Antes de borrar cada pieza se verificó con grep que no la importaran `src/v7/`, `run_v7.py`, `export_web_data.py`, `build_nairu_dataset.py`, `merge.py`, los demás `src/sources/` y `src/pipelines/`, ni `update.yml`.
+
+### Retirado
+- **Bloque mensual v3** `src/nairu/` completo: `model_core.py`, `estimation.py` y también `phillips.py`, porque desde 0.7.0 el export del tablero ya no lo importa y nada vivo lo usa (la curva parcial de v7 está en `run_v7.curva_phillips_parcial`).
+- **Bloque trimestral v3** `src/production/` completo (`factors`, `tfp`, `business_cycle`, `pib_potencial`, `excel_writer`).
+- Pipelines `run_pib_potencial.py`, `run_nairu_estimation.py` y `build_production_function_dataset.py`. También se quitaron sus flags `--pib-potencial`, `--nairu-estim` y `--prod-func` de `src/main.py` (y de `--all`), el paso final de `run_all.py` y `quality_checks.run_pib_potencial_checks`, que solo usaba `run_pib_potencial`.
+- Spec v3 `legacy/pib_potencial_integrado_v3.py` y su línea base `tests/fixtures/baseline_v3/`.
+- Tests v3: `test_nairu.py`, `test_pib_potencial_engine.py` (las 20 fallas conocidas de `TestAgainstV3Baseline`), `test_run_pib_potencial.py`, `test_build_production_function_dataset.py` y `test_phillips_partial.py`. Este último se borra entero y no solo la clase `skip`: el resto probaba `phillips.py` y las columnas v3 de `docs/data/`.
+- `seaborn` de las dependencias de ejecución (`pyproject.toml`, `requirements.txt`): solo lo usaba `model_core.write_state_panel_figure`. Sigue en el extra `notebooks`.
+
+### Cambiado
+- `boosted_hp_filter` y `BHP_ITERATIONS` pasan de `src/production/tfp.py` a `src/sources/viog/viog.py`, porque VIOG (filtros del paso 3 de v7) era su único usuario vivo. La función se copió sin cambios y su salida es idéntica a la original, con 1 y 3 iteraciones. `notebooks/VIOG.ipynb` importa desde la nueva ubicación.
+- `CLAUDE.md`, `README.md` (estado, uso y estructura) y el docstring de `build_nairu_dataset.py` describen solo v7. La única falla conocida que queda en `pytest` son los 2 tests de `TestComputeVIOGWeights`.
+- `pytest tests/`: 703 pasan, 2 fallan (`TestComputeVIOGWeights`), ninguno se salta.
+
 ## [0.7.0] — 2026-11-10
 
 ### Cambiado

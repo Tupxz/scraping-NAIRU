@@ -19,7 +19,6 @@ from src.pipelines import (
     run_banrep_inflation,
     run_banrep_tes,
     run_brent,
-    build_production_function_dataset,
     run_dane_gdp,
     run_dane_gdp_expenditure,
     run_dane_gdp_income,
@@ -57,4 +56,3 @@ def run() -> None:
 
     # Consolidación final
     run_merge.run()
-    build_production_function_dataset.run()
