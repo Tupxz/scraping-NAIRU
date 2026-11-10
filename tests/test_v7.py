@@ -133,3 +133,56 @@ class TestReproduceLineaBaseV7:
         a = pd.read_csv(corrida_referencia / "pib_potencial_integrado_v7_series.csv", parse_dates=["date"])
         g = a.loc[a["date"] == "2025-12-01", "brecha_pot"].iloc[0] * 100
         assert g == pytest.approx(-0.10, abs=0.01)
+
+
+class TestExportWebV7:
+    """export_web_data lee outputs/v7 y conserva el esquema que usa docs/index.html."""
+
+    @pytest.fixture()
+    def export(self, corrida_referencia, tmp_path, monkeypatch):
+        import src.pipelines.export_web_data as ew
+        d = corrida_referencia
+        monkeypatch.setattr(ew, "NAIRU_CSV", d / "nairu_estimates_v7.csv")
+        monkeypatch.setattr(ew, "ESTADOS_CSV", d / "estados_v7.csv")
+        monkeypatch.setattr(ew, "PIB_CSV", d / "pib_potencial_integrado_v7_series.csv")
+        monkeypatch.setattr(ew, "PHILLIPS_CSV", tmp_path / "no_existe.csv")
+        monkeypatch.setattr(ew, "RESUMEN_JSON", tmp_path / "no_existe.json")
+        with pytest.warns(UserWarning):
+            meta = ew.export_web_data(tmp_path / "docs")
+        return tmp_path / "docs", meta
+
+    def test_columnas_que_usa_el_tablero(self, export):
+        out, _ = export
+        n = pd.read_csv(out / "nairu_monthly.csv")
+        p = pd.read_csv(out / "pib_trimestral.csv")
+        for c in ("fecha", "td_obs", "nairu", "nairu_lo90", "nairu_hi90", "nairu_lo95", "nairu_hi95",
+                  "uci_obs", "naicu", "naicu_lo90", "naicu_hi90", "brecha_inf", "brecha_laboral", "brecha_uci"):
+            assert c in n.columns, c
+        for c in ("fecha", "anio", "trimestre", "pib_idx", "pib_pot_idx", "pib_bhp_idx", "brecha_cd",
+                  "brecha_bhp", "alpha", "ptf_obs", "ptf_pot", "contrib_capital", "contrib_trabajo",
+                  "contrib_ptf", "crecimiento_potencial"):
+            assert c in p.columns, c
+
+    def test_cifras_del_paper(self, export):
+        out, meta = export
+        p = pd.read_csv(out / "pib_trimestral.csv")
+        assert p.loc[p["fecha"] == "2025-10-01", "brecha_cd"].iloc[0] == pytest.approx(-0.10, abs=0.01)
+        assert meta["latest_nairu"] == pytest.approx(8.63, abs=0.01)
+        assert meta["last_obs_pib"] == "2025-10-01"
+        assert (pd.to_datetime(p["fecha"]).dt.month.isin([1, 4, 7, 10])).all()   # inicio de trimestre
+
+    def test_identidades(self, export):
+        out, _ = export
+        p = pd.read_csv(out / "pib_trimestral.csv")
+        x = p.dropna(subset=["crecimiento_potencial", "contrib_capital"])
+        np.testing.assert_allclose(x["contrib_capital"] + x["contrib_trabajo"] + x["contrib_ptf"],
+                                   x["crecimiento_potencial"], atol=5e-4)
+        g = p.dropna(subset=["brecha_capital", "brecha_cd"])
+        np.testing.assert_allclose(g["brecha_capital"] + g["brecha_trabajo"] + g["brecha_ptf"],
+                                   100 * np.log1p(g["brecha_cd"] / 100), atol=5e-4)
+
+    def test_banda90_dentro_de_la_95(self, export):
+        out, _ = export
+        n = pd.read_csv(out / "nairu_monthly.csv")
+        assert (n["nairu_lo95"] <= n["nairu_lo90"] + 1e-9).all()
+        assert (n["nairu_hi90"] <= n["nairu_hi95"] + 1e-9).all()

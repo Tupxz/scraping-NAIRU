@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.0] — 2026-11-10
+
+### Cambiado
+- **El tablero y el workflow mensual pasan a la especificación v7.**
+  - `.github/workflows/update.yml`: el paso pausado de la NAIRU v3 y `--pib-potencial` se reemplazan por `python -m src.main --v7` (NAIRU/NAICU + PIB potencial, ~40 s). Avisa si algún insumo cayó a la referencia congelada. El commit automático ahora incluye `outputs/v7/*.csv|json` y `data/inputs/Data_NAIRU.xlsx`.
+  - `src/main.py`: flag `--v7`.
+  - `src/pipelines/export_web_data.py`: reescrito para leer `outputs/v7/`. Conserva los nombres de columna de `docs/data/` que usa el tablero; `uci_obs` pasa a ser el ICU desestacionalizado, las bandas de 90 % se derivan de las de 95 %, `brecha_bhp`/`pib_bhp_idx` son la tendencia HP simple de v7, fechas trimestrales en inicio de trimestre. Agrega a `pib_trimestral.csv` la descomposición exacta de la brecha (`brecha_capital`, `brecha_trabajo`, `brecha_ptf`, ec. 22) y a `meta.json` `modelo`, `picos_bbq`, `u_bar` y κ de la Phillips de precios.
+  - `docs/index.html`: textos al día (espacio de estados en vez de Kalman bi-estado, base 2005-T1, HP en vez de BHP, nota metodológica con `docs/integracion_v7.md`); la PTF observada y la tendencial se reexpresan con la misma base (antes cada una con la suya, lo que ocultaba la brecha de PTF).
+
+### Agregado
+- `src/pipelines/run_v7.py::curva_phillips_parcial`: curva de Phillips de precios parcial de v7 (brecha de inflación sin rezagos, expectativas ni choque petrolero, contra u − u*; en la ventana COVID la holgura es −ℓ). Se escribe en `outputs/v7/phillips_parcial_v7.csv` y se exporta como `phillips_v7_parcial`/`holgura_v7`. **La tarjeta del tablero queda sin datos hasta que el usuario apruebe la gráfica** (`outputs/v7/curva_phillips_parcial_v7.png`).
+- `tests/test_v7.py::TestExportWebV7` (4 tests): columnas que usa el tablero, cifras del paper, identidades de crecimiento y de brecha, bandas.
+
+### Retirado
+- Exportación v3 (`tests/test_phillips_partial.py::TestExportWebIntegration` marcada `skip`). `src/nairu/`, `src/production/` y `--nairu-estim`/`--pib-potencial` siguen en el repo pero ya no los usa el workflow; se borran en la limpieza final.
+
 ## [0.6.2] — 2026-11-09
 
 Scrapers restantes de `docs/tarea_scrapers_v7.md` (uno por commit). `src/v7/insumos.py` toma cada archivo de `data/processed/` en cuanto existe con sus columnas.

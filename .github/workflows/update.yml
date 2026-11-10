@@ -96,44 +96,23 @@ jobs:
       - name: Construir Data_NAIRU.xlsx
         run: python -m src.main --nairu-dataset
 
-      # PAUSADO desde 2026-09-01. El off-by-one del suavizador que motivó la
-      # pausa ya está corregido y con tests (tests/test_nairu.py), pero el
-      # modelo v3 de src/nairu/ será reemplazado por la especificación v7
-      # (docs/integracion_v7.md) y el ICU scrapeado no pasa de 2025-12, así
-      # que re-estimar hoy no agrega meses. Se usa la NAIRU publicada en
-      # outputs/nairu/nairu_colombia.csv (versionada en git desde 2026-10-22;
-      # antes outputs/ estaba ignorado completo y por eso falló la corrida
-      # del 2026-10-01 en --pib-potencial).
-      #
-      # Para reactivar (cuando v7 este integrado): descomentar el bloque de
-      # abajo y borrar el paso "PAUSADO" que lo reemplaza.
-      #
-      # - name: Estimar NAIRU / NAICU
-      #   env:
-      #     FORCE_REESTIMATE: ${{ github.event.inputs.force_reestimate || 'false' }}
-      #   run: |
-      #     if [ "$FORCE_REESTIMATE" = "true" ]; then
-      #       rm -f outputs/nairu/nairu_colombia.csv   # fuerza re-estimación
-      #     fi
-      #     python -m src.main --nairu-estim
-      - name: Estimar NAIRU / NAICU (PAUSADO — ver comentario arriba)
+      # Modelo v7 completo (working paper v7): NAIRU/NAICU por espacio de estados
+      # (statsmodels) + PIB potencial por función de producción. Reemplaza los
+      # pasos v3 (--nairu-estim, pausado desde 2026-09-01, y --pib-potencial).
+      # Los insumos salen de data/processed/ y data/inputs/; la fuente de cada uno
+      # queda en outputs/v7/fuentes_insumos.json. Si algún insumo cae a la
+      # referencia congelada (legacy/v7/datos), se emite un aviso.
+      - name: Modelo v7 (NAIRU/NAICU + PIB potencial)
         run: |
-          echo "::notice title=Reestimacion NAIRU pausada::Se usa la NAIRU publicada (outputs/nairu/nairu_colombia.csv) hasta integrar la especificacion v7 - ver docs/integracion_v7.md."
-          for f in outputs/nairu/nairu_colombia.csv outputs/nairu/nairu_mle_coefficients.csv; do
-            if [ ! -s "$f" ]; then
-              echo "::error title=Falta la NAIRU publicada::$f no existe en el repo. Comitearlo (o reactivar --nairu-estim) antes de correr --pib-potencial."
-              exit 1
-            fi
-          done
-          echo "NAIRU publicada: $(tail -1 outputs/nairu/nairu_colombia.csv | cut -d, -f1) (ultimo mes)"
+          python -m src.main --v7
+          if grep -q REFERENCIA outputs/v7/fuentes_insumos.json; then
+            echo "::warning title=Insumos de referencia::Algún insumo de v7 no salió del scraping (ver outputs/v7/fuentes_insumos.json)."
+          fi
 
       - name: Merge dataset consolidado (resiliente)
         run: |
           python -m src.main --merge \
             || echo "::warning title=Merge::--merge falló; se conserva el nairu_dataset.csv cacheado"
-
-      - name: PIB Potencial
-        run: python -m src.main --pib-potencial   # PIB potencial Cobb-Douglas
 
       - name: Exportar datos al tablero
         run: python -m src.main --export-web    # docs/data/*.csv + meta.json
@@ -144,7 +123,7 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add data/processed data/final docs/data outputs/nairu
+          git add data/processed data/final docs/data outputs/v7 data/inputs/Data_NAIRU.xlsx
 
           if git diff --cached --quiet; then
             echo "Sin cambios — nada que commitear."
@@ -153,7 +132,7 @@ jobs:
             git commit -m "chore(data): actualización automática ${FECHA} [skip ci]"
 
             # El árbol queda con archivos intermedios regenerados que NO se commitean
-            # (Data_NAIRU.xlsx, PIB_CO.xlsx); se descartan para que un eventual rebase
+            # (PIB_CO.xlsx, carpetas de trabajo); se descartan para que un eventual rebase
             # no falle por "unstaged changes".
             git checkout -- . || true
 

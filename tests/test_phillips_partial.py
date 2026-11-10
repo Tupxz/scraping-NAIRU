@@ -281,6 +281,7 @@ def export_env(tmp_path, monkeypatch):
 
 
 @pytest.mark.filterwarnings("ignore")
+@pytest.mark.skip(reason="Exportación v3 retirada: el tablero lee outputs/v7 desde 2026-11-09 (ver tests/test_v7.py::TestExportWebV7)")
 class TestExportWebIntegration:
     def test_nairu_monthly_trae_las_columnas_nuevas_con_los_valores_del_modulo(self, export_env):
         ew, tmp, df = export_env

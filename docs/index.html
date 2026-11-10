@@ -325,7 +325,7 @@
   <div class="titles">
     <div class="eyebrow">EAFIT · Coyuntura Económica</div>
     <h1>PIB Potencial Colombia</h1>
-    <p class="subtitle">Función de producción Cobb-Douglas · curva de Phillips (NAIRU / NAICU, Kalman bi-estado) · actualización mensual</p>
+    <p class="subtitle">Función de producción Cobb-Douglas · NAIRU / NAICU por espacio de estados con curvas de Phillips de precios y salarios · actualización mensual</p>
   </div>
   <div class="meta-pills" id="metaPills"><div class="pill">Cargando datos…</div></div>
 </header>
@@ -359,7 +359,7 @@
     <div class="kpi-row" id="kpi-row-pib">
       <div class="kpi-card"><div class="value" id="kpi-crecimiento">—</div><div class="label">Crecimiento del PIB potencial</div><div class="hint" id="kpi-crecimiento-hint">Interanual</div></div>
       <div class="kpi-card"><div class="value" id="kpi-brecha-cd">—</div><div class="label">Brecha del PIB (Cobb-Douglas)</div><div class="hint">PIB observado vs. potencial, % del potencial</div></div>
-      <div class="kpi-card"><div class="value" id="kpi-brecha-bhp">—</div><div class="label">Brecha del PIB (BHP, referencia)</div><div class="hint">Filtro estadístico Hodrick-Prescott</div></div>
+      <div class="kpi-card"><div class="value" id="kpi-brecha-bhp">—</div><div class="label">Brecha del PIB (HP, referencia)</div><div class="hint">Filtro estadístico Hodrick-Prescott</div></div>
       <div class="kpi-card"><div class="value" id="kpi-alpha">—</div><div class="label">Peso del capital en la producción</div><div class="hint" id="kpi-alpha-hint">De cada $100 que produce la economía, esta parte remunera al capital (maquinaria, infraestructura); el resto, al trabajo.</div></div>
       <div class="kpi-card"><div class="value" id="kpi-ultimo-trim">—</div><div class="label">Último trimestre con dato</div><div class="hint" id="kpi-ultimo-trim-hint">&nbsp;</div></div>
     </div>
@@ -369,7 +369,7 @@
         <div class="card-header">
           <div>
             <div class="card-title">PIB observado, potencial y tendencial</div>
-            <div class="card-desc">Índice trimestral, base 100 = 2007-T3 (primer trimestre con historia suficiente) · función de producción Cobb-Douglas</div>
+            <div class="card-desc">Índice trimestral, base 100 = 2005-T1 (primer trimestre de la muestra) · función de producción Cobb-Douglas</div>
           </div>
           <div class="range-toggle" id="range-toggle-pib">
             <button data-years="5">5 años</button>
@@ -384,7 +384,7 @@
         <div class="card-header">
           <div>
             <div class="card-title">Brecha del producto</div>
-            <div class="card-desc">Cobb-Douglas (barras, estructural) y BHP (línea, estadística) · % del PIB potencial</div>
+            <div class="card-desc">Cobb-Douglas (barras, estructural) y Hodrick-Prescott (línea, estadística) · % del PIB potencial</div>
           </div>
         </div>
         <div class="plotly-container" id="chart-brechas-q"></div>
@@ -404,7 +404,7 @@
         <div class="card-header">
           <div>
             <div class="card-title">Productividad total de los factores (PTF)</div>
-            <div class="card-desc">Observada vs. tendencial · índice trimestral, base 100 = 2007-T3</div>
+            <div class="card-desc">Observada vs. tendencial · índice trimestral, base 100 = 2005-T1</div>
           </div>
         </div>
         <div class="plotly-container" id="chart-ptf"></div>
@@ -498,7 +498,7 @@
         <div class="card-header">
           <div>
             <div class="card-title">Capital y trabajo: observado vs. potencial</div>
-            <div class="card-desc">Índice trimestral, base 100 = 2007-T3 · líneas continuas = observado, punteadas = potencial</div>
+            <div class="card-desc">Índice trimestral, base 100 = 2005-T1 · líneas continuas = observado, punteadas = potencial</div>
           </div>
         </div>
         <div class="plotly-container" id="chart-factores"></div>
@@ -520,7 +520,7 @@
 
     <div class="lede">
       El output gap es un dato <b>no observado</b> — distintas metodologías pueden dar lecturas distintas.
-      Esta pestaña compara el diagnóstico estructural (Cobb-Douglas) contra un filtro puramente estadístico (BHP)
+      Esta pestaña compara el diagnóstico estructural (Cobb-Douglas) contra un filtro puramente estadístico (Hodrick-Prescott)
       y contra el <b>VIOG</b>, un compuesto de 5 filtros de brecha independientes construido específicamente para
       esta comparación.
     </div>
@@ -531,7 +531,7 @@
         <div class="card-header">
           <div>
             <div class="card-title">Brecha del producto — 3 enfoques</div>
-            <div class="card-desc">Cobb-Douglas estructural, BHP (estadístico) y VIOG (compuesto de 5 filtros) · % del PIB</div>
+            <div class="card-desc">Cobb-Douglas estructural, Hodrick-Prescott (estadístico) y VIOG (compuesto de 5 filtros) · % del PIB</div>
           </div>
         </div>
         <div class="plotly-container" id="chart-comparacion"></div>
@@ -586,7 +586,7 @@
 <footer>
   Datos actualizados automáticamente cada mes vía <a href="https://github.com/features/actions" target="_blank">GitHub Actions</a>.
   Fuentes: DANE, BanRep, ANDI, PWT 11.0, FRED/EIA. Metodología: función de producción Cobb-Douglas estilo CBO +
-  curva de Phillips (Kalman bi-estado, MLE) — ver <code>docs/integracion_v3.md</code> en el repositorio.
+  NAIRU/NAICU por espacio de estados (MLE, especificación v7 del documento metodológico) — ver <code>docs/integracion_v7.md</code> y <code>docs/paper/</code> en el repositorio.
   Universidad EAFIT · Coyuntura Económica.
 </footer>
 
@@ -794,12 +794,12 @@ function drawPIBGrande(years) {
       line: { color: '#146AEF', width: 2.4 } },
     { x, y: pot, name: 'PIB potencial (Cobb-Douglas)', mode: 'lines',
       line: { color: '#000000', width: 2.8 } },
-    { x, y: hp, name: 'PIB tendencial (BHP)', mode: 'lines',
+    { x, y: hp, name: 'PIB tendencial (HP)', mode: 'lines',
       line: { color: '#8891a8', width: 1.6, dash: 'dash' } },
   ];
 
   Plotly.newPlot('chart-pib-grande', traces, baseLayout({
-    yaxis: { title: 'Índice (2007-T3 = 100)' },
+    yaxis: { title: 'Índice (2005-T1 = 100)' },
     xaxis: { rangeslider: { visible: true, thickness: .07 }, showgrid: false },
     // Leyenda ARRIBA del área de graficación (y>1, no y:-0.16 como en baseLayout()):
     // este es el único gráfico con rangeslider, y la posición por defecto de la leyenda
@@ -836,7 +836,7 @@ function renderBrechasQ() {
   }];
   const tracesLine = [
     { x, y: zero, mode: 'lines', line: { color: '#aab0c4', width: 1, dash: 'dot' }, showlegend: false, hoverinfo: 'skip' },
-    { x, y: bHP, name: 'Brecha BHP', mode: 'lines', line: { color: '#002E9A', width: 1.8, dash: 'dash' } },
+    { x, y: bHP, name: 'Brecha HP', mode: 'lines', line: { color: '#002E9A', width: 1.8, dash: 'dash' } },
   ];
 
   Plotly.newPlot('chart-brechas-q', [...tracesBar, ...tracesLine],
@@ -868,18 +868,20 @@ function renderPTF() {
   const rows = PIB_ROWS.filter(r => r.ptf_obs !== null || r.ptf_pot !== null);
   const x = rows.map(r => r.fecha);
   // El residuo de Solow (A_obs/A_pot) sale del modelo como nivel crudo cercano a 1, no en base 100.
-  // Se reexpresa aquí como índice 2007-T3 = 100 para que sea comparable visualmente con las demás series.
+  // Se reexpresa aquí como índice 2005-T1 = 100 para que sea comparable visualmente con las demás series.
   const rawObs = toNum(rows, 'ptf_obs');
   const rawPot = toNum(rows, 'ptf_pot');
   const baseObs = rawObs.find(v => v !== null);
-  const basePot = rawPot.find(v => v !== null);
+  // Ambas series se reexpresan con la MISMA base (la PTF observada del primer trimestre),
+  // para que la distancia entre observada y tendencial sea la brecha de PTF del modelo.
+  const basePot = baseObs;
   const obs = rawObs.map(v => (v !== null && baseObs) ? (v / baseObs) * 100 : null);
   const pot = rawPot.map(v => (v !== null && basePot) ? (v / basePot) * 100 : null);
   const traces = [
     { x, y: obs, name: 'PTF observada',  mode: 'lines', line: { color: '#146AEF', width: 2 } },
     { x, y: pot, name: 'PTF tendencial', mode: 'lines', line: { color: '#000000', width: 2.4 } },
   ];
-  Plotly.newPlot('chart-ptf', traces, baseLayout({ yaxis: { title: 'Índice (2007-T3 = 100)' } }), CONF);
+  Plotly.newPlot('chart-ptf', traces, baseLayout({ yaxis: { title: 'Índice (2005-T1 = 100)' } }), CONF);
 }
 
 /* ─── Tab 3: PIB en pesos ─────────────────────────────────────────────── */
@@ -903,7 +905,7 @@ function renderFactores() {
     { x, y: toNum(rows, 'lh_idx'),     name: 'Trabajo observado (horas × cap. humano)',   mode: 'lines', line: { color: '#171717', width: 2 } },
     { x, y: toNum(rows, 'lh_pot_idx'), name: 'Trabajo potencial',                         mode: 'lines', line: { color: '#8891a8', width: 1.6, dash: 'dash' } },
   ];
-  Plotly.newPlot('chart-factores', traces, baseLayout({ yaxis: { title: 'Índice (2007-T3 = 100)' } }), CONF);
+  Plotly.newPlot('chart-factores', traces, baseLayout({ yaxis: { title: 'Índice (2005-T1 = 100)' } }), CONF);
 }
 
 /* ─── Tab 2: NAIRU / NAICU ────────────────────────────────────────────── */
@@ -1056,8 +1058,8 @@ function seriesStats(rows, col, rebase) {
 function renderStatsTable() {
   const specs = [
     { label: 'PIB (miles de millones COP)', rows: PIB_ROWS, col: 'pib_cop', dec: 0, unit: '' },
-    { label: 'PTF observada (índice, 2007-T3=100)', rows: PIB_ROWS, col: 'ptf_obs', dec: 1, unit: '', rebase: true },
-    { label: 'PTF tendencial (índice, 2007-T3=100)', rows: PIB_ROWS, col: 'ptf_pot', dec: 1, unit: '', rebase: true },
+    { label: 'PTF observada (índice, 2005-T1=100)', rows: PIB_ROWS, col: 'ptf_obs', dec: 1, unit: '', rebase: true },
+    { label: 'PTF tendencial (índice, 2005-T1=100)', rows: PIB_ROWS, col: 'ptf_pot', dec: 1, unit: '', rebase: true },
     { label: 'Capital observado (índice)', rows: PIB_ROWS, col: 'k_idx', dec: 1, unit: '' },
     { label: 'Trabajo observado — horas × cap. humano (índice)', rows: PIB_ROWS, col: 'lh_idx', dec: 1, unit: '' },
     { label: 'Tasa de desempleo (%)', rows: NAIRU_ROWS, col: 'td_obs', dec: 2, unit: '%' },
@@ -1084,7 +1086,7 @@ function renderComparacion() {
 
   const traces = [
     { x: pibRows.map(r => r.fecha),  y: toNum(pibRows, 'brecha_cd'),  name: 'Cobb-Douglas (estructural)', mode: 'lines', line: { color: '#000000', width: 2.6 } },
-    { x: pibRows.map(r => r.fecha),  y: toNum(pibRows, 'brecha_bhp'), name: 'BHP (estadístico)',          mode: 'lines', line: { color: '#146AEF', width: 1.8, dash: 'dash' } },
+    { x: pibRows.map(r => r.fecha),  y: toNum(pibRows, 'brecha_bhp'), name: 'HP (estadístico)',           mode: 'lines', line: { color: '#146AEF', width: 1.8, dash: 'dash' } },
     { x: viogRows.map(r => r.fecha), y: toNum(viogRows, 'viog'),      name: 'VIOG (5 filtros)',            mode: 'lines', line: { color: '#8e44ad', width: 2 } },
   ];
   Plotly.newPlot('chart-comparacion', traces, baseLayout({ yaxis: { ticksuffix: '%' } }), CONF);

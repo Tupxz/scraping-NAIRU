@@ -65,6 +65,7 @@ def run_pipeline(
     run_merge: bool = False,
     run_prod_func: bool = False,
     run_pib_potencial: bool = False,
+    run_v7: bool = False,
     run_export_web: bool = False,
 ) -> None:
     """Ejecuta los pipelines seleccionados."""
@@ -185,6 +186,10 @@ def run_pipeline(
         if run_pib_potencial:
             from src.pipelines import run_pib_potencial as pib_pot_pipeline
             pib_pot_pipeline.run()
+
+        if run_v7:
+            from src.pipelines import run_v7 as v7_pipeline
+            v7_pipeline.run("repo", con_contraste=False)
 
         if run_export_web:
             from src.pipelines import export_web_data as export_web_pipeline
@@ -308,6 +313,10 @@ def main() -> None:
         help="Construir dataset anual de función de producción Cobb-Douglas (con PTF/A)",
     )
     parser.add_argument(
+        "--v7", action="store_true",
+        help="Modelo v7 (NAIRU/NAICU + PIB potencial, working paper v7); salidas en outputs/v7/",
+    )
+    parser.add_argument(
         "--pib-potencial", action="store_true",
         help="Calcular PIB Potencial Cobb-Douglas y exportar Excel (requiere --nairu-estim previo)",
     )
@@ -358,7 +367,7 @@ def main() -> None:
         or args.tes or args.brent or args.trm or args.eme or args.emmet or args.subempleo or args.vacantes or args.pib_insumos_v7 or use_andi
         or args.andi_reprocess or args.nairu_dataset
         or args.nairu_estim or args.merge or args.prod_func
-        or args.pib_potencial or args.export_web
+        or args.pib_potencial or args.v7 or args.export_web
     )
     if not any_selected:
         run_pipeline(run_unemployment=True)
@@ -393,6 +402,7 @@ def main() -> None:
         run_merge=args.merge,
         run_prod_func=args.prod_func,
         run_pib_potencial=args.pib_potencial,
+        run_v7=args.v7,
         run_export_web=args.export_web,
     )
 

@@ -26,6 +26,11 @@ andi_agent/__pycache__/
 #   necesita estos dos CSV para --pib-potencial y --export-web. Sin ellos en
 #   el repo, la corrida del 2026-10-01 falló. Ver docs/integracion_v7.md.
 outputs/*
+!outputs/v7/
+outputs/v7/*
+!outputs/v7/*.csv
+!outputs/v7/*.json
+outputs/v7/_ci_*
 !outputs/nairu/
 outputs/nairu/*
 !outputs/nairu/nairu_colombia.csv

@@ -1,50 +1,32 @@
-"""Exporta los outputs del pipeline a docs/data/ para GitHub Pages.
+"""Exporta las salidas del modelo v7 a docs/data/ para el tablero (GitHub Pages).
 
-Lee los CSV de outputs/nairu/ y outputs/pib_potencial/ y genera
-versiones limpias (columnas renombradas, sin NaN internos del modelo)
-en docs/data/, junto con un meta.json de última actualización.
+Lee ``outputs/v7/`` (lo escribe ``python -m src.pipelines.run_v7``) y
+``data/processed/viog_colombia.csv``, y escribe en ``docs/data/``:
 
-Uso
----
-    python -m src.main --export-web
-    # o directamente:
-    from src.pipelines.export_web_data import run; run()
+- ``nairu_monthly.csv``  — NAIRU/NAICU mensual con bandas, brechas y la curva
+  de Phillips parcial de v7.
+- ``pib_trimestral.csv`` — PIB observado y potencial (función de producción),
+  factores, PTF y contribuciones al crecimiento potencial.
+- ``viog_trimestral.csv`` — brechas de los 5 filtros estadísticos y compuestos.
+- ``meta.json``          — últimos valores para las tarjetas del tablero.
 
-Nota (2026-09-10, alineación v3 — ver CHANGELOG.md [0.5.6] y
-docs/integracion_v3.md): el motor de PIB potencial pasó de niveles
-(PIB/K_usado/K_pot/L_obs/L_pot en pesos o personas) a ÍNDICES base=100
-(idx_pib/idx_K/idx_K_star/idx_L/idx_L_star). PIB_EXPORT_COLS se actualizó
-para leer los nombres de columna nuevos — las columnas viejas (PIB,
-K_usado, K_pot, L_obs, L_pot, UCI, NAICU_q, TD, NAIRU_q) ya no existen en
-outputs/pib_potencial/pib_potencial_colombia.csv, así que con el mapa
-anterior _read_and_rename las descartaba en silencio (no fallaba, porque
-solo selecciona las columnas presentes) y el CSV exportado quedaba con
-menos de la mitad de las columnas esperadas, sin avisar.
+Se conservan los NOMBRES de columna que ya usa ``docs/index.html`` para no
+romper el tablero; lo que cambió de significado con v7 se anota abajo.
 
-También se corrigió la fecha trimestral: la columna "date" del CSV del
-pipeline usa la convención de v3 (mes de CIERRE del trimestre — p. ej.
-"2026-03-01" para 2026-Q1), mientras el resto del repo (NAIRU mensual,
-VIOG trimestral) usa el mes de INICIO (convención QS de pandas — p. ej.
-"2026-01-01" para 2026-Q1). Usar "date" tal cual habría desalineado el
-eje de tiempo del PIB potencial 2 meses respecto a las demás series en
-cualquier gráfica combinada. Aquí "fecha" se reconstruye siempre desde
-year/quarter (ambas columnas SÍ son confiables) en convención QS-inicio,
-igual que el resto del repo — no se toca la columna "date" original del
-pipeline (eso es un cambio de superficie más amplio, fuera de alcance de
-esta exportación).
-
-Nota (2026-10-15, curva de Phillips parcial — ver CHANGELOG.md [0.5.12] y
-src/nairu/phillips.py): nairu_monthly.csv gana 2 columnas para la gráfica
-"Curva de Phillips" del tablero — dg_inf (cambio mensual de la brecha de
-inflación, la dependiente real del modelo) y phillips_parcial (dg_inf menos
-lo que explican todos los regresores salvo el bloque desempleo/NAIRU, que se
-grafica contra brecha_laboral). meta.json gana phillips_sum_beta_u y
-phillips_sum_beta_u_p (pendiente agregada del modelo y su p-valor, para la
-leyenda). Se calculan aquí, no en el navegador, porque necesitan los
-regresores crudos de nairu_colombia.csv y los coeficientes del MLE; si
-nairu_mle_coefficients.csv no existe se omiten (con warning).
+Cambios frente a la exportación de v3 (2026-11-09):
+- Fuente: ``outputs/v7/`` en vez de ``outputs/nairu/`` y ``outputs/pib_potencial/``.
+- ``uci_obs`` es el ICU DESESTACIONALIZADO (STL), que es el que usa v7.
+- v7 publica bandas al 95 %; las de 90 % se derivan de ellas (misma desviación
+  estándar del suavizador, z = 1,645 en vez de 1,960).
+- ``pib_bhp_idx``/``brecha_bhp`` pasan a ser la tendencia Hodrick-Prescott simple
+  del producto que calcula v7 (referencia estadística), no Boosted-HP.
+- Curva de Phillips: v7 estima la brecha de inflación (básica − meta) en NIVEL
+  con dos rezagos, expectativas y choque petrolero (ec. 14 del paper). Se exporta
+  como ``phillips_v7_parcial`` y ``holgura_v7`` (columnas nuevas, para no mezclar
+  con la gráfica de v3, que usaba Δ de la brecha); meta.json lleva κ y su p-valor.
+- Fechas trimestrales en convención de INICIO de trimestre (2026-01-01 = 2026T1),
+  igual que el resto del tablero; v7 fecha por el mes de cierre.
 """
-
 from __future__ import annotations
 
 import json
@@ -53,106 +35,68 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from src.config import OUTPUTS_DIR, PROCESSED_DIR
-from src.nairu.phillips import (
-    coefficients_from_table,
-    load_coefficient_table,
-    partial_phillips,
-    unemployment_slope_summary,
-)
 
 logger = logging.getLogger("nairu_pipeline.export_web")
 
 DOCS_DATA_DIR = Path(__file__).resolve().parents[2] / "docs" / "data"
 
-NAIRU_CSV   = OUTPUTS_DIR / "nairu" / "nairu_colombia.csv"
-NAIRU_COEF_CSV = OUTPUTS_DIR / "nairu" / "nairu_mle_coefficients.csv"
-PIB_CSV     = OUTPUTS_DIR / "pib_potencial" / "pib_potencial_colombia.csv"
+V7_DIR      = OUTPUTS_DIR / "v7"
+NAIRU_CSV   = V7_DIR / "nairu_estimates_v7.csv"
+ESTADOS_CSV = V7_DIR / "estados_v7.csv"
+PHILLIPS_CSV = V7_DIR / "phillips_parcial_v7.csv"
+PIB_CSV     = V7_DIR / "pib_potencial_integrado_v7_series.csv"
+RESUMEN_JSON = V7_DIR / "resumen_v7.json"
 VIOG_CSV    = PROCESSED_DIR / "viog_colombia.csv"
 
+Z90_SOBRE_Z95 = 1.6448536269514722 / 1.959963984540054
 
-# ── Columnas exportadas ───────────────────────────────────────────────────────
-
-NAIRU_EXPORT_COLS = {
-    "Date":              "fecha",
-    "unemployment_current": "td_obs",
-    "nairu_estimate":    "nairu",
-    "nairu_ci_lower_90": "nairu_lo90",
-    "nairu_ci_upper_90": "nairu_hi90",
-    "nairu_ci_lower_95": "nairu_lo95",
-    "nairu_ci_upper_95": "nairu_hi95",
-    "icu_current":       "uci_obs",
-    "naicu_estimate":    "naicu",
-    "naicu_ci_lower_90": "naicu_lo90",
-    "naicu_ci_upper_90": "naicu_hi90",
-    "inflation_gap":     "brecha_inf",
-    "unemployment_gap":  "brecha_laboral",
-    "icu_gap":           "brecha_uci",
-}
-
-# Nombres vigentes en outputs/pib_potencial/pib_potencial_colombia.csv desde
-# la realineación v3 (2026-09-10). "year"/"quarter" se leen aparte para
-# reconstruir "fecha" (ver docstring del módulo) y no se listan aquí.
+# Serie trimestral de v7 -> nombre en docs/data/pib_trimestral.csv
 PIB_EXPORT_COLS = {
-    "V_pib":         "pib_cop",       # PIB observado, millones de pesos (serie "original", sin transformar)
-    "idx_pib":       "pib_idx",       # PIB observado, índice base=100 (2007-Q3)
-    "PIB_pot":       "pib_pot_idx",   # PIB potencial, índice base=100
-    "PIB_tend_BHP":  "pib_bhp_idx",   # PIB tendencial (Boosted-HP), índice base=100
-    "Brecha_CD":     "brecha_cd",     # % — Cobb-Douglas estructural (idx_pib/PIB_pot - 1)
-    "Brecha_BHP":    "brecha_bhp",    # % — estadística (HP), referencia secundaria
-    "alpha":         "alpha",         # participación del capital, estilo CBO (EBE/(RA+EBE))
-    "A_obs":         "ptf_obs",       # productividad total de los factores, observada
-    "A_pot":         "ptf_pot",       # PTF, tendencia estructural (BBQ + OLS)
-    "idx_K":         "k_idx",         # capital observado, índice (stock DANE)
-    "idx_K_star":    "k_pot_idx",     # capital potencial, índice
-    "idx_L":         "l_idx",         # trabajo observado, índice de horas
-    "idx_L_star":    "l_pot_idx",     # trabajo potencial, índice de horas (con TGP*)
-    "idx_LH":        "lh_idx",        # trabajo observado x capital humano (insumo real de la función Cobb-Douglas)
-    "idx_LH_star":   "lh_pot_idx",    # trabajo potencial x capital humano (insumo real de la función Cobb-Douglas)
-    "icu":           "uci",           # utilización de capacidad instalada (ANDI)
-    "naicu":         "naicu_q",       # NAICU trimestral (promedio del NAICU mensual)
-    "td":            "td",            # tasa de desempleo observada
-    "nairu":         "nairu_q",       # NAIRU trimestral
-    "tgp":           "tgp",           # tasa global de participación observada
-    "tgp_star":      "tgp_star",      # TGP potencial/tendencial
-    "pet":           "pet",           # población en edad de trabajar, miles
+    "V_pib":       "pib_cop",      # PIB real desestacionalizado, miles de millones de 2015
+    "idx_pib":     "pib_idx",      # PIB anualizado (suma 4T), índice 2005T1 = 100
+    "pib_pot":     "pib_pot_idx",  # PIB potencial, mismo índice
+    "idx_trend":   "pib_bhp_idx",  # tendencia HP del producto (referencia estadística)
+    "brecha_pot":  "brecha_cd",    # fracción -> se pasa a %
+    "brecha_hp":   "brecha_bhp",   # fracción -> se pasa a %
+    "alpha":       "alpha",
+    "ptf":         "ptf_obs",
+    "ptf_star":    "ptf_pot",
+    "idx_K":       "k_idx",
+    "idx_K_star":  "k_pot_idx",
+    "idx_L":       "l_idx",
+    "idx_L_star":  "l_pot_idx",
+    "idx_LH":      "lh_idx",
+    "idx_LH_star": "lh_pot_idx",
+    "icu":         "uci",
+    "naicu":       "naicu_q",
+    "td":          "td",
+    "nairu":       "nairu_q",
+    "tgp":         "tgp",
+    "tgp_star":    "tgp_star",
+    "pet":         "pet",
 }
 
-# VIOG: brecha del producto por filtros (las brechas vienen en fracción log → ×100 = %)
 VIOG_EXPORT_COLS = {
-    "date":         "fecha",
-    "year":         "anio",
-    "quarter":      "trimestre",
-    "gap_viog":     "viog",       # compuesto (pesos por varianza de revisión)
-    "gap_inv_viog": "viog_inv",   # compuesto (pesos inversos de revisión)
-    "gap_bhp":      "bhp",        # Boosted Hodrick-Prescott
-    "gap_cf":       "cf",         # Christiano-Fitzgerald
-    "gap_bk":       "bk",         # Baxter-King
-    "gap_bw":       "bw",         # Butterworth
-    "gap_kalman":   "kalman",     # Kalman (UCM)
+    "date": "fecha", "year": "anio", "quarter": "trimestre",
+    "gap_viog": "viog", "gap_inv_viog": "viog_inv", "gap_bhp": "bhp", "gap_cf": "cf",
+    "gap_bk": "bk", "gap_bw": "bw", "gap_kalman": "kalman",
 }
 VIOG_GAP_COLS = ["viog", "viog_inv", "bhp", "cf", "bk", "bw", "kalman"]
-VIOG_START = "1994-01-01"  # ventana completa del empalme (antes 2005)
+VIOG_START = "1994-01-01"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _read_and_rename(path: Path, col_map: dict, extra_cols: tuple[str, ...] = ()) -> pd.DataFrame:
+def _exigir(path: Path) -> Path:
     if not path.exists():
         raise FileNotFoundError(
             f"Archivo no encontrado: {path}\n"
-            "Ejecuta el pipeline correspondiente antes de --export-web."
+            "Corre primero el modelo: python -m src.pipelines.run_v7"
         )
-    df = pd.read_csv(path)
-    wanted = list(extra_cols) + list(col_map.keys())
-    cols_present = [c for c in wanted if c in df.columns]
-    missing = [c for c in wanted if c not in df.columns]
-    if missing:
-        logger.warning("[export-web] %s: columnas ausentes, se omiten: %s", path.name, missing)
-    df = df[cols_present].rename(columns=col_map)
-    return df
+    return path
 
 
 def _round_floats(df: pd.DataFrame, decimals: int = 4) -> pd.DataFrame:
@@ -162,171 +106,153 @@ def _round_floats(df: pd.DataFrame, decimals: int = 4) -> pd.DataFrame:
 
 
 def _last_valid(df: pd.DataFrame | None, key: str) -> float | None:
-    """Último valor no-NaN de la columna (None si no hay ninguno).
-
-    El último trimestre puede tener PIB observado pero aún no potencial
-    (p. ej. FBKF rezagado) → ``iloc[-1]`` daría NaN aunque exista un dato
-    válido un trimestre atrás. None se serializa como ``null`` (JSON válido).
-    """
     if df is None or key not in df.columns:
         return None
     s = pd.to_numeric(df[key], errors="coerce").dropna()
     return round(float(s.iloc[-1]), 2) if len(s) else None
 
 
+def _banda90(centro: pd.Series, hi95: pd.Series) -> tuple[pd.Series, pd.Series]:
+    medio = (hi95 - centro) * Z90_SOBRE_Z95
+    return centro - medio, centro + medio
+
+
+# ── Bloques ───────────────────────────────────────────────────────────────────
+def construir_mensual() -> pd.DataFrame:
+    n = pd.read_csv(_exigir(NAIRU_CSV), parse_dates=["Date"])
+    e = pd.read_csv(_exigir(ESTADOS_CSV), parse_dates=["Date"])
+    out = pd.DataFrame({
+        "fecha": n["Date"],
+        "td_obs": n["unemployment_current"],
+        "nairu": n["nairu_estimate"],
+    })
+    out["nairu_lo90"], out["nairu_hi90"] = _banda90(n["nairu_estimate"], n["nairu_ci_upper_95"])
+    out["nairu_lo95"] = n["nairu_ci_lower_95"]
+    out["nairu_hi95"] = n["nairu_ci_upper_95"]
+    out["uci_obs"] = n["icu_current"]
+    out["naicu"] = n["naicu_estimate"]
+    out["naicu_lo90"], out["naicu_hi90"] = _banda90(n["naicu_estimate"], n["naicu_ci_upper_95"])
+    out = out.merge(e[["Date", "y_phillips_precios", "tgp", "tgp_star", "ciclo_laboral_l"]]
+                    .rename(columns={"Date": "fecha", "y_phillips_precios": "brecha_inf",
+                                     "tgp": "tgp_obs", "ciclo_laboral_l": "ciclo_laboral"}),
+                    on="fecha", how="left")
+    out["brecha_laboral"] = out["td_obs"] - out["nairu"]
+    out["brecha_uci"] = out["uci_obs"] - out["naicu"]
+    if PHILLIPS_CSV.exists():
+        p = pd.read_csv(PHILLIPS_CSV, parse_dates=["Date"])
+        out = out.merge(p[["Date", "phillips_parcial", "holgura"]]
+                        .rename(columns={"Date": "fecha", "phillips_parcial": "phillips_v7_parcial",
+                                         "holgura": "holgura_v7"}), on="fecha", how="left")
+    else:
+        warnings.warn(f"{PHILLIPS_CSV} no existe: no se exporta la curva de Phillips parcial.", stacklevel=2)
+    out["fecha"] = out["fecha"].dt.strftime("%Y-%m-%d")
+    return _round_floats(out)
+
+
+def construir_trimestral() -> pd.DataFrame:
+    d = pd.read_csv(_exigir(PIB_CSV), parse_dates=["date"])
+    cols = [c for c in PIB_EXPORT_COLS if c in d.columns]
+    faltan = sorted(set(PIB_EXPORT_COLS) - set(cols))
+    if faltan:
+        logger.warning("[export-web] columnas ausentes en la serie v7, se omiten: %s", faltan)
+    pib = d[["date"] + cols].rename(columns=PIB_EXPORT_COLS)
+    trimestre = pib["date"].dt.quarter
+    pib.insert(0, "fecha", pd.to_datetime({"year": pib["date"].dt.year,
+                                          "month": (trimestre - 1) * 3 + 1, "day": 1}).dt.strftime("%Y-%m-%d"))
+    pib.insert(1, "anio", pib["date"].dt.year)
+    pib.insert(2, "trimestre", trimestre)
+    pib = pib.drop(columns="date")
+    for c in ("brecha_cd", "brecha_bhp"):
+        if c in pib:
+            pib[c] = pib[c] * 100.0
+
+    # Contribuciones al crecimiento potencial interanual (pp). crecimiento_potencial
+    # se calcula aparte, directo del índice, para poder verificar la identidad.
+    if {"k_pot_idx", "lh_pot_idx", "ptf_pot", "alpha", "pib_pot_idx"} <= set(pib.columns):
+        alpha = pib["alpha"].astype(float)
+        pib["contrib_capital"] = alpha * np.log(pib["k_pot_idx"]).diff(4) * 100
+        pib["contrib_trabajo"] = (1 - alpha) * np.log(pib["lh_pot_idx"]).diff(4) * 100
+        pib["contrib_ptf"] = np.log(pib["ptf_pot"]).diff(4) * 100
+        pib["crecimiento_potencial"] = np.log(pib["pib_pot_idx"]).diff(4) * 100
+
+    # Descomposición exacta de la brecha (ec. 22 del paper), en puntos logarítmicos.
+    if {"k_idx", "k_pot_idx", "lh_idx", "lh_pot_idx", "ptf_obs", "ptf_pot", "alpha"} <= set(pib.columns):
+        a = pib["alpha"].astype(float)
+        pib["brecha_capital"] = a * 100 * np.log(pib["k_idx"] / pib["k_pot_idx"])
+        pib["brecha_trabajo"] = (1 - a) * 100 * np.log(pib["lh_idx"] / pib["lh_pot_idx"])
+        pib["brecha_ptf"] = 100 * np.log(pib["ptf_obs"] / pib["ptf_pot"])
+    return _round_floats(pib)
+
+
+def construir_viog() -> pd.DataFrame | None:
+    if not VIOG_CSV.exists():
+        warnings.warn(f"{VIOG_CSV} no encontrado — ejecuta --viog-co primero.", stacklevel=2)
+        return None
+    viog = pd.read_csv(VIOG_CSV)
+    viog = viog[[c for c in VIOG_EXPORT_COLS if c in viog.columns]].rename(columns=VIOG_EXPORT_COLS)
+    viog["fecha"] = pd.to_datetime(viog["fecha"])
+    viog = viog[viog["fecha"] >= VIOG_START].reset_index(drop=True)
+    for col in VIOG_GAP_COLS:
+        if col in viog.columns:
+            viog[col] = viog[col] * 100.0
+    viog["fecha"] = viog["fecha"].dt.strftime("%Y-%m-%d")
+    return _round_floats(viog)
+
+
 # ── Pipeline principal ────────────────────────────────────────────────────────
-
-def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> None:
-    """Lee los outputs y escribe los CSVs y meta.json en docs/data/."""
+def export_web_data(docs_data_dir: Path = DOCS_DATA_DIR) -> dict:
     docs_data_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("[export-web] Exportando a %s …", docs_data_dir)
+    logger.info("[export-web] Exportando salidas v7 a %s …", docs_data_dir)
 
-    # ── 1. NAIRU mensual ──────────────────────────────────────────────
-    nairu = _read_and_rename(NAIRU_CSV, NAIRU_EXPORT_COLS)
+    nairu = construir_mensual()
+    nairu.to_csv(docs_data_dir / "nairu_monthly.csv", index=False)
+    pib = construir_trimestral()
+    pib.to_csv(docs_data_dir / "pib_trimestral.csv", index=False)
+    viog = construir_viog()
+    if viog is not None:
+        viog.to_csv(docs_data_dir / "viog_trimestral.csv", index=False)
 
-    # Curva de Phillips parcial (ver src/nairu/phillips.py): Δ(brecha de inflación)
-    # menos todo lo que el modelo explica con regresores distintos del bloque
-    # desempleo/NAIRU. Necesita los regresores crudos de nairu_colombia.csv (que
-    # NAIRU_EXPORT_COLS no exporta) y los coeficientes del MLE, así que se calcula
-    # aquí y no en el navegador.
-    phillips_slope = None
-    if NAIRU_COEF_CSV.exists():
-        coef_table = load_coefficient_table(NAIRU_COEF_CSV)
-        partial = partial_phillips(pd.read_csv(NAIRU_CSV), coefficients_from_table(coef_table))
-        if len(partial) != len(nairu):
-            raise ValueError(
-                f"Curva de Phillips parcial: {len(partial)} filas calculadas vs "
-                f"{len(nairu)} exportadas de {NAIRU_CSV.name}."
-            )
-        nairu["dg_inf"] = partial["dg_inf"].to_numpy()
-        nairu["phillips_parcial"] = partial["phillips_parcial"].to_numpy()
-        phillips_slope = unemployment_slope_summary(coef_table)
-    else:
-        warnings.warn(
-            f"{NAIRU_COEF_CSV} no encontrado — la curva de Phillips parcial no se "
-            "exporta; ejecuta --nairu-estim primero.",
-            stacklevel=2,
-        )
+    resumen = json.loads(RESUMEN_JSON.read_text()) if RESUMEN_JSON.exists() else {}
 
-    nairu = _round_floats(nairu)
-    out_nairu = docs_data_dir / "nairu_monthly.csv"
-    nairu.to_csv(out_nairu, index=False)
-    logger.info("[export-web] %s (%d filas)", out_nairu.name, len(nairu))
-
-    # ── 2. PIB Potencial trimestral ───────────────────────────────────
-    if PIB_CSV.exists():
-        pib = _read_and_rename(PIB_CSV, PIB_EXPORT_COLS, extra_cols=("year", "quarter"))
-        # "fecha" reconstruida desde year/quarter en convención QS-inicio
-        # (ver docstring del módulo) — NO se usa la columna "date" original.
-        pib.insert(
-            0,
-            "fecha",
-            pd.to_datetime({
-                "year": pib["year"].astype(int),
-                "month": (pib["quarter"].astype(int) - 1) * 3 + 1,
-                "day": 1,
-            }).dt.strftime("%Y-%m-%d"),
-        )
-        pib = pib.rename(columns={"year": "anio", "quarter": "trimestre"})
-
-        # Contribuciones al crecimiento potencial interanual (4 trimestres), en pp.
-        # Identidad contable de crecimiento: si contrib_capital+contrib_trabajo+contrib_ptf
-        # no suma ~crecimiento_potencial, algo en la exportación está mal — por eso se deja
-        # crecimiento_potencial calculado de forma INDEPENDIENTE (directo de pib_pot_idx, no
-        # como suma de las 3 contribuciones) para poder comparar ambos.
-        import numpy as np
-        if {"k_pot_idx", "lh_pot_idx", "ptf_pot", "alpha", "pib_pot_idx"}.issubset(pib.columns):
-            ln_k  = np.log(pib["k_pot_idx"].astype(float))
-            ln_lh = np.log(pib["lh_pot_idx"].astype(float))
-            ln_a  = np.log(pib["ptf_pot"].astype(float))
-            ln_pot = np.log(pib["pib_pot_idx"].astype(float))
-            alpha = pib["alpha"].astype(float)
-            pib["contrib_capital"] = alpha * ln_k.diff(4) * 100
-            pib["contrib_trabajo"] = (1 - alpha) * ln_lh.diff(4) * 100
-            pib["contrib_ptf"]     = ln_a.diff(4) * 100
-            pib["crecimiento_potencial"] = ln_pot.diff(4) * 100
-
-        pib = _round_floats(pib)
-        out_pib = docs_data_dir / "pib_trimestral.csv"
-        pib.to_csv(out_pib, index=False)
-        logger.info("[export-web] %s (%d filas)", out_pib.name, len(pib))
-    else:
-        warnings.warn(
-            f"{PIB_CSV} no encontrado — ejecuta --pib-potencial primero.",
-            stacklevel=2,
-        )
-        pib = None
-
-    # ── 3. VIOG trimestral (5 filtros + compuesto) ────────────────────
-    viog = None
-    if VIOG_CSV.exists():
-        viog = _read_and_rename(VIOG_CSV, VIOG_EXPORT_COLS)
-        viog["fecha"] = pd.to_datetime(viog["fecha"])
-        viog = viog[viog["fecha"] >= VIOG_START].reset_index(drop=True)
-        # Brechas en fracción log → porcentaje
-        for col in VIOG_GAP_COLS:
-            if col in viog.columns:
-                viog[col] = viog[col] * 100.0
-        viog["fecha"] = viog["fecha"].dt.strftime("%Y-%m-%d")
-        viog = _round_floats(viog)
-        out_viog = docs_data_dir / "viog_trimestral.csv"
-        viog.to_csv(out_viog, index=False)
-        logger.info("[export-web] %s (%d filas)", out_viog.name, len(viog))
-    else:
-        warnings.warn(
-            f"{VIOG_CSV} no encontrado — ejecuta --viog-co primero.",
-            stacklevel=2,
-        )
-
-    # ── 4. meta.json ──────────────────────────────────────────────────
-    def _num(row, key):
-        """Valor numérico seguro para JSON: NaN o ausente → None (→ ``null``).
-
-        Evita que ``json.dumps`` escriba el literal ``NaN`` (JSON inválido), que
-        rompería el ``JSON.parse`` del tablero por completo.
-        """
+    def _num(v):
         try:
-            v = float(row.get(key))
+            v = float(v)
         except (TypeError, ValueError):
             return None
         return round(v, 2) if pd.notna(v) else None
 
-    last_nairu = nairu["fecha"].max() if len(nairu) else "—"
-    latest = nairu.iloc[-1] if len(nairu) else {}
+    ult = nairu.iloc[-1]
     meta = {
-        "last_updated":    datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "last_obs_nairu":  str(last_nairu)[:10],
-        "n_obs_monthly":   len(nairu),
-        "n_obs_quarterly": len(pib) if pib is not None else 0,
-        "latest_nairu":    _num(latest, "nairu"),
-        "latest_td":       _num(latest, "td_obs"),
-        "latest_naicu":    _num(latest, "naicu"),
-        "latest_uci":      _num(latest, "uci_obs"),
-        "latest_brecha_laboral": _num(latest, "brecha_laboral"),
+        "modelo": "v7",
+        "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "last_obs_nairu": str(ult["fecha"])[:10],
+        "n_obs_monthly": len(nairu),
+        "n_obs_quarterly": len(pib),
+        "latest_nairu": _num(ult["nairu"]),
+        "latest_td": _num(ult["td_obs"]),
+        "latest_naicu": _num(ult["naicu"]),
+        "latest_uci": _num(ult["uci_obs"]),
+        "latest_brecha_laboral": _num(ult["brecha_laboral"]),
+        "latest_brecha_cd": _last_valid(pib, "brecha_cd"),
+        "latest_brecha_bhp": _last_valid(pib, "brecha_bhp"),
+        "latest_pib_idx": _last_valid(pib, "pib_idx"),
+        "latest_pib_pot_idx": _last_valid(pib, "pib_pot_idx"),
+        "last_obs_pib": str(pib.loc[pib["brecha_cd"].notna(), "fecha"].max())[:10],
+        "picos_bbq": resumen.get("picos_bbq"),
+        "u_bar": _num(resumen.get("u_bar")),
     }
-    if pib is not None and len(pib):
-        meta["latest_brecha_cd"]  = _last_valid(pib, "brecha_cd")
-        meta["latest_brecha_bhp"] = _last_valid(pib, "brecha_bhp")
-        meta["latest_pib_idx"]      = _last_valid(pib, "pib_idx")
-        meta["latest_pib_pot_idx"]  = _last_valid(pib, "pib_pot_idx")
-        meta["last_obs_pib"]      = str(pib["fecha"].max())[:10]
+    ph = resumen.get("phillips_precios") or {}
+    if ph:
+        meta["phillips_kappa"] = round(ph["kappa"], 4)
+        meta["phillips_kappa_p"] = round(ph["kappa_p"], 4) if ph.get("kappa_p") is not None else None
     if viog is not None and len(viog):
         meta["latest_brecha_viog"] = _last_valid(viog, "viog")
-        meta["last_obs_viog"]      = str(viog["fecha"].max())[:10]
-    if phillips_slope is not None:
-        # Pendiente agregada del modelo (Σβ_u) y su p-valor, para la leyenda de la
-        # curva de Phillips parcial: el tablero no los recalcula.
-        meta["phillips_sum_beta_u"] = round(phillips_slope["sum_beta_u"], 4)
-        p_value = phillips_slope["p_value"]
-        meta["phillips_sum_beta_u_p"] = round(p_value, 3) if p_value is not None else None
+        meta["last_obs_viog"] = str(viog["fecha"].max())[:10]
 
-    out_meta = docs_data_dir / "meta.json"
-    out_meta.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    (docs_data_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     logger.info("[export-web] meta.json → %s", meta)
-
-    logger.info("[export-web] ✓ Exportación completa en %s", docs_data_dir)
+    return meta
 
 
 def run() -> None:
-    """Entry-point para el pipeline principal."""
     export_web_data()

@@ -25,7 +25,9 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+from scipy import stats
 
 from src.config import DATA_DIR, OUTPUTS_DIR, PROJECT_ROOT
 from src.v7 import insumos
@@ -47,6 +49,35 @@ def cargar_motor(raiz: Path):
     return mod
 
 
+def curva_phillips_parcial(m, s, params, fit, smooth) -> tuple[pd.DataFrame, dict]:
+    """Curva de Phillips de precios PARCIAL de v7 (ec. 14 del paper).
+
+    g_t = ρ1 g_{t-1} + ρ2 g_{t-2} + γpe (E_{t-12}π − meta) + θ oil_t + κ h_t + ε_t,
+    con g = inflación básica − meta y h = u − u* (en la ventana COVID, h = −ℓ).
+    El "parcial" quita de g_t todo salvo el bloque de holgura:
+        parcial_t = g_t − ρ1 g_{t-1} − ρ2 g_{t-2} − γpe (E−meta) − θ oil_t − a0 = κ h_t + ε_t,
+    y se grafica contra h_t. Es la misma idea de la curva parcial del tablero v3,
+    adaptada a la ecuación de v7 (la dependiente ya no es Δg sino g en nivel).
+    """
+    cp = m.coef_precios(params, m.ESPEC_PRODUCCION)
+    ix = m.IX
+    kappa = float(params[ix["kappa"]])
+    theta = float(params[ix["theta_oil"]])
+    se_k = float(fit["se"][ix["kappa"]])
+    fechas = pd.to_datetime(s.dates)
+    covid = (fechas >= m.COVID_START) & (fechas <= m.COVID_END)
+    ustar = np.asarray(smooth["ustar"], dtype=float)
+    h = np.where(covid, -np.asarray(smooth["l"], dtype=float), s.unemployment - ustar)
+    y = np.asarray(s.y_phillips, dtype=float)
+    parcial = (y - cp["a0"] - cp["rho1"] * s.y_phillips_lag1 - cp["rho2"] * s.y_phillips_lag2
+               - cp["gamma_pe"] * s.eme_gap_meta - theta * s.oil_shock)
+    df = pd.DataFrame({"Date": fechas, "brecha_inflacion": y, "holgura": h,
+                       "phillips_parcial": parcial, "en_covid": covid})
+    p = float(2 * stats.norm.sf(abs(kappa / se_k))) if se_k > 0 else None
+    return df, {"kappa": kappa, "kappa_se": se_k, "kappa_p": p, **{k: float(v) for k, v in cp.items()},
+                "theta_oil": theta}
+
+
 def run(modo: str = "repo", con_contraste: bool = True) -> dict:
     t0 = time.time()
     raiz = DATA_DIR / "interim" / f"v7_{modo}"
@@ -60,6 +91,8 @@ def run(modo: str = "repo", con_contraste: bool = True) -> dict:
     m = cargar_motor(raiz)
     m.OUT_DIR.mkdir(parents=True, exist_ok=True)
     s, mod, params, fit, smooth, out_nairu, ma36 = m.paso1_nairu_naicu()
+    phil, phil_coef = curva_phillips_parcial(m, s, params, fit, smooth)
+    phil.to_csv(m.OUT_DIR / "phillips_parcial_v7.csv", index=False)
     df, reg, alpha, T, reg_ptf, *_ = m.paso2_pib_potencial(out_nairu)
 
     resumen = {
@@ -75,6 +108,7 @@ def run(modo: str = "repo", con_contraste: bool = True) -> dict:
         # paper (sec. 4.2.2) se re-fechan con cada corrida; si el DANE revisa la
         # serie desestacionalizada pueden aparecer o desaparecer picos (p. ej.
         # 2008T3 con la descarga del 2026-11-01). Se registran para notarlo.
+        "phillips_precios": phil_coef,
         "picos_bbq": [str(pd.Timestamp(p).date()) for p in m.CONFIG_PRODUCCION.picos_bbq],
     }
     d_T = df.loc[df["date"] == T, "brecha_pot"]
