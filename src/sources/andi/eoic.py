@@ -12,8 +12,10 @@
      ``andi_capacidad_instalada.csv`` cuyo mes no está en el histórico);
    - + meses publicados en la página que no están en ninguno de los dos,
      en orden: se descarga el informe, se extrae el dato y se valida
-     (mes del dato = mes del informe, rango 55–90, mes anterior presente y
-     salto ≤ 8 pp).  Si algo falla se lanza error y no se escribe nada.
+     (mes del dato = mes del informe, rango 55–90, solo meses posteriores al
+     último de la serie y salto ≤ 8 pp frente al último mes disponible; un
+     hueco intermedio se avisa y se completa a mano).  Si algo falla se lanza
+     error y no se escribe nada.
 
    Con ``respaldo_ia`` (``--andi-ia``, solo local) un mes cuyo texto no
    trae la frase se consulta a ``claude -p``; el número pasa por los mismos
@@ -620,6 +622,13 @@ def actualizar_icu(
                 continue
         if mes in serie.index:
             continue                       # histórico o ya agregado: nunca se sobrescribe
+        if not serie.empty and mes < serie.index.max():
+            logger.warning(
+                "[ANDI] %s falta en la serie pero es anterior a su último mes (%s): solo se "
+                "agregan meses al final; se omite %s (cargarlo a mano en "
+                "data/inputs/icu_historical.csv).", mes, serie.index.max(), inf["origen"],
+            )
+            continue
         if mes in pendientes:
             logger.info("[ANDI] %s ya tiene informe (%s); se omite %s",
                         mes, pendientes[mes]["origen"], inf["origen"])

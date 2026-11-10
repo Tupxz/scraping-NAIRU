@@ -51,6 +51,36 @@ def _load(filename: str, date_col: str = "date") -> pd.DataFrame:
     return df.set_index(date_col)
 
 
+def truncar_en_hueco(icu: pd.DataFrame) -> pd.DataFrame:
+    """Deja el ICU solo hasta el último mes contiguo desde su inicio.
+
+    El STL de v7 (``desestacionalizar_icu``) falla si el ICU tiene huecos
+    internos, y la serie de la ANDI puede tenerlos al final (p. ej. octubre y
+    noviembre, que se cargan a mano, mientras ya entró diciembre).  Los meses
+    posteriores al primer hueco no entran a ``Data_NAIRU.xlsx`` hasta que el
+    hueco se complete; se emite un warning con los meses faltantes y los
+    descartados.
+    """
+    serie = icu["ICU"].dropna().sort_index()
+    if serie.empty:
+        return icu.iloc[0:0]
+    meses = serie.index.to_period("M")
+    esperado = pd.period_range(meses[0], periods=len(meses), freq="M")
+    rotos = meses != esperado
+    if not rotos.any():
+        return icu.loc[serie.index]
+    corte = int(rotos.argmax())                  # primera posición fuera de secuencia
+    ultimo = meses[corte - 1]
+    faltan = [str(p) for p in pd.period_range(ultimo + 1, meses[corte] - 1, freq="M")]
+    descartados = [str(p) for p in meses[corte:]]
+    logger.warning(
+        "[NAIRU-dataset] ICU con hueco: faltan %s. Se trunca en %s y no entran %s "
+        "(completar el hueco en data/inputs/icu_historical.csv).",
+        faltan, ultimo, descartados,
+    )
+    return icu.loc[serie.index[:corte]]
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # Pipeline principal
 # ═══════════════════════════════════════════════════════════════════════
@@ -88,6 +118,7 @@ def build_nairu_dataset(
 
     icu = _load("andi_capacidad_instalada.csv")[["capacity_utilization"]]
     icu.columns = ["ICU"]
+    icu = truncar_en_hueco(icu)
 
     # ── Merge por fecha (outer para no perder ningún mes) ─────────────
     df = (

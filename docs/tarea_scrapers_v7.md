@@ -54,6 +54,50 @@ los usa).
 | 7 | ✅ 2026-11-09 | Histórico ANDI desde 2001-01 + meses nuevos desde los informes EOIC (`src/sources/andi/extraccion_icu.py`), con controles de mes, rango 55–90, huecos y salto ≤ 8 pp. Error del extractor contra el histórico: medio 0,11 pp, máximo 4,81 (may-2021, revisión). Los informes de octubre no traen el dato mensual: ese mes requiere `--andi-ia` o carga manual en `icu_historical.csv`. |
 | 9 | ✅ 2026-11-09 | SUAMECA envía su certificado sin el intermedio (*GeoTrust EV RSA CA G2*) desde el 2026-09-11; `src/sources/banrep/tls.py` lo agrega al almacén de confianza de la sesión (verificación completa, sin `verify=False`). |
 
+## ICU: meses que hay que cargar a mano (octubre y noviembre)
+
+Regla: el histórico de la ANDI (`data/inputs/icu_historical.csv`) se usa tal
+cual y solo se agregan meses nuevos **al final**; nunca se modifica un mes
+existente.
+
+**Por qué octubre y noviembre no salen del scraping.** Revisados todos los
+informes EOIC locales (2017–2026): el informe de **octubre** no trae el dato
+mensual de utilización de capacidad (solo promedios del año o del trimestre),
+la ANDI **no publica informe de noviembre**, y el de diciembre solo compara
+promedios trimestrales. Ningún informe posterior cita el dato de octubre.
+`--andi-ia` tampoco sirve para esos meses: el texto no trae el número y la IA
+responde "NA" (probado con octubre 2024).
+
+**Qué pasa mientras faltan.** El pipeline sigue agregando diciembre, enero…
+al final de la serie (con un aviso de hueco), pero `build_nairu_dataset.py`
+trunca el ICU de `Data_NAIRU.xlsx` en el último mes contiguo (el STL de v7
+falla con huecos internos), así que esos meses no entran al modelo hasta que
+se complete el hueco.
+
+**Cómo cargarlos.**
+1. Pedir el dato del **total de la industria** a la ANDI (Vicepresidencia de
+   Desarrollo Económico, `cee@andi.com.co`, el contacto que aparece en los
+   informes) o tomarlo de otra publicación oficial de la ANDI.
+2. Agregar una fila por mes a `data/inputs/icu_historical.csv`, en orden
+   cronológico, sin tocar las demás:
+   ```
+   date,year,month,capacity_utilization,source,download_date
+   2026-10-01,2026,10,78.9,ANDI (dato enviado por la VP Desarrollo Económico 2026-12-05),2026-12-05
+   ```
+   `date` = primer día del mes; `capacity_utilization` en porcentaje (como lo
+   publica la ANDI); `source` dice de dónde salió (sin comas).
+3. Correr `python -m src.main --andi` y `python -m src.main --nairu-dataset`
+   (o esperar la corrida mensual). Verificar que el aviso de hueco desaparezca.
+
+**Mayo–septiembre de 2026 (verificado el 2026-11-09).** La página de la ANDI
+(`/Home/Pagina/3-desarrollo-economico-y-competitividad`, sección "Encuesta
+EOIC") solo enlaza los informes de enero a abril de 2026; las URL con los
+nombres habituales (`Informe EOIC <Mes> 2026.pdf`, con "- ANDI -", "VF",
+"[1]", "de") devuelven 404 y las noticias de la ANDI no anuncian EOIC de esos
+meses. No es un problema del scraper: entrarán solos cuando la ANDI los
+publique en esa página (el mes sale del enlace o, si no trae año, de la
+portada).
+
 ## Validación
 Los CSV originales del compañero están en `legacy/v7/datos/` (y su constructor de
 salarios en `legacy/v7/construir_salarios_emmet.py`, que lee el anexo EMMET y

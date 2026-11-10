@@ -35,8 +35,10 @@ Cómo se extrae
 Controles de un mes nuevo (:func:`validar_icu_nuevo`)
 ------------------------------------------------------
 - Valor en ``[ICU_MIN_NUEVO, ICU_MAX_NUEVO]`` = [55, 90].
-- El mes anterior debe existir en la serie (sin huecos) y
-  |valor − valor del mes anterior| ≤ ``ICU_MAX_SALTO`` = 8 pp.
+- Solo meses posteriores al último de la serie (nunca se modifica un mes
+  existente ni se rellena un hueco desde un informe: eso es carga manual en
+  ``data/inputs/icu_historical.csv``).  Si queda un hueco, se avisa.
+- |valor − último valor disponible| ≤ ``ICU_MAX_SALTO`` = 8 pp.
 
   Calibración (histórico ANDI 2001-01 → 2025-12, 299 saltos): mediana 1,2;
   p95 3,4; fuera de COVID (mar–jul 2020) y del paro nacional (may–jun 2021)
@@ -47,12 +49,15 @@ Controles de un mes nuevo (:func:`validar_icu_nuevo`)
 
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
+
+logger = logging.getLogger("nairu_pipeline.andi")
 
 # ── Controles ──────────────────────────────────────────────────────────
 ICU_MIN_NUEVO: float = 55.0
@@ -288,24 +293,40 @@ def validar_icu_nuevo(
 ) -> None:
     """Controles de un mes nuevo frente a la serie existente (índice = Period mensual).
 
+    Solo se agregan meses **al final** (regla del usuario): un mes anterior al
+    último de la serie es error.  Si entre el último mes y el nuevo queda un
+    hueco (p. ej. octubre y noviembre, que la ANDI no publica), se agrega con
+    un aviso y el salto se mide contra el último mes disponible.
+
     Raises
     ------
     ICUControlError
-        Mes ya presente, fuera de rango, hueco (falta el mes anterior) o salto
-        mensual mayor que ``max_salto``.
+        Mes ya presente, anterior al último de la serie, fuera de rango o salto
+        mayor que ``max_salto`` frente al último mes disponible.
     """
     if periodo in serie.index:
         raise ICUControlError(f"{periodo} ya está en la serie; nunca se sobrescribe.")
     if not (minimo <= valor <= maximo):
         raise ICUControlError(f"ICU {periodo} = {valor} fuera del rango [{minimo}, {maximo}].")
-    anterior = periodo - 1
-    if anterior not in serie.index or pd.isna(serie.loc[anterior]):
+    validos = serie.dropna()
+    if validos.empty:
+        raise ICUControlError("La serie ICU está vacía: falta el histórico de la ANDI.")
+    ultimo = validos.index.max()
+    if periodo < ultimo:
         raise ICUControlError(
-            f"Falta el ICU de {anterior}: el mes nuevo {periodo} dejaría un hueco en la serie."
+            f"{periodo} es anterior al último mes de la serie ({ultimo}): solo se agregan meses "
+            "al final. Un hueco se completa a mano en data/inputs/icu_historical.csv."
         )
-    salto = abs(valor - float(serie.loc[anterior]))
+    if periodo - 1 != ultimo:
+        faltan = [str(p) for p in pd.period_range(ultimo + 1, periodo - 1, freq="M")]
+        logger.warning(
+            "[ANDI] Hueco en el ICU: faltan %s antes de %s (cargarlos a mano en "
+            "data/inputs/icu_historical.csv). El salto se mide contra %s; Data_NAIRU.xlsx "
+            "se trunca en el último mes contiguo.", faltan, periodo, ultimo,
+        )
+    salto = abs(valor - float(validos.loc[ultimo]))
     if salto > max_salto:
         raise ICUControlError(
-            f"Salto mensual de {salto:.2f} pp en {periodo} ({serie.loc[anterior]} → {valor}); "
+            f"Salto de {salto:.2f} pp en {periodo} frente a {ultimo} ({validos.loc[ultimo]} → {valor}); "
             f"máximo permitido {max_salto} pp. Revisar a mano."
         )

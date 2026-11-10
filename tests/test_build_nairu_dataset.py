@@ -76,3 +76,27 @@ def test_excel_legible_como_v7(processed, tmp_path):
     for c in ("Unemp_Desest", "Core_Inf", "Inf_Goal", "Inf_Rate", "Brent_Oil_Price",
               "TES_Rate_1yr_COP", "TES_Rate_1yr_UVR", "ICU"):
         assert c in leido.columns
+
+
+def test_icu_con_hueco_se_trunca_en_el_ultimo_mes_contiguo(processed, tmp_path, caplog):
+    """Meses de ICU después de un hueco no entran (el STL de v7 falla con huecos)."""
+    icu = pd.read_csv(processed / "andi_capacidad_instalada.csv")
+    extra = pd.DataFrame({"date": ["2026-03-01", "2026-04-01"], "capacity_utilization": [78.0, 79.0]})
+    pd.concat([icu, extra]).to_csv(processed / "andi_capacidad_instalada.csv", index=False)
+
+    with caplog.at_level("WARNING", logger="nairu_pipeline.build_nairu"):
+        df = mod.build_nairu_dataset(tmp_path / "Data_NAIRU.xlsx")
+    assert df["Date"].iloc[-1] == pd.Timestamp("2025-12-01")     # faltan 2026-01 y 2026-02
+    assert "2026-01" in caplog.text and "2026-02" in caplog.text and "2026-04" in caplog.text
+
+
+def test_truncar_en_hueco_sin_hueco_no_cambia():
+    idx = pd.date_range("2001-01-01", periods=5, freq="MS")
+    icu = pd.DataFrame({"ICU": [70.0, 71.0, 72.0, 73.0, 74.0]}, index=idx)
+    assert mod.truncar_en_hueco(icu).equals(icu)
+
+
+def test_truncar_en_hueco_trata_nan_como_hueco():
+    idx = pd.date_range("2025-10-01", periods=4, freq="MS")
+    icu = pd.DataFrame({"ICU": [79.9, float("nan"), 77.5, 76.6]}, index=idx)
+    assert mod.truncar_en_hueco(icu).index.tolist() == [pd.Timestamp("2025-10-01")]

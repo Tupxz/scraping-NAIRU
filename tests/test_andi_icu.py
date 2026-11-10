@@ -212,9 +212,19 @@ class TestControles:
         with pytest.raises(ICUControlError, match="fuera del rango"):
             validar_icu_nuevo(P("2026-01"), valor, _serie(ultimo=valor))
 
-    def test_hueco(self):
-        with pytest.raises(ICUControlError, match="Falta el ICU de 2025-12"):
+    def test_mes_tras_hueco_se_acepta_con_aviso(self, caplog):
+        with caplog.at_level("WARNING", logger="nairu_pipeline.andi"):
             validar_icu_nuevo(P("2026-01"), 76.6, _serie(hasta="2025-11"))
+        assert "Hueco en el ICU" in caplog.text and "2025-12" in caplog.text
+
+    def test_salto_tras_hueco_contra_ultimo_disponible(self):
+        with pytest.raises(ICUControlError, match="frente a 2025-10"):
+            validar_icu_nuevo(P("2026-01"), 60.0, _serie(hasta="2025-10", ultimo=70.0))
+
+    def test_solo_al_final(self):
+        serie = _serie(hasta="2025-12")
+        with pytest.raises(ICUControlError, match="solo se agregan meses"):
+            validar_icu_nuevo(P("2025-06"), 77.0, serie.drop(P("2025-09")).drop(P("2025-06"), errors="ignore"))
 
     def test_nunca_sobrescribe(self):
         with pytest.raises(ICUControlError, match="nunca se sobrescribe"):
@@ -222,7 +232,7 @@ class TestControles:
 
     def test_salto(self):
         validar_icu_nuevo(P("2026-01"), 70.0 + ICU_MAX_SALTO, _serie(ultimo=70.0))
-        with pytest.raises(ICUControlError, match="Salto mensual"):
+        with pytest.raises(ICUControlError, match="Salto de"):
             validar_icu_nuevo(P("2026-01"), 70.0 + ICU_MAX_SALTO + 0.01, _serie(ultimo=70.0))
 
     def test_umbral_de_salto_calibrado_con_el_historico(self):
@@ -255,10 +265,16 @@ class TestActualizarICU:
         assert [(r["date"], r["capacity_utilization"], r["source"]) for r in nuevos] == [
             ("2026-01-01", 76.6, "u/ene")]
 
-    def test_error_si_falta_un_mes_intermedio(self):
+    def test_mes_tras_hueco_se_agrega(self):
         informes = [{"mes": P("2026-01"), "origen": "u/ene", "obtener": lambda: FIX / "eoic_ene2026_p2.pdf"}]
-        with pytest.raises(ICUControlError, match="Falta el ICU de 2025-12"):
-            actualizar_icu(informes, _serie(hasta="2025-11"))
+        nuevos = actualizar_icu(informes, _serie(hasta="2025-11"))
+        assert [r["date"] for r in nuevos] == ["2026-01-01"]
+
+    def test_informe_de_un_hueco_se_omite(self):
+        """Un mes que falta pero es anterior al último de la serie no se rellena desde un informe."""
+        serie = _serie(hasta="2026-01").drop(P("2025-10"))
+        informes = [{"mes": P("2025-10"), "origen": "u/oct", "obtener": _no_descargar}]
+        assert actualizar_icu(informes, serie) == []
 
     def test_sin_dato_sin_respaldo_es_error(self):
         informes = [{"mes": P("2024-10"), "origen": "u/oct", "obtener": lambda: FIX / "eoic_oct2024_p2.pdf"}]

@@ -110,7 +110,7 @@ def test_respaldo_en_actualizar_icu():
 
 
 def test_respaldo_pasa_por_los_controles():
-    with pytest.raises(ICUControlError, match="Salto mensual"):
+    with pytest.raises(ICUControlError, match="Salto de"):
         actualizar_icu(_informe_octubre(), _serie_hasta_septiembre(),
                        respaldo_ia=partial(consultar_claude, ejecutar=EjecutarFalso("68,0")))
 
