@@ -975,7 +975,7 @@ function renderPhillips(meta) {
                                    && r.brecha_laboral !== null);
   if (!rows.length) {
     host.innerHTML = '<div class="state-msg"><span>Sin datos para la curva de Phillips: regenera los datos del tablero '
-      + '(<code>--nairu-estim</code> y luego <code>--export-web</code>).</span></div>';
+      + '(<code>--v7</code> y luego <code>--export-web</code>).</span></div>';
     return;
   }
   const num = v => (v === null || v === undefined || isNaN(+v)) ? null : +v;

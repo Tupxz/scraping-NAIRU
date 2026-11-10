@@ -21,20 +21,15 @@ andi_agent/.venv/
 andi_agent/__pycache__/
 
 # Pipeline outputs / reportes
-#   Todo outputs/ es regenerable EXCEPTO la NAIRU publicada: mientras la
-#   re-estimación automática esté pausada, el workflow mensual (update.yml)
-#   necesita estos dos CSV para --pib-potencial y --export-web. Sin ellos en
-#   el repo, la corrida del 2026-10-01 falló. Ver docs/integracion_v7.md.
+#   Todo outputs/ es regenerable. Se versionan solo las salidas tabulares del
+#   modelo v7 (outputs/v7/*.csv|json), que el workflow mensual comitea como
+#   registro de cada estimación; el tablero lee docs/data/.
 outputs/*
 !outputs/v7/
 outputs/v7/*
 !outputs/v7/*.csv
 !outputs/v7/*.json
 outputs/v7/_ci_*
-!outputs/nairu/
-outputs/nairu/*
-!outputs/nairu/nairu_colombia.csv
-!outputs/nairu/nairu_mle_coefficients.csv
 
 # Scripts de análisis y calibración
 #   El CÓDIGO sí se versiona: es la evidencia metodológica del informe

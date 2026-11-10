@@ -319,6 +319,7 @@ def main() -> None:
             run_tes=True, run_brent=True, run_trm=True, run_eme=True, run_emmet=True, run_subempleo=True, run_vacantes=True, run_pib_insumos_v7=True,
             run_andi=True, andi_reprocess=False,  # reprocess solo con --andi-reprocess explícito
             run_nairu_dataset=True,
+            run_v7=True,
             run_merge=True,
         )
         return

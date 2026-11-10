@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.8.1] — 2026-11-10
+
+### Cambiado
+- Restos de v3 tras la limpieza [0.8.0]: `legacy/README.md` describe `legacy/v7/` (referencia vigente) y deja v3 como historia; `.gitignore` ya no versiona `outputs/nairu/` (sus dos CSV salen del índice: nada los lee desde que el tablero usa v7); `--all` vuelve a correr el modelo (`run_v7`); el aviso de la tarjeta de Phillips del tablero sugiere `--v7` en vez de `--nairu-estim`.
+
 ## [0.8.0] — 2026-11-10
 
 Limpieza final de v3: desde 2026-11-10 el workflow corre `--v7`, así que se borra el código v3 que ya no usa nada vivo. Antes de borrar cada pieza se verificó con grep que no la importaran `src/v7/`, `run_v7.py`, `export_web_data.py`, `build_nairu_dataset.py`, `merge.py`, los demás `src/sources/` y `src/pipelines/`, ni `update.yml`.
