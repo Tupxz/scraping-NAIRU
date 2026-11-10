@@ -97,6 +97,7 @@ class GEIHConfig:
     series_map: dict[str, str] = field(default_factory=lambda: {
         "unemployment_rate":  r"Tasa de Desocupaci[oó]n",
         "tgp_rate":           r"Tasa Global de Participaci[oó]n",
+        "to_rate":            r"^Tasa de Ocupaci[oó]n",
         "_raw_pop_employed":  r"^Poblaci[oó]n ocupada",
         "_raw_pop_unemployed":r"^Poblaci[oó]n desocupada",
         "_raw_pop_inactive":  r"^Poblaci[oó]n fuera de la fuerza",
@@ -116,6 +117,12 @@ class GEIHConfig:
     # a este número de decimales → ``unemployment_rate``.  La tasa
     # calculada queda en ``unemployment_rate_calc``.
     td_decimales_publicados: int = 1
+
+    # ── Tasas desestacionalizadas para v7 ─────────────────────────
+    # geih_tgp_to_td_desest_mensual.csv: TGP, TO y TD con precisión completa
+    # (6 decimales).  Los meses del empalme ECH→GEIH quedan en NaN.
+    tasas_filename: str = "geih_tgp_to_td_desest_mensual.csv"
+    meses_empalme_nan: tuple[str, ...] = ("2006-07-01", "2006-08-01")
 
     # ── Archivos ──────────────────────────────────────────────────
     raw_html_filename: str = "geih_page.html"
@@ -935,6 +942,7 @@ PROCESSED_COLUMNS: list[str] = [
     "unemployment_rate",        # TD desestacionalizada publicada (1 decimal)
     "unemployment_rate_calc",   # 100·desocupados/(ocupados+desocupados)
     "tgp_rate",
+    "to_rate",                  # tasa de ocupación desestacionalizada
     "occupied_thousands",
     "unemployed_thousands",
     "inactive_thousands",

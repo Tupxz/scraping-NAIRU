@@ -957,3 +957,62 @@ class TestTDPublicada:
 
         with pytest.raises(QualityCheckError, match="no es el redondeo"):
             check_td_publicada(self._df([8.4, 8.3], [8.4, 8.9]))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Tasas desestacionalizadas para v7 (geih_tgp_to_td_desest_mensual.csv)
+# ═══════════════════════════════════════════════════════════════════════
+
+ANEXO_JUL2026 = FIXTURES_GEIH / "anex-GEIH-Desestacionalizado-jul2026_total_nacional.xlsx"
+REF_TASAS = Path(__file__).parent.parent / "legacy" / "v7" / "datos" / "geih_tgp_to_td_desest_mensual.csv"
+
+
+class TestTasasDesest:
+    """Con el anexo de jul-2026 (el que usó el compañero) la salida es idéntica a la línea base."""
+
+    @pytest.fixture(scope="class")
+    def tasas(self):
+        from src.sources.dane.geih_tasas import construir_tasas_desest
+
+        return construir_tasas_desest(clean_geih_data(ANEXO_JUL2026, GEIH_CONFIG))
+
+    def test_igual_a_la_linea_base(self, tasas):
+        ref = pd.read_csv(REF_TASAS, parse_dates=["date"]).set_index("date")
+        t = tasas.set_index("date")
+        assert len(ref) == 305
+        for c in ("tgp_desest", "to_desest", "td_desest"):
+            assert (t.loc[ref.index, c] - ref[c]).abs().max() < 1e-9, c
+
+    def test_empalme_2006_en_nan(self, tasas):
+        t = tasas.set_index("date")
+        assert t.loc[["2006-07-01", "2006-08-01"], ["tgp_desest", "to_desest", "td_desest"]].isna().all().all()
+        assert t.loc["2006-06-01"].notna().all() and t.loc["2006-09-01"].notna().all()
+
+    def test_td_es_la_calculada_no_la_publicada(self, tasas):
+        t = tasas.set_index("date")
+        assert t.loc["2001-01-01", "td_desest"] == pytest.approx(14.058187, abs=1e-6)
+
+    def test_calidad(self, tasas):
+        from src.quality_checks import run_tasas_geih_checks
+
+        assert run_tasas_geih_checks(tasas)
+
+    @pytest.mark.parametrize("caso", ["nan_fuera", "valor_en_empalme", "to_incoherente"])
+    def test_calidad_falla(self, tasas, caso):
+        from src.quality_checks import run_tasas_geih_checks
+
+        malo = tasas.copy()
+        if caso == "nan_fuera":
+            malo.loc[10, "tgp_desest"] = float("nan")
+        elif caso == "valor_en_empalme":
+            malo.loc[malo["date"] == "2006-07-01", "tgp_desest"] = 60.0
+        else:
+            malo.loc[20, "to_desest"] += 1.0
+        with pytest.raises(QualityCheckError):
+            run_tasas_geih_checks(malo)
+
+    def test_sin_to_es_error(self, sample_geih_xlsx_with_pet):
+        from src.sources.dane.geih_tasas import construir_tasas_desest
+
+        with pytest.raises(ValueError, match="to_rate"):
+            construir_tasas_desest(clean_geih_data(sample_geih_xlsx_with_pet, GEIH_CONFIG))

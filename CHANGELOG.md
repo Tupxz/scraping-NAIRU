@@ -12,6 +12,10 @@ Scrapers restantes de `docs/tarea_scrapers_v7.md` (uno por commit). `src/v7/insu
   - Contra `legacy/v7/datos/emmet_salarios_v7.csv`: **idéntico** en las 152 filas y las 8 columnas (diferencia 0).
   - `tests/test_emmet.py` (18, offline): extracto real del anexo y de la página del DANE, selección del anexo más reciente, índices y salarios iguales a la línea base, identidad (1 + w) = (1 + ω)(1 + π), errores de estructura, controles, no escribe si falla.
 
+- **TGP/TO/TD desestacionalizadas** (punto 4): `--unemployment` escribe además `data/processed/geih_tgp_to_td_desest_mensual.csv` (`src/sources/dane/geih_tasas.py`; misma descarga del anexo GEIH, sin otro flag). `tgp_desest` = TGP, `to_desest` = TO (fila nueva `to_rate` en el parser y en `dane_labor_colombia.csv`), `td_desest` = TD con precisión completa (desocupados/FL, no la publicada), 6 decimales; jul–ago 2006 (empalme ECH→GEIH) en **NaN**. `run_tasas_geih_checks`: meses consecutivos desde 2001-01, NaN solo en el empalme, rangos e identidad TO = TGP·(1 − TD/100) (detecta una fila equivocada).
+  - Contra `legacy/v7/datos/` : con el anexo de **jul-2026** (el que usó el compañero) la salida es **idéntica** en los 305 meses (verificado y fijado en un test con la hoja real de ese anexo); con el anexo vigente (sep-2026) difiere hasta 0,13 / 0,15 / 0,18 pp en TGP / TO / TD por la reestimación de la desestacionalización del DANE (como la TD publicada en [0.6.1]) y suma 2026-08 y 2026-09.
+  - Tests: `tests/test_geih.py::TestTasasDesest` (8) con `tests/fixtures/geih/anex-GEIH-Desestacionalizado-jul2026_total_nacional.xlsx`; el fixture de esquema de `test_pipeline.py` incluye `to_rate`.
+
 ## [0.6.1] — 2026-11-09
 
 Rama `scrapers-v7` (scrapers para v7), fusionada sobre [0.6.0].

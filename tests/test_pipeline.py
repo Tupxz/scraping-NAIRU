@@ -40,6 +40,7 @@ def sample_processed_df() -> pd.DataFrame:
             "unemployment_rate": [3.6, 3.5, 4.4],
             "unemployment_rate_calc": [3.6123, 3.4987, 4.4001],
             "tgp_rate": [63.2, 63.0, 62.8],
+            "to_rate": [60.9, 60.8, 60.0],
             "occupied_thousands":   [20_000.0, 20_100.0, 20_200.0],
             "unemployed_thousands": [800.0, 790.0, 810.0],
             "inactive_thousands":   [10_000.0, 10_010.0, 10_020.0],

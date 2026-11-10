@@ -76,7 +76,7 @@ def check_columns(df: pd.DataFrame) -> None:
     QualityCheckError
         Si faltan columnas obligatorias o hay columnas inesperadas.
     """
-    OPTIONAL_COLUMNS: set[str] = {"tgp_rate", "pet_thousands", "unemployment_rate_calc"}
+    OPTIONAL_COLUMNS: set[str] = {"tgp_rate", "to_rate", "pet_thousands", "unemployment_rate_calc"}
 
     expected = set(PROCESSED_COLUMNS)
     actual = set(df.columns)
@@ -324,6 +324,34 @@ def run_all_checks(df: pd.DataFrame) -> bool:
     check_date_continuity(df)
 
     logger.info("─── Todas las validaciones pasaron ✓ ───")
+    return True
+
+
+def run_tasas_geih_checks(df: pd.DataFrame, meses_nan: tuple[str, ...] = ("2006-07-01", "2006-08-01")) -> bool:
+    """Tasas desestacionalizadas para v7: meses consecutivos desde 2001-01,
+    rangos, NaN solo en el empalme ECH→GEIH e identidad TO = TGP·(1 − TD/100)."""
+    logger.info("─── Validaciones de calidad tasas GEIH (v7) ───")
+    cols = ["date", "tgp_desest", "to_desest", "td_desest"]
+    missing = set(cols) - set(df.columns)
+    if missing:
+        raise QualityCheckError(f"Columnas de tasas GEIH faltantes: {missing}")
+    check_no_duplicates(df)
+    check_monthly_complete(df, "2001-01-01")
+    fechas = pd.to_datetime(df["date"])
+    empalme = fechas.isin(pd.to_datetime(list(meses_nan)))
+    if df.loc[empalme, cols[1:]].notna().any().any():
+        raise QualityCheckError(f"Los meses del empalme {meses_nan} deben quedar en NaN.")
+    resto = df.loc[~empalme]
+    if resto[cols[1:]].isna().any().any():
+        raise QualityCheckError("Tasas GEIH con NaN fuera del empalme ECH→GEIH.")
+    if not resto["tgp_desest"].between(TGP_MIN, TGP_MAX).all():
+        raise QualityCheckError("tgp_desest fuera de rango.")
+    if not resto["td_desest"].between(UNEMPLOYMENT_RATE_MIN, UNEMPLOYMENT_RATE_MAX).all():
+        raise QualityCheckError("td_desest fuera de rango.")
+    dif = (resto["to_desest"] - resto["tgp_desest"] * (1 - resto["td_desest"] / 100)).abs()
+    if (dif > 1e-3).any():
+        raise QualityCheckError(f"TO ≠ TGP·(1 − TD/100) (máx. {dif.max():.2e}): fila TO equivocada.")
+    logger.info("─── Todas las validaciones de tasas GEIH pasaron ✓ ───")
     return True
 
 

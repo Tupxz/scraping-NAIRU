@@ -467,6 +467,7 @@ def load_geih_excel(
         start_row=month_row,
         optional_series={
             "tgp_rate",
+            "to_rate",
             "_raw_pop_employed",
             "_raw_pop_unemployed",
             "_raw_pop_inactive",
