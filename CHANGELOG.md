@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.1] — 2026-11-13
+
+### Agregado
+- **Diagnóstico paper vs tablero** (`docs/diagnostico_paper_vs_tablero.md`): explica por qué el crecimiento del PIB potencial de 2025 del tablero es 0,08 pp menor que el del working paper (3,26 / 2,50 / 2,64 / 1,89 frente a 3,33 / 2,58 / 2,72 / 1,98).
+  - Base, unidad (Cuadro 4, volumen encadenado 2015), índice 2005T1 = 100, inicio de muestra y empalme 2004: iguales.
+  - Insumo por insumo: con los anexos de la misma edición que usó el paper, nuestros parsers reproducen exactamente el PIB, `X_vapg`, el ingreso y PET/FL/ocupados. Las diferencias son revisiones del DANE, cambios de fuente ya decididos (Brent FRED, TD vigente) o meses nuevos. El único procesamiento propio que difiere es el redondeo de `hc` a 4 decimales (`pwt.py`), con efecto de +0,0001 pp; no se cambió.
+  - Atribución exacta (Shapley en dos etapas): las revisiones suman +0,21 pp (PIB +0,16, TD +0,05) y los meses nuevos ene–abr 2026 restan −0,29 pp (la NAIRU de dic-2025 pasa de 8,61 a 8,88). Casi todo el efecto del PIB pasa por un pico Bry-Boschan nuevo en 2008T3, que aparece porque el crecimiento de 2009T1 pasó de +0,31 % a −0,004 %. Ese pico también mueve el crecimiento potencial de 2006–2014 entre −0,5 y +2 pp por año.
+  - `scripts/diagnostico_paper_vs_tablero.py` reproduce todas las corridas (≈ 4 min, 90 escenarios) en `data/interim/v7_atribucion/` sin tocar `src/v7/motor.py`, `outputs/v7` ni la línea base.
+- **Tablero: tarjeta «Crecimiento del PIB potencial»** (pestaña PIB potencial, después de la descomposición). Muestra el crecimiento interanual del PIB observado (gris), el potencial vigente (azul) y el potencial del working paper (azul punteado), con la pandemia (abr-2020 a jun-2021) sombreada.
+- `export_web_data.py`: columnas `crecimiento_pib_obs` (PIB anualizado, la misma medida que el potencial) y `crecimiento_pib_pot_paper` (de `tests/fixtures/baseline_v7/`) en `docs/data/pib_trimestral.csv`. Ambas van en 100 × Δ4 log, como `crecimiento_potencial`. Las columnas existentes no cambian.
+- `tests/test_v7.py::TestExportWebV7::test_crecimiento_observado_y_del_paper`. Suite completa: 709 pasan.
+
 ## [0.9.0] — 2026-11-10
 
 ### Cambiado

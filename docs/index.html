@@ -409,6 +409,16 @@
       <div class="chart-card">
         <div class="card-header">
           <div>
+            <div class="card-title">Crecimiento del PIB potencial</div>
+            <div class="card-desc">Variación interanual. La línea punteada es la estimación publicada en el working paper; la diferencia se debe a revisiones de datos del DANE y a los meses nuevos.</div>
+          </div>
+        </div>
+        <div class="plotly-container" id="chart-crecimiento"></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="card-header">
+          <div>
             <div class="card-title">Productividad total de los factores (PTF)</div>
             <div class="card-desc">Observada vs. tendencial · índice trimestral, base 100 = 2005-T1</div>
           </div>
@@ -688,6 +698,7 @@ async function loadAll() {
     renderBrechasQ();
     initRangeToggle();
     renderDecomposicion();
+    renderCrecimiento();
     renderPTF();
     renderPIBCop();
     renderFactores();
@@ -867,6 +878,35 @@ function renderDecomposicion() {
   ];
   Plotly.newPlot('chart-decomposicion', traces,
     baseLayout({ barmode: 'relative', yaxis: { title: '% interanual', ticksuffix: '%' } }), CONF);
+}
+
+/* ─── Tab 1: crecimiento observado vs potencial (vigente y del paper) ─── */
+// Ventana de pandemia del modelo (abr-2020 a jun-2021), la misma de la curva de Phillips.
+// Las fechas trimestrales son de inicio de trimestre: la franja cubre 2020-T2 a 2021-T2.
+function covidLayout() {
+  const x0 = '2020-04-01', x1 = '2021-07-01';
+  return {
+    shapes: [{ type: 'rect', xref: 'x', yref: 'paper', x0, x1, y0: 0, y1: 1,
+               fillcolor: 'rgba(0,0,0,.06)', line: { width: 0 }, layer: 'below' }],
+    annotations: [{ xref: 'x', yref: 'paper', x: x0, y: 1, xanchor: 'left', yanchor: 'top',
+                    text: 'Pandemia', showarrow: false, font: { size: 10, color: '#6a6a6f' } }],
+  };
+}
+
+function renderCrecimiento() {
+  const rows = PIB_ROWS.filter(r => r.crecimiento_pib_obs !== null || r.crecimiento_potencial !== null
+                                 || r.crecimiento_pib_pot_paper !== null);
+  const x = rows.map(r => r.fecha);
+  const traces = [
+    { x, y: toNum(rows, 'crecimiento_pib_obs'), name: 'PIB observado', mode: 'lines',
+      line: { color: '#8891a8', width: 1.6 } },
+    { x, y: toNum(rows, 'crecimiento_potencial'), name: 'Potencial (estimación vigente)', mode: 'lines',
+      line: { color: '#146AEF', width: 2.4 } },
+    { x, y: toNum(rows, 'crecimiento_pib_pot_paper'), name: 'Potencial (working paper)', mode: 'lines',
+      line: { color: '#002E9A', width: 1.8, dash: 'dash' } },
+  ];
+  Plotly.newPlot('chart-crecimiento', traces,
+    baseLayout({ yaxis: { title: '% interanual', ticksuffix: '%' }, ...covidLayout() }), CONF);
 }
 
 /* ─── Tab 1: PTF observada vs tendencial ──────────────────────────────── */

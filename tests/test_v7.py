@@ -181,6 +181,23 @@ class TestExportWebV7:
         np.testing.assert_allclose(g["brecha_capital"] + g["brecha_trabajo"] + g["brecha_ptf"],
                                    100 * np.log1p(g["brecha_cd"] / 100), atol=5e-4)
 
+    def test_crecimiento_observado_y_del_paper(self, export):
+        out, _ = export
+        p = pd.read_csv(out / "pib_trimestral.csv").set_index("fecha")
+        for c in ("crecimiento_pib_obs", "crecimiento_pib_pot_paper"):
+            assert c in p.columns, c
+        # En modo referencia el potencial vigente ES el del paper.
+        x = p.dropna(subset=["crecimiento_potencial", "crecimiento_pib_pot_paper"])
+        assert len(x) == len(p.dropna(subset=["crecimiento_potencial"])) > 70
+        np.testing.assert_allclose(x["crecimiento_pib_pot_paper"], x["crecimiento_potencial"], atol=1e-3)
+        # Cifra del paper: pib_pot 2025T4 / 2024T4 = 1,98 % (≈ 1,959 en 100 × Δ4 log).
+        assert p.loc["2025-10-01", "crecimiento_pib_pot_paper"] == pytest.approx(100 * np.log1p(0.01978), abs=1e-3)
+        assert np.isnan(p.loc["2026-01-01", "crecimiento_pib_pot_paper"])   # el paper llega a 2025T4
+        # Observado − potencial = variación interanual de la brecha (en log).
+        lb = 100 * np.log1p(p["brecha_cd"] / 100)
+        g = p.assign(dlb=lb.diff(4)).dropna(subset=["dlb", "crecimiento_pib_obs", "crecimiento_potencial"])
+        np.testing.assert_allclose(g["crecimiento_pib_obs"] - g["crecimiento_potencial"], g["dlb"], atol=1e-3)
+
     def test_banda90_dentro_de_la_95(self, export):
         out, _ = export
         n = pd.read_csv(out / "nairu_monthly.csv")

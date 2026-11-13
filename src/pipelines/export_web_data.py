@@ -26,6 +26,16 @@ Cambios frente a la exportación de v3 (2026-11-09):
   con la gráfica de v3, que usaba Δ de la brecha); meta.json lleva κ y su p-valor.
 - Fechas trimestrales en convención de INICIO de trimestre (2026-01-01 = 2026T1),
   igual que el resto del tablero; v7 fecha por el mes de cierre.
+
+Crecimiento interanual en ``pib_trimestral.csv`` (todas en 100 × Δ4 log, la
+convención de ``crecimiento_potencial``, para que las tres líneas de la tarjeta
+«Crecimiento del PIB potencial» sean comparables):
+- ``crecimiento_potencial``: PIB potencial vigente.
+- ``crecimiento_pib_obs``: PIB observado en la misma medida que el potencial
+  (anualizado, suma de 4 trimestres; índice ``pib_idx``).
+- ``crecimiento_pib_pot_paper``: PIB potencial publicado en el working paper
+  (``tests/fixtures/baseline_v7/``, congelado). La diferencia con el vigente se
+  explica en ``docs/diagnostico_paper_vs_tablero.md``.
 """
 from __future__ import annotations
 
@@ -38,7 +48,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.config import OUTPUTS_DIR, PROCESSED_DIR
+from src.config import OUTPUTS_DIR, PROCESSED_DIR, PROJECT_ROOT
 
 logger = logging.getLogger("nairu_pipeline.export_web")
 
@@ -51,6 +61,8 @@ PHILLIPS_CSV = V7_DIR / "phillips_parcial_v7.csv"
 PIB_CSV     = V7_DIR / "pib_potencial_integrado_v7_series.csv"
 RESUMEN_JSON = V7_DIR / "resumen_v7.json"
 VIOG_CSV    = PROCESSED_DIR / "viog_colombia.csv"
+# PIB potencial publicado en el working paper v7 (salida congelada del script de referencia)
+PAPER_PIB_CSV = PROJECT_ROOT / "tests" / "fixtures" / "baseline_v7" / "pib_potencial_integrado_v7_series.csv"
 
 Z90_SOBRE_Z95 = 1.6448536269514722 / 1.959963984540054
 
@@ -149,6 +161,20 @@ def construir_mensual() -> pd.DataFrame:
     return _round_floats(out)
 
 
+def crecimiento_potencial_paper() -> pd.DataFrame:
+    """``fecha, crecimiento_pib_pot_paper``: crecimiento interanual (100 × Δ4 log) del
+    PIB potencial del working paper, fechado al inicio del trimestre."""
+    if not PAPER_PIB_CSV.exists():
+        warnings.warn(f"{PAPER_PIB_CSV} no existe: no se exporta el potencial del paper.", stacklevel=2)
+        return pd.DataFrame({"fecha": pd.Series(dtype=str),
+                             "crecimiento_pib_pot_paper": pd.Series(dtype=float)})
+    b = pd.read_csv(PAPER_PIB_CSV, parse_dates=["date"]).sort_values("date")
+    return pd.DataFrame({
+        "fecha": b["date"].dt.to_period("Q").dt.start_time.dt.strftime("%Y-%m-%d"),
+        "crecimiento_pib_pot_paper": np.log(b["pib_pot"]).diff(4) * 100,
+    })
+
+
 def construir_trimestral() -> pd.DataFrame:
     d = pd.read_csv(_exigir(PIB_CSV), parse_dates=["date"])
     cols = [c for c in PIB_EXPORT_COLS if c in d.columns]
@@ -174,6 +200,11 @@ def construir_trimestral() -> pd.DataFrame:
         pib["contrib_trabajo"] = (1 - alpha) * np.log(pib["lh_pot_idx"]).diff(4) * 100
         pib["contrib_ptf"] = np.log(pib["ptf_pot"]).diff(4) * 100
         pib["crecimiento_potencial"] = np.log(pib["pib_pot_idx"]).diff(4) * 100
+
+    # Crecimiento observado y potencial del paper, para la tarjeta de comparación.
+    if "pib_idx" in pib.columns:
+        pib["crecimiento_pib_obs"] = np.log(pib["pib_idx"]).diff(4) * 100
+    pib = pib.merge(crecimiento_potencial_paper(), on="fecha", how="left")
 
     # Descomposición exacta de la brecha (ec. 22 del paper), en puntos logarítmicos.
     if {"k_idx", "k_pot_idx", "lh_idx", "lh_pot_idx", "ptf_obs", "ptf_pot", "alpha"} <= set(pib.columns):
